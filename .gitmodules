@@ -1,0 +1,3 @@
+[submodule "front-app"]
+	path = front-app
+	url = https://github.com/Juaneswfr/whatsapp-scheduler.git
