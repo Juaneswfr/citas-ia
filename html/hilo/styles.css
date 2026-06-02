@@ -1,0 +1,138 @@
+/* =========================================================
+   HILO — Design tokens (v2 · clean & white)
+   "Tu agenda vive en WhatsApp."
+   Original direction: white surfaces, cool neutrals, wine
+   signature accent. No beige. Friendly + premium.
+   ========================================================= */
+
+/* Type: Hanken Grotesk (UI) + Schibsted Grotesk (display) + JetBrains Mono */
+@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..800;1,400..600&family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..600&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* ============ Wine signature ============ */
+  --wine:        #593240;
+  --wine-700:    #3F2330;
+  --wine-600:    #6E3F4F;
+  --wine-400:    #8C5D6A;
+  --wine-300:    #B98E98;
+  --wine-200:    #E4D2D7;
+  --wine-100:    #F1E5E8;
+  --wine-50:     #FAF4F5;
+  --wine-fg:     #FFFFFF;
+
+  /* ============ Clean white surfaces ============ */
+  --paper:       #F5F6F8;   /* app content background — cool whisper gray */
+  --paper-2:     #FFFFFF;   /* sidebar — white */
+  --surface:     #FFFFFF;   /* cards */
+  --surface-2:   #FFFFFF;   /* inputs / popovers */
+  --surface-tint:#F4F5F8;   /* inset wells */
+
+  /* ============ Cool ink ============ */
+  --ink-1:   #1C1D22;   /* primary */
+  --ink-2:   #565A64;   /* secondary */
+  --ink-3:   #8E929C;   /* tertiary */
+  --ink-4:   #BCC0C8;   /* quaternary */
+  --ink-inv: #FFFFFF;
+
+  /* ============ Cool hairlines ============ */
+  --line:        #E9EAEE;
+  --line-soft:   #F0F1F4;
+  --line-strong: #DCDEE4;
+
+  /* ============ Service hues (clean, saturated) ============ */
+  --clay:   #C2553F;
+  --sage:   #58895F;
+  --steel:  #4C6CA0;
+  --mustard:#C09433;
+  --plum:   #8A4A86;
+  --teal:   #2E8B8B;
+
+  /* ============ Status ============ */
+  --wa:        #25D366;
+  --wa-ink:    #138A3E;
+  --wa-bg:     #E7F8EC;
+  --success:   #1E9E54;
+  --warning:   #C7891F;
+  --warning-bg:#FBF1DC;
+  --danger:    #D24A33;
+  --danger-bg: #FBE6E1;
+
+  /* ============ Spacing ============ */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:24px; --sp-7:32px; --sp-8:40px; --sp-9:48px; --sp-10:64px;
+
+  /* ============ Radius (slightly softer, friendly) ============ */
+  --r-xs:6px; --r-sm:9px; --r-md:12px; --r-lg:16px; --r-xl:22px; --r-2xl:28px; --r-full:999px;
+
+  /* ============ Shadow (crisp + subtle) ============ */
+  --shadow-hairline: 0 0 0 1px rgba(20,22,28,0.04);
+  --shadow-sm:  0 1px 2px rgba(20,22,28,0.05), 0 0 0 1px rgba(20,22,28,0.035);
+  --shadow-md:  0 6px 20px rgba(20,22,28,0.08), 0 0 0 1px rgba(20,22,28,0.035);
+  --shadow-lg:  0 18px 44px rgba(20,22,28,0.13), 0 0 0 1px rgba(20,22,28,0.04);
+  --shadow-pop: 0 28px 60px rgba(20,22,28,0.22), 0 0 0 1px rgba(20,22,28,0.05);
+  --ring:       0 0 0 4px rgba(89,50,64,0.16);
+
+  /* ============ Materials ============ */
+  --blur-thin:  saturate(140%) blur(20px);
+  --mat-toolbar: rgba(255,255,255,0.82);
+
+  /* ============ Motion ============ */
+  --ease-std: cubic-bezier(0.25,0.1,0.25,1);
+  --ease-emph: cubic-bezier(0.32,0.72,0,1);
+  --ease-out: cubic-bezier(0.16,1,0.3,1);
+  --dur-1:120ms; --dur-2:200ms; --dur-3:320ms; --dur-4:480ms;
+
+  /* ============ Type ============ */
+  --font-sans:"Hanken Grotesk",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --font-serif:"Schibsted Grotesk","Hanken Grotesk",sans-serif;  /* display */
+  --font-mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,monospace;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--font-sans);
+  font-size:15px;
+  line-height:1.45;
+  color:var(--ink-1);
+  background:var(--paper);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+  font-feature-settings:"tnum" 0;
+}
+.tnum{font-feature-settings:"tnum" 1}
+
+/* display helpers */
+.serif{font-family:var(--font-serif);font-weight:600;letter-spacing:-0.02em}
+.serif-i{font-family:var(--font-serif);font-style:italic;font-weight:500;letter-spacing:-0.01em}
+
+::selection{background:var(--wine-100);color:var(--wine-700)}
+
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-thumb{background:rgba(28,29,34,0.16);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+*::-webkit-scrollbar-thumb:hover{background:rgba(28,29,34,0.28);background-clip:content-box}
+*::-webkit-scrollbar-track{background:transparent}
+
+:where(button,a,input,select,textarea,[tabindex]):focus-visible{
+  outline:none;box-shadow:var(--ring);border-radius:var(--r-sm);
+}
+
+.eyebrow{
+  font:600 11px/1 var(--font-sans);
+  text-transform:uppercase;letter-spacing:0.12em;color:var(--ink-3);
+}
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  box-shadow:var(--shadow-sm);
+}
+
+@keyframes hilo-fade-up{from{transform:translateY(10px)}to{transform:none}}
+@keyframes hilo-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes hilo-typing{0%{transform:translateY(0)}30%{transform:translateY(-3px)}60%{transform:translateY(0)}}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:0.01ms !important;transition-duration:0.01ms !important}
+}

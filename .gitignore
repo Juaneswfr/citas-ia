@@ -3,3 +3,62 @@
 CLAUDE.md
 .mcp.json
 skills-lock.json
+
+# ── Entornos virtuales Python ──────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Variables de entorno y secretos ────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# ── uv ──────────────────────────────────────────────────────────────────────
+.python-version
+
+# ── LangGraph ───────────────────────────────────────────────────────────────
+.langgraph/
+
+# ── Node / Frontend ─────────────────────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+.output/
+.vinxi/
+*.local
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Editores e IDEs ─────────────────────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.sw?
+
+# ── Sistema operativo ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
