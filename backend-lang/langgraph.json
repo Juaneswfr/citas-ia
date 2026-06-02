@@ -1,0 +1,10 @@
+{
+    "graphs": {
+        "agent": "./src/agents/atenea/agent.py:make_graph"
+    },
+    "source": {
+        "kind": "uv",
+        "root": "."
+    },
+    "env": ".env"
+}
