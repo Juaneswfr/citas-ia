@@ -147,6 +147,7 @@ async def embedded_signup_connect(
         "channel_type": "whatsapp",
         "provider": "meta_cloud_api",
         "phone_number": display_phone,
+        "phone_number_id": body.phone_number_id,  # columna directa para lookup desde webhooks
         "display_name": verified_name or display_phone,
         "coexistence_enabled": True,
         "external_account_id": body.waba_id,

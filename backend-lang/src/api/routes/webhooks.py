@@ -107,16 +107,21 @@ async def _process_whatsapp_payload(payload: dict):
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
+                # phone_number_id identifica QUÉ número del negocio recibió el mensaje
+                business_phone_number_id = value.get("metadata", {}).get("phone_number_id")
                 messages = value.get("messages", [])
                 for msg in messages:
-                    phone = msg.get("from")
+                    customer_phone = msg.get("from")
                     text = msg.get("text", {}).get("body", "")
-                    if not phone or not text:
+                    if not customer_phone or not text or not business_phone_number_id:
                         continue
 
-                    conversation = await ConversationService.find_or_create(phone)
+                    conversation = await ConversationService.find_or_create(
+                        customer_phone=customer_phone,
+                        phone_number_id=business_phone_number_id,
+                    )
                     # Guardar teléfono en conversation para que AgentService pueda enviar
-                    conversation["customer_phone"] = phone
+                    conversation["customer_phone"] = customer_phone
                     await ConversationService.save_message(
                         conversation_id=conversation["id"],
                         workspace_id=conversation["workspace_id"],

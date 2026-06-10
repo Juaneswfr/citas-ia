@@ -12,10 +12,86 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.security import create_access_token, get_current_user
 from core.supabase_client import get_supabase
-from schemas.auth import LoginRequest, RefreshRequest, TokenResponse
+from schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post(
+    "/register",
+    response_model=TokenResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar nuevo dueño de negocio",
+    description="Crea cuenta Supabase + workspace en un solo paso. Retorna JWT listo para usar.",
+)
+async def register(body: RegisterRequest):
+    """
+    Onboarding completo en un paso:
+    1. Crea usuario en Supabase Auth con rol workspace_owner
+    2. Crea el workspace en la BD
+    3. Actualiza user_metadata con workspace_id
+    4. Retorna JWT con role + workspace_id listos
+    """
+    supabase = get_supabase()
+
+    # 1. Crear usuario en Supabase Auth
+    try:
+        signup = supabase.auth.admin.create_user({
+            "email": body.email,
+            "password": body.password,
+            "email_confirm": True,  # Auto-confirmar para no necesitar email de verificación
+            "user_metadata": {"role": "workspace_owner"},
+        })
+    except Exception as e:
+        log.warning("[auth] register error | email=%s | err=%s", body.email, e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pudo crear la cuenta. El email puede estar en uso.",
+        )
+
+    user = signup.user
+    if not user:
+        raise HTTPException(status_code=500, detail="Error creando usuario.")
+
+    # 2. Crear workspace
+    ws_result = supabase.table("workspaces").insert({
+        "name": body.workspace_name,
+        "slug": body.workspace_slug,
+        "timezone": body.timezone,
+        "country": "CO",
+        "is_active": True,
+    }).execute()
+
+    if not ws_result.data:
+        # Revertir: eliminar el usuario creado
+        supabase.auth.admin.delete_user(user.id)
+        raise HTTPException(status_code=500, detail="Error creando workspace.")
+
+    workspace_id = ws_result.data[0]["id"]
+
+    # 3. Actualizar metadata del usuario con workspace_id
+    supabase.auth.admin.update_user_by_id(user.id, {
+        "user_metadata": {
+            "role": "workspace_owner",
+            "workspace_id": workspace_id,
+        }
+    })
+
+    # 4. Emitir JWT con contexto completo
+    token = create_access_token({
+        "sub": user.id,
+        "email": user.email,
+        "role": "workspace_owner",
+        "workspace_id": workspace_id,
+    })
+
+    log.info("[auth] register | user=%s | workspace=%s", user.id, workspace_id)
+    return TokenResponse(
+        access_token=token,
+        expires_in=3600,
+        workspace_id=workspace_id,
+    )
 
 
 @router.post(
@@ -56,6 +132,7 @@ async def login(body: LoginRequest):
     return TokenResponse(
         access_token=token,
         expires_in=3600,
+        workspace_id=user.user_metadata.get("workspace_id", ""),
     )
 
 
@@ -88,7 +165,11 @@ async def refresh(body: RefreshRequest):
             "workspace_id": user.user_metadata.get("workspace_id", ""),
         }
     )
-    return TokenResponse(access_token=token, expires_in=3600)
+    return TokenResponse(
+        access_token=token,
+        expires_in=3600,
+        workspace_id=user.user_metadata.get("workspace_id", ""),
+    )
 
 
 @router.get(

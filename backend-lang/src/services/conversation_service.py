@@ -17,30 +17,34 @@ class ConversationService:
     """Operaciones sobre conversaciones y mensajes de WhatsApp."""
 
     @staticmethod
-    async def find_or_create(phone: str) -> dict:
+    async def find_or_create(customer_phone: str, phone_number_id: str) -> dict:
         """
-        Encuentra la conversación activa de un teléfono o crea una nueva.
+        Encuentra la conversación activa de un cliente o crea una nueva.
 
         Args:
-            phone: Número E.164 del cliente.
+            customer_phone: Número E.164 del cliente que escribió.
+            phone_number_id: ID del número del negocio en Meta (identifica el workspace).
 
         Returns:
             Fila de la tabla conversations.
         """
         supabase = get_supabase()
 
-        # Buscar canal por número de teléfono
+        # Buscar canal por phone_number_id del negocio (no por teléfono del cliente)
         channel_result = (
             supabase.table("channels")
             .select("id, workspace_id")
-            .eq("phone_number", phone)
+            .eq("phone_number_id", phone_number_id)
             .eq("status", "active")
             .limit(1)
             .execute()
         )
         if not channel_result.data:
-            log.warning("[conv] canal no encontrado para phone=%s", phone)
-            raise ValueError(f"No hay canal activo para el número {phone}")
+            log.warning("[conv] canal no encontrado para phone_number_id=%s", phone_number_id)
+            raise ValueError(f"No hay canal activo para phone_number_id={phone_number_id}")
+
+        # Alias para compatibilidad con el resto del método
+        phone = customer_phone
 
         channel = channel_result.data[0]
         workspace_id = channel["workspace_id"]

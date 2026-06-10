@@ -138,7 +138,8 @@ async def run_reminders() -> None:
 
 async def _reminder_loop() -> None:
     """Loop asíncrono que ejecuta run_reminders() cada 30 minutos."""
-    log.info("[reminders] scheduler iniciado — cada 30 minutos")
+    log.info("[reminders] scheduler iniciado — primera ejecución en 60s, luego cada 30 minutos")
+    await asyncio.sleep(60)  # Esperar que el servidor y Supabase estén listos
     while True:
         try:
             await run_reminders()
