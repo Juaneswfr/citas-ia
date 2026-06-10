@@ -1,26 +1,15 @@
-# ── Stage 1: dependencias ─────────────────────────────────────────────────────
-FROM python:3.12-slim AS deps
-
-WORKDIR /app
-
-# uv para gestión de paquetes (más rápido que pip)
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-COPY pyproject.toml uv.lock ./
-# --no-install-project: instala solo las dependencias, no el paquete local
-# (src/ todavía no fue copiado en este stage)
-RUN uv sync --frozen --no-dev --no-install-project
-
-# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+# Imagen mínima: solo Python + dependencias
+# El código fuente se monta como volumen desde el host
+# Actualizar código: git pull + docker compose restart backend
+# Rebuild solo si cambia pyproject.toml o uv.lock (nuevas dependencias)
 FROM python:3.12-slim
 
 WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-COPY --from=deps /app/.venv .venv
 
-# Copiar código fuente
-COPY src/ ./src/
+COPY pyproject.toml uv.lock ./
+RUN mkdir -p src && uv sync --frozen --no-dev --no-install-project
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src"

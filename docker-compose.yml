@@ -1,19 +1,19 @@
 services:
 
-  # ── Frontend: TanStack Start SSR ─────────────────────────────────────────────
+  # ── Frontend: SPA estática servida por nginx ─────────────────────────────────
+  # Workflow: npm run build local → subir dist/client/ por FTP a front-app/dist/client/
   frontend:
-    build:
-      context: ./front-app
-      dockerfile: Dockerfile
+    image: nginx:alpine
     restart: unless-stopped
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - VITE_API_URL=https://hilo.esjuanez.com/api
+    volumes:
+      - ./front-app/dist/client:/usr/share/nginx/html:ro
+      - ./nginx/spa.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - app
 
   # ── Backend: FastAPI ──────────────────────────────────────────────────────────
+  # Actualizar código: git pull + docker compose restart backend
+  # Rebuild solo si cambia pyproject.toml (nuevas dependencias)
   backend:
     build:
       context: ./backend-lang
@@ -21,6 +21,8 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend-lang/.env
+    volumes:
+      - ./backend-lang/src:/app/src:ro
     networks:
       - app
     healthcheck:
