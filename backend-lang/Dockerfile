@@ -7,7 +7,9 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+# --no-install-project: instala solo las dependencias, no el paquete local
+# (src/ todavía no fue copiado en este stage)
+RUN uv sync --frozen --no-dev --no-install-project
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM python:3.12-slim
