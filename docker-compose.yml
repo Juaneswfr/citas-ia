@@ -1,13 +1,18 @@
 services:
 
-  # ── Frontend: SPA estática servida por nginx ─────────────────────────────────
-  # Workflow: npm run build local → subir dist/client/ por FTP a front-app/dist/client/
+  # ── Frontend: Servidor SSR Nitro (Node.js) ───────────────────────────────────
+  # Workflow: npm run build local → subir dist/ por FTP a front-app/dist/
+  # Para actualizar: subir dist/ por FTP + docker compose restart frontend
   frontend:
-    image: nginx:alpine
+    image: node:20-alpine
     restart: unless-stopped
+    working_dir: /app/dist
+    command: node ./server/index.mjs
     volumes:
-      - ./front-app/dist/client:/usr/share/nginx/html:ro
-      - ./nginx/spa.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./front-app/dist:/app/dist:ro
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
     networks:
       - app
 
