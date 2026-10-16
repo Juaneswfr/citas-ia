@@ -43,11 +43,22 @@ class Settings(BaseSettings):
     # ── Redis / Workers ────────────────────────────────────────────────────
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
 
+    # ── Frontend URL (para redirects OAuth) ───────────────────────────────
+    frontend_url: str = Field(default="https://hilo.esjuanez.com", alias="FRONTEND_URL")
+
+    # ── Resend (emails transaccionales) ───────────────────────────────────
+    resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
+    resend_from_email: str = Field(
+        default="Hilo <noreply@hilo.esjuanez.com>", alias="RESEND_FROM_EMAIL"
+    )
+
     # ── Sentry ─────────────────────────────────────────────────────────────
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
 
     class Config:
-        env_file = ".env"
+        # .env.local sobreescribe .env — úsalo para overrides locales sin tocar producción
+        env_file = [".env", ".env.local"]
+        env_file_encoding = "utf-8"
         populate_by_name = True
         extra = "ignore"
 

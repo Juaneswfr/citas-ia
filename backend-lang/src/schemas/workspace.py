@@ -8,6 +8,7 @@ class WorkspaceCreate(BaseModel):
     name: str = Field(..., description="Nombre comercial del negocio")
     legal_name: Optional[str] = Field(None, description="Razón social o nombre legal")
     slug: str = Field(..., description="Identificador único URL-friendly")
+    business_type: Optional[str] = Field(None, description="Tipo de negocio: barberia | salon | manicure | spa | otro")
     country: str = Field(default="CO", description="Código ISO del país")
     timezone: str = Field(..., description="Zona horaria IANA, ej: America/Bogota")
     primary_phone: Optional[str] = Field(None, description="Teléfono principal de contacto")
@@ -19,6 +20,7 @@ class WorkspaceCreate(BaseModel):
 class WorkspaceUpdate(BaseModel):
     name: Optional[str] = Field(None, description="Nombre comercial del negocio")
     legal_name: Optional[str] = None
+    business_type: Optional[str] = None
     timezone: Optional[str] = None
     primary_phone: Optional[str] = None
     primary_email: Optional[EmailStr] = None
@@ -33,6 +35,7 @@ class WorkspaceOut(BaseModel):
     slug: str
     country: str
     timezone: str
+    business_type: Optional[str] = None
     primary_phone: Optional[str]
     primary_email: Optional[str]
     brand_color: Optional[str]

@@ -24,11 +24,12 @@ _TOLERANCE_MINUTES = 5
 
 async def run_reminders() -> None:
     """
-    Busca citas confirmadas próximas y envía recordatorios WhatsApp.
+    Busca citas confirmadas próximas y envía recordatorios WhatsApp + email.
     Diseñado para ejecutarse cada 30 minutos via scheduler.
     """
     from core.supabase_client import get_supabase
     from services.whatsapp_service import WhatsAppService
+    from services.email_service import EmailService
 
     supabase = get_supabase()
     now = datetime.now(timezone.utc)
@@ -124,7 +125,27 @@ async def run_reminders() -> None:
                 phone_number_id=phone_number_id,
             )
 
-            if sent:
+            # Email de recordatorio si el cliente tiene email registrado
+            customer_email = customer.data.get("email", "")
+            if customer_email:
+                workspace_result = (
+                    supabase.table("workspaces")
+                    .select("name")
+                    .eq("id", appt["workspace_id"])
+                    .single()
+                    .execute()
+                )
+                business_name = workspace_result.data.get("name", "") if workspace_result.data else ""
+                await EmailService.send_appointment_reminder(
+                    customer_email=customer_email,
+                    customer_name=customer_name,
+                    business_name=business_name,
+                    service_name=service_name,
+                    start_time=f"{fecha} a las {hora}",
+                    hours_before=hours_before,
+                )
+
+            if sent or customer_email:
                 # Marcar recordatorio como enviado
                 supabase.table("appointments").update(
                     {already_sent_field: True}

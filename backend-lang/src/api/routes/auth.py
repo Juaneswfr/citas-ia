@@ -8,7 +8,9 @@ Seguridad (Principio XI):
 - Errores de auth no exponen detalles internos.
 """
 import logging
+import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 
 from core.security import create_access_token, get_current_user
 from core.supabase_client import get_supabase
@@ -186,26 +188,93 @@ async def me(current_user: dict = Depends(get_current_user)):
 
 
 @router.get(
-    "/google/callback",
-    summary="Callback OAuth de Google Calendar — intercambia el código por token cifrado",
-    description="Google redirige aquí tras la autorización. Retorna el encrypted_refresh_token para persistir en la BD.",
+    "/google/calendar/url",
+    summary="Genera la URL de autorización OAuth de Google Calendar",
 )
-async def google_oauth_callback(code: str):
+async def google_calendar_authorize_url(workspace_id: str, return_to: str = "onboarding"):
+    """Construye la URL de OAuth de Google con scope Calendar y workspace_id en el state."""
+    import json
+    from core.config import get_settings
+    settings = get_settings()
+
+    if not settings.google_client_id or not settings.google_redirect_uri:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Calendar no está configurado en este servidor.",
+        )
+
+    state = json.dumps({"workspace_id": workspace_id, "return_to": return_to})
+    params = {
+        "client_id": settings.google_client_id,
+        "redirect_uri": settings.google_redirect_uri,
+        "response_type": "code",
+        "scope": "https://www.googleapis.com/auth/calendar",
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+    }
+    url = "https://accounts.google.com/o/oauth2/auth?" + urllib.parse.urlencode(params)
+    log.info("[auth] Google Calendar OAuth URL generada | workspace=%s | return_to=%s", workspace_id, return_to)
+    return {"url": url}
+
+
+@router.get(
+    "/google/callback",
+    summary="Callback OAuth de Google Calendar — intercambia el código, guarda el token y redirige al frontend",
+)
+async def google_oauth_callback(code: str, state: str = ""):
     """
-    Principio VII: El refresh_token se cifra antes de retornarlo.
-    El frontend debe persistirlo via POST /workspaces/{id}/calendars.
+    Google redirige aquí tras la autorización del usuario.
+    - Intercambia el code por refresh_token
+    - Cifra el token (Principio VII) y lo persiste en calendars
+    - Redirige al frontend con el resultado
     """
+    import json
     from integrations.google_calendar import exchange_oauth_code
+    from core.config import get_settings
+    settings = get_settings()
+
+    # Parsear state: puede ser JSON {"workspace_id": ..., "return_to": ...} o string plano (compat.)
+    workspace_id = ""
+    return_to = "onboarding"
+    try:
+        parsed = json.loads(state)
+        workspace_id = parsed.get("workspace_id", "").strip()
+        return_to = parsed.get("return_to", "onboarding")
+    except (json.JSONDecodeError, AttributeError):
+        workspace_id = state.strip()
+
+    frontend = settings.frontend_url
+
+    def error_redirect() -> RedirectResponse:
+        if return_to == "settings":
+            return RedirectResponse(url=f"{frontend}/settings?calendar_error=1", status_code=302)
+        return RedirectResponse(url=f"{frontend}/onboarding?step=2&calendar_error=1", status_code=302)
 
     result = await exchange_oauth_code(code)
     if not result:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Código OAuth inválido o expirado. Inicia el flujo de autorización nuevamente.",
-        )
+        log.warning("[auth] Google OAuth callback fallido | workspace=%s", workspace_id)
+        return error_redirect()
 
-    log.info("[auth] Google OAuth callback exitoso")
-    return {
-        "encrypted_refresh_token": result["encrypted_refresh_token"],
-        "message": "Token obtenido. Usa este valor en POST /workspaces/{workspace_id}/calendars.",
-    }
+    if workspace_id:
+        try:
+            supabase = get_supabase()
+            supabase.table("calendars").upsert(
+                {
+                    "workspace_id": workspace_id,
+                    "name": "Google Calendar",
+                    "google_calendar_id": "primary",
+                    "oauth_refresh_token_encrypted": result["encrypted_refresh_token"],
+                    "sync_enabled": True,
+                    "sync_status": "active",
+                },
+                on_conflict="workspace_id,google_calendar_id",
+            ).execute()
+            log.info("[auth] Google Calendar conectado | workspace=%s | return_to=%s", workspace_id, return_to)
+        except Exception as e:
+            log.error("[auth] Error guardando calendario | workspace=%s | err=%s", workspace_id, e)
+            return error_redirect()
+
+    if return_to == "settings":
+        return RedirectResponse(url=f"{frontend}/settings?calendar_connected=1", status_code=302)
+    return RedirectResponse(url=f"{frontend}/onboarding?step=2&calendar_connected=1", status_code=302)

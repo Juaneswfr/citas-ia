@@ -69,6 +69,7 @@ async def update_channel_status(workspace_id: str, channel_id: str, new_status: 
         .update({"status": new_status})
         .eq("id", channel_id)
         .eq("workspace_id", workspace_id)
+        .select()
         .execute()
     )
     if not result.data:

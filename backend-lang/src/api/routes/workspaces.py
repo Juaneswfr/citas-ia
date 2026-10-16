@@ -43,10 +43,10 @@ async def create_workspace(body: WorkspaceCreate, current_user: dict = Depends(r
 )
 async def get_workspace(workspace_id: str):
     supabase = get_supabase()
-    result = supabase.table("workspaces").select("*").eq("id", workspace_id).single().execute()
-    if not result.data:
+    result = supabase.table("workspaces").select("*").eq("id", workspace_id).limit(1).execute()
+    if not result or not result.data:
         raise HTTPException(status_code=404, detail="Workspace no encontrado.")
-    return result.data
+    return result.data[0]
 
 
 @router.patch(
@@ -58,12 +58,32 @@ async def get_workspace(workspace_id: str):
 async def update_workspace(workspace_id: str, body: WorkspaceUpdate):
     supabase = get_supabase()
     data = body.model_dump(exclude_none=True)
-    result = (
-        supabase.table("workspaces").update(data).eq("id", workspace_id).execute()
+    if not data:
+        raise HTTPException(status_code=422, detail="Sin campos para actualizar.")
+
+    # Intentar update; si no existe la fila, crear con upsert
+    update_result = (
+        supabase.table("workspaces").update(data).eq("id", workspace_id).select().execute()
     )
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Workspace no encontrado.")
-    return result.data[0]
+    if update_result.data:
+        return update_result.data[0]
+
+    # La fila no existe — crearla con los datos mínimos
+    upsert_data = {
+        "id": workspace_id,
+        "slug": workspace_id[:8],
+        "timezone": "America/Bogota",
+        "country": "CO",
+        "is_active": True,
+        **data,
+    }
+    upsert_result = (
+        supabase.table("workspaces").upsert(upsert_data).select().execute()
+    )
+    if not upsert_result.data:
+        raise HTTPException(status_code=500, detail="Error creando workspace.")
+    log.info("[workspaces] upsert | workspace=%s", workspace_id)
+    return upsert_result.data[0]
 
 
 # ── Miembros ──────────────────────────────────────────────────────────────────

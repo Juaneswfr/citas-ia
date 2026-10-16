@@ -35,4 +35,4 @@ include = ["*"]
 
 
 # RUN FASTAPI
-uv run fastpai dev ./src/api/main.py
+uv run fastapi dev ./src/api/main.py
