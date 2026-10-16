@@ -1,0 +1,17 @@
+{
+  "name": "citas-ia-dev",
+  "private": true,
+  "type": "module",
+  "description": "Orquestador de desarrollo local (frontend, backend, agente y dashboard de estado)",
+  "engines": {
+    "node": ">=21"
+  },
+  "scripts": {
+    "dev": "node dev/cli.mjs",
+    "dev:all": "node dev/cli.mjs --all",
+    "test": "node --test 'dev/__tests__/**/*.test.mjs'"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
