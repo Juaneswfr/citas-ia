@@ -49,9 +49,9 @@ def kapso(monkeypatch):
     app = FastAPI()
     app.include_router(webhooks.router)
 
-    async def post(payload, key="k1", sig=None, event="whatsapp.message.received"):
+    async def post(payload, key="k1", sig=None, event="whatsapp.message.received", extra=None):
         body = json.dumps(payload).encode()
-        headers = {"X-Webhook-Event": event, "X-Idempotency-Key": key}
+        headers = {"X-Webhook-Event": event, "X-Idempotency-Key": key, **(extra or {})}
         if sig is not False:
             headers["X-Webhook-Signature"] = sig or _sign(body)
         async with httpx.AsyncClient(
@@ -105,8 +105,14 @@ async def test_same_idempotency_key_processed_once(kapso):
 
 async def test_batch_passes_all_events(kapso):
     items = [{"message": {"from": str(i)}} for i in range(3)]
-    await kapso.post({"batch": True, "data": items})
+    await kapso.post({"batch": True, "data": items}, extra={"X-Webhook-Batch": "true", "X-Batch-Size": "3"})
     assert kapso.processed[0][1] == items
+
+
+async def test_single_payload_with_data_list_is_not_unwrapped(kapso):
+    payload = {"data": [1, 2]}
+    await kapso.post(payload)
+    assert kapso.processed[0][1] == [payload]
 
 
 async def test_disabled_returns_404(kapso, monkeypatch):

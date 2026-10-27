@@ -22,6 +22,7 @@ from api.routes.channels import router as channels_router
 from api.routes.conversations import router as conversations_router
 from api.routes.billing import router as billing_router
 from api.routes.webhooks import router as webhooks_router
+from api.routes.kapso import router as kapso_router
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ app.include_router(channels_router)
 app.include_router(conversations_router)
 app.include_router(billing_router)
 app.include_router(webhooks_router)
+app.include_router(kapso_router)
 
 
 @app.get("/", tags=["health"])

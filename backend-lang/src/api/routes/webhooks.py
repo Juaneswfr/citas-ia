@@ -180,8 +180,9 @@ async def kapso_inbound(request: Request):
         payload = await request.json()
     except ValueError:
         raise HTTPException(status_code=400)
-    # Lote: {"data": [...]}; evento único: el payload mismo.
-    items = payload.get("data") if isinstance(payload.get("data"), list) else [payload]
+    # Lote (X-Webhook-Batch: true): eventos en payload["data"]; sin lote: el payload es el evento.
+    batch = request.headers.get("X-Webhook-Batch", "").lower() == "true"
+    items = payload.get("data") if batch and isinstance(payload.get("data"), list) else [payload]
 
     import asyncio
     asyncio.create_task(_process_kapso_events(event, items))
@@ -194,6 +195,16 @@ async def _process_kapso_events(event: str, items: list):
     SUPUESTO (sin verificar): nombres de headers (X-Webhook-Signature/Event/X-Idempotency-Key),
     evento "whatsapp.message.received" y forma del payload vienen del plan, no de docs oficiales.
     """
+    if event == "whatsapp.phone_number.created":
+        from core import database
+        from services.kapso_onboarding import KapsoOnboardingService
+        for item in items:
+            try:
+                async with database._pool.acquire() as conn:
+                    await KapsoOnboardingService.handle_phone_number_created(conn, item)
+            except Exception as e:
+                log.error("[webhooks/kapso] error en phone_number.created | err=%s", type(e).__name__)
+        return
     if event != "whatsapp.message.received":
         return
     from services.conversation_service import ConversationService
