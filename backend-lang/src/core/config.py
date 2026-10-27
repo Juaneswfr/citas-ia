@@ -53,14 +53,24 @@ class Settings(BaseSettings):
     # ── Kapso (proveedor WhatsApp) ─────────────────────────────────────────
     kapso_enabled: bool = Field(default=False, alias="KAPSO_ENABLED")
     kapso_api_key: str = Field(default="", alias="KAPSO_API_KEY")
+    # Secreto del webhook de PROYECTO (eventos como whatsapp.phone_number.created).
+    kapso_webhook_secret_project: str = Field(default="", alias="KAPSO_WEBHOOK_SECRET_PROJECT")
+    # Secreto del webhook de NÚMERO (mensajes: whatsapp.message.received).
+    kapso_webhook_secret_number: str = Field(default="", alias="KAPSO_WEBHOOK_SECRET_NUMBER")
+    # Solo compatibilidad: se sigue aceptando si está definido, pero ya no basta con KAPSO_ENABLED=true.
     kapso_webhook_secret: str = Field(default="", alias="KAPSO_WEBHOOK_SECRET")
     kapso_base_url: str = Field(default="https://api.kapso.ai", alias="KAPSO_BASE_URL")
 
     @model_validator(mode="after")
     def _require_kapso_secrets(self):
         # Solo nombres de variables en el mensaje; nunca valores.
-        if self.kapso_enabled and not (self.kapso_api_key and self.kapso_webhook_secret):
-            raise ValueError("KAPSO_ENABLED=true requiere KAPSO_API_KEY y KAPSO_WEBHOOK_SECRET")
+        if self.kapso_enabled and not (
+            self.kapso_api_key and self.kapso_webhook_secret_project and self.kapso_webhook_secret_number
+        ):
+            raise ValueError(
+                "KAPSO_ENABLED=true requiere KAPSO_API_KEY, KAPSO_WEBHOOK_SECRET_PROJECT "
+                "y KAPSO_WEBHOOK_SECRET_NUMBER"
+            )
         return self
 
     # ── Sentry ─────────────────────────────────────────────────────────────

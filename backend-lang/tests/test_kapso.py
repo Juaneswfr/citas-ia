@@ -15,13 +15,15 @@ from services.whatsapp_provider import KapsoProvider
 
 pytestmark = pytest.mark.asyncio
 
-SECRET = "whsec-super-secret-value"
+SECRET = "whsec-super-secret-value"  # webhook de proyecto
+SECRET_NUMBER = "whsec-number-secret-value"
 API_KEY = "kapso-api-key-value"
 
 
 def _settings(enabled=True):
     return SimpleNamespace(
-        kapso_enabled=enabled, kapso_webhook_secret=SECRET, kapso_api_key=API_KEY
+        kapso_enabled=enabled, kapso_webhook_secret_project=SECRET,
+        kapso_webhook_secret_number=SECRET_NUMBER, kapso_webhook_secret="", kapso_api_key=API_KEY
     )
 
 
@@ -68,6 +70,18 @@ async def test_valid_signature_accepted(kapso):
     r = await kapso.post({"message": {"from": "57300"}})
     assert r.status_code == 200
     assert len(kapso.processed) == 1
+
+
+async def test_valid_signature_with_number_secret_accepted(kapso):
+    body = json.dumps({"message": {"from": "57300"}}).encode()
+    r = await kapso.post({"message": {"from": "57300"}}, sig=_sign(body, SECRET_NUMBER))
+    assert r.status_code == 200 and len(kapso.processed) == 1
+
+
+async def test_signature_with_wrong_secret_rejected(kapso):
+    body = json.dumps({"a": 1}).encode()
+    r = await kapso.post({"a": 1}, sig=_sign(body, "otro-secreto"))
+    assert r.status_code == 401 and kapso.processed == []
 
 
 async def test_invalid_signature_rejected(kapso):
@@ -129,6 +143,12 @@ async def test_config_requires_secrets_when_enabled():
             _env_file=None,
         )
     assert "jwt-secret-xyz" not in str(e.value)
+    # con solo uno de los dos secretos de webhook también falla
+    with pytest.raises(ValueError):
+        Settings(
+            DATABASE_URL="postgresql://x", JWT_SECRET="j", KAPSO_ENABLED=True, KAPSO_API_KEY="k",
+            KAPSO_WEBHOOK_SECRET_PROJECT="p", _env_file=None,
+        )
     ok = Settings(DATABASE_URL="postgresql://x", JWT_SECRET="j", _env_file=None)
     assert ok.kapso_enabled is False and ok.kapso_base_url == "https://api.kapso.ai"
 
@@ -205,4 +225,4 @@ async def test_no_secrets_in_logs(kapso, caplog):
     await _send(lambda r: httpx.Response(500))
     with pytest.raises(ValueError):
         Settings(DATABASE_URL="x", JWT_SECRET="j", KAPSO_ENABLED=True, _env_file=None)
-    assert SECRET not in caplog.text and API_KEY not in caplog.text
+    assert SECRET not in caplog.text and SECRET_NUMBER not in caplog.text and API_KEY not in caplog.text

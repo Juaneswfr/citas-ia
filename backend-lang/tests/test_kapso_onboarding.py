@@ -207,6 +207,17 @@ async def test_route_enabled_with_auth_returns_link(monkeypatch):
     assert r.status_code == 200 and r.json()["url"] == LINK_URL
 
 
+async def test_route_role_enforced(monkeypatch):
+    """workspace_owner (y super_admin) pasan; roles menores o de otro workspace, no."""
+    app, _ = _app(monkeypatch, enabled=True)
+    for role, ws, code in [
+        ("workspace_owner", "ws-1", 200), ("super_admin", "ws-9", 200),
+        ("manager", "ws-1", 403), ("viewer", "ws-1", 403), ("workspace_owner", "ws-2", 403),
+    ]:
+        app.dependency_overrides[get_current_user] = lambda role=role, ws=ws: {"role": role, "workspace_id": ws}
+        assert (await _post(app)).status_code == code, (role, ws)
+
+
 # ── Webhook: phone_number.created se despacha al servicio ────────────────────
 
 async def test_webhook_dispatches_phone_number_created(monkeypatch):

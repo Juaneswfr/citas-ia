@@ -136,12 +136,22 @@ async def _process_whatsapp_payload(payload: dict):
 
 
 def _verify_kapso_signature(request_body: bytes, signature_header: str) -> bool:
-    """HMAC-SHA256 hex del raw body con KAPSO_WEBHOOK_SECRET (X-Webhook-Signature)."""
-    secret = get_settings().kapso_webhook_secret
-    if not secret or not signature_header:
+    """HMAC-SHA256 hex del raw body (X-Webhook-Signature) contra el secreto de proyecto o de número.
+
+    El evento va en un header sin firmar, así que no se usa para elegir secreto: se prueban todos
+    (sin cortocircuito) y basta que uno coincida. KAPSO_WEBHOOK_SECRET es solo compatibilidad.
+    """
+    s = get_settings()
+    secrets = [x for x in (s.kapso_webhook_secret_project, s.kapso_webhook_secret_number,
+                           s.kapso_webhook_secret) if x]
+    sig = (signature_header or "").strip()
+    if not secrets or not sig:
         return False
-    expected = hmac.new(secret.encode(), request_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature_header.strip())
+    ok = False
+    for secret in secrets:
+        expected = hmac.new(secret.encode(), request_body, hashlib.sha256).hexdigest()
+        ok |= hmac.compare_digest(expected, sig)
+    return ok
 
 
 async def _claim_idempotency_key(key: str, event: str) -> bool:
