@@ -235,6 +235,9 @@ async def test_webhook_dispatches_phone_number_created(monkeypatch):
 
     from core import database
     monkeypatch.setattr(database, "_pool", Pool())
+    monkeypatch.setattr(webhooks, "get_settings", lambda: SimpleNamespace(
+        kapso_api_key="k", kapso_base_url="https://api.kapso.ai", frontend_url="https://x",
+        kapso_secrets_key=""))
     monkeypatch.setattr(KapsoOnboardingService, "handle_phone_number_created", staticmethod(handle))
     await webhooks._process_kapso_events("whatsapp.phone_number.created", [{"phone_number_id": "p"}] * 2)
     assert len(calls) == 2
