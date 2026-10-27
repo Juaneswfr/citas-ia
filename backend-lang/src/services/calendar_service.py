@@ -127,34 +127,28 @@ class CalendarService:
         Usa nextSyncToken incremental para traer solo eventos modificados.
         Principio VI: Mantener BD sincronizada con Calendar.
         """
-        from core.supabase_client import get_supabase
-        supabase = get_supabase()
+        from core.database import _pool
 
-        # Buscar el calendario asociado al channel_id (Google usa el channel como identificador)
-        cal_result = (
-            supabase.table("calendars")
-            .select("*")
-            .eq("google_notification_channel_id", channel_id)
-            .single()
-            .execute()
-        )
-        if not cal_result.data:
+        async with _pool.acquire() as db:
+            cal_row = await db.fetchrow(
+                "SELECT * FROM calendars WHERE google_notification_channel_id = $1",
+                channel_id,
+            )
+        if not cal_row:
             log.warning("[calendar] sync: canal no encontrado | channel=%s", channel_id)
             return
 
-        calendar_data = cal_result.data
+        calendar_data = dict(cal_row)
         service = CalendarService(calendar_data)
 
         try:
             client = await service._get_client()
 
-            # Parámetros para sincronización incremental
             params: dict = {"calendarId": calendar_data["google_calendar_id"]}
             sync_token = calendar_data.get("next_sync_token")
             if sync_token:
                 params["syncToken"] = sync_token
             else:
-                # Primera sincronización: traer eventos del último mes
                 from datetime import timedelta, timezone
                 now = datetime.now(timezone.utc)
                 params["timeMin"] = (now - timedelta(days=30)).isoformat()
@@ -165,32 +159,27 @@ class CalendarService:
 
             log.info("[calendar] sync | channel=%s | eventos=%d", channel_id, len(items))
 
-            for event in items:
-                event_id = event.get("id")
-                event_status = event.get("status")  # "confirmed" | "cancelled"
+            async with _pool.acquire() as db:
+                for event in items:
+                    event_id = event.get("id")
+                    if event.get("status") == "cancelled":
+                        appt = await db.fetchrow(
+                            "SELECT id, status FROM appointments WHERE google_event_id=$1 AND workspace_id=$2",
+                            event_id, calendar_data["workspace_id"],
+                        )
+                        if appt and appt["status"] not in {"cancelled", "completed"}:
+                            await db.execute(
+                                "UPDATE appointments SET status='cancelled', cancelled_by=NULL WHERE id=$1",
+                                appt["id"],
+                            )
+                            log.info("[calendar] cita cancelada por sync | appt=%s | event=%s",
+                                     appt["id"], event_id)
 
-                if event_status == "cancelled":
-                    # El evento fue eliminado en Google: marcar cita como cancelada
-                    appt = (
-                        supabase.table("appointments")
-                        .select("id, status")
-                        .eq("google_event_id", event_id)
-                        .eq("workspace_id", calendar_data["workspace_id"])
-                        .single()
-                        .execute()
+                if next_sync_token:
+                    await db.execute(
+                        "UPDATE calendars SET next_sync_token=$1 WHERE id=$2",
+                        next_sync_token, calendar_data["id"],
                     )
-                    if appt.data and appt.data["status"] not in {"cancelled", "completed"}:
-                        supabase.table("appointments").update(
-                            {"status": "cancelled", "cancelled_by": None}
-                        ).eq("id", appt.data["id"]).execute()
-                        log.info("[calendar] cita cancelada por sync | appt=%s | event=%s",
-                                 appt.data["id"], event_id)
-
-            # Guardar nextSyncToken para la próxima sincronización incremental
-            if next_sync_token:
-                supabase.table("calendars").update(
-                    {"next_sync_token": next_sync_token}
-                ).eq("id", calendar_data["id"]).execute()
 
         except Exception as e:
             log.error("[calendar] error en sync_from_notification | channel=%s | err=%s",

@@ -7,8 +7,9 @@ Principio XI: Todo endpoint verifica JWT + rol antes de procesar.
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
+import asyncpg
+from core.database import get_db
 from core.security import require_role, require_workspace_access
-from core.supabase_client import get_supabase
 from schemas.workspace import (
     MemberInvite, MemberOut, WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
 )
@@ -24,15 +25,31 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
     summary="Crear un nuevo workspace (negocio)",
     dependencies=[Depends(require_role("workspace_owner"))],
 )
-async def create_workspace(body: WorkspaceCreate, current_user: dict = Depends(require_role("workspace_owner"))):
-    supabase = get_supabase()
+async def create_workspace(
+    body: WorkspaceCreate,
+    current_user: dict = Depends(require_role("workspace_owner")),
+    db: asyncpg.Connection = Depends(get_db),
+):
     data = body.model_dump()
     data["is_active"] = True
-    result = supabase.table("workspaces").insert(data).execute()
-    if not result.data:
+    row = await db.fetchrow(
+        """
+        INSERT INTO workspaces (name, slug, timezone, country, is_active,
+                                legal_name, business_type, primary_phone,
+                                primary_email, brand_color, logo_url)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        RETURNING *
+        """,
+        data.get("name"), data.get("slug"), data.get("timezone", "America/Bogota"),
+        data.get("country", "CO"), True,
+        data.get("legal_name"), data.get("business_type"),
+        data.get("primary_phone"), data.get("primary_email"),
+        data.get("brand_color"), data.get("logo_url"),
+    )
+    if not row:
         raise HTTPException(status_code=500, detail="Error creando workspace.")
     log.info("[workspaces] created | slug=%s | user=%s", body.slug, current_user.get("sub"))
-    return result.data[0]
+    return dict(row)
 
 
 @router.get(
@@ -41,12 +58,16 @@ async def create_workspace(body: WorkspaceCreate, current_user: dict = Depends(r
     summary="Obtener datos del workspace",
     dependencies=[Depends(require_workspace_access("viewer"))],
 )
-async def get_workspace(workspace_id: str):
-    supabase = get_supabase()
-    result = supabase.table("workspaces").select("*").eq("id", workspace_id).limit(1).execute()
-    if not result or not result.data:
+async def get_workspace(
+    workspace_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    row = await db.fetchrow(
+        "SELECT * FROM workspaces WHERE id = $1", workspace_id
+    )
+    if not row:
         raise HTTPException(status_code=404, detail="Workspace no encontrado.")
-    return result.data[0]
+    return dict(row)
 
 
 @router.patch(
@@ -55,35 +76,27 @@ async def get_workspace(workspace_id: str):
     summary="Actualizar configuración del workspace",
     dependencies=[Depends(require_workspace_access("manager"))],
 )
-async def update_workspace(workspace_id: str, body: WorkspaceUpdate):
-    supabase = get_supabase()
+async def update_workspace(
+    workspace_id: str,
+    body: WorkspaceUpdate,
+    db: asyncpg.Connection = Depends(get_db),
+):
     data = body.model_dump(exclude_none=True)
     if not data:
         raise HTTPException(status_code=422, detail="Sin campos para actualizar.")
 
-    # Intentar update; si no existe la fila, crear con upsert
-    update_result = (
-        supabase.table("workspaces").update(data).eq("id", workspace_id).select().execute()
-    )
-    if update_result.data:
-        return update_result.data[0]
+    fields = list(data.keys())
+    values = list(data.values())
+    set_clause = ", ".join(f"{f} = ${i+2}" for i, f in enumerate(fields))
 
-    # La fila no existe — crearla con los datos mínimos
-    upsert_data = {
-        "id": workspace_id,
-        "slug": workspace_id[:8],
-        "timezone": "America/Bogota",
-        "country": "CO",
-        "is_active": True,
-        **data,
-    }
-    upsert_result = (
-        supabase.table("workspaces").upsert(upsert_data).select().execute()
+    row = await db.fetchrow(
+        f"UPDATE workspaces SET {set_clause} WHERE id = $1 RETURNING *",
+        workspace_id, *values,
     )
-    if not upsert_result.data:
-        raise HTTPException(status_code=500, detail="Error creando workspace.")
-    log.info("[workspaces] upsert | workspace=%s", workspace_id)
-    return upsert_result.data[0]
+    if not row:
+        raise HTTPException(status_code=404, detail="Workspace no encontrado.")
+    log.info("[workspaces] updated | workspace=%s", workspace_id)
+    return dict(row)
 
 
 # ── Miembros ──────────────────────────────────────────────────────────────────
@@ -94,15 +107,14 @@ async def update_workspace(workspace_id: str, body: WorkspaceUpdate):
     summary="Listar miembros del workspace",
     dependencies=[Depends(require_workspace_access("manager"))],
 )
-async def list_members(workspace_id: str):
-    supabase = get_supabase()
-    result = (
-        supabase.table("workspace_members")
-        .select("*")
-        .eq("workspace_id", workspace_id)
-        .execute()
+async def list_members(
+    workspace_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    rows = await db.fetch(
+        "SELECT * FROM workspace_members WHERE workspace_id = $1", workspace_id
     )
-    return result.data or []
+    return [dict(r) for r in rows]
 
 
 @router.post(
@@ -112,27 +124,28 @@ async def list_members(workspace_id: str):
     summary="Invitar a un nuevo miembro",
     dependencies=[Depends(require_workspace_access("owner"))],
 )
-async def invite_member(workspace_id: str, body: MemberInvite):
-    supabase = get_supabase()
-    # Buscar usuario por email
-    user_result = (
-        supabase.table("users").select("id").eq("email", body.email).single().execute()
-    )
-    if not user_result.data:
+async def invite_member(
+    workspace_id: str,
+    body: MemberInvite,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    user = await db.fetchrow("SELECT id FROM users WHERE email = $1", body.email)
+    if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado. Debe registrarse primero.")
 
-    data = {
-        "workspace_id": workspace_id,
-        "user_id": user_result.data["id"],
-        "member_role": body.member_role,
-        "status": "active",
-    }
-    result = supabase.table("workspace_members").insert(data).execute()
-    if not result.data:
+    row = await db.fetchrow(
+        """
+        INSERT INTO workspace_members (workspace_id, user_id, member_role, status)
+        VALUES ($1, $2, $3, 'active')
+        RETURNING *
+        """,
+        workspace_id, user["id"], body.member_role,
+    )
+    if not row:
         raise HTTPException(status_code=500, detail="Error invitando miembro.")
     log.info("[members] invited | workspace=%s | email=%s | role=%s",
              workspace_id, body.email, body.member_role)
-    return result.data[0]
+    return dict(row)
 
 
 @router.delete(
@@ -141,7 +154,13 @@ async def invite_member(workspace_id: str, body: MemberInvite):
     summary="Remover miembro del workspace. Requiere rol owner.",
     dependencies=[Depends(require_workspace_access("owner"))],
 )
-async def remove_member(workspace_id: str, user_id: str):
-    supabase = get_supabase()
-    supabase.table("workspace_members").delete().eq("workspace_id", workspace_id).eq("user_id", user_id).execute()
+async def remove_member(
+    workspace_id: str,
+    user_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    await db.execute(
+        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        workspace_id, user_id,
+    )
     log.info("[members] removed | workspace=%s | user=%s", workspace_id, user_id)

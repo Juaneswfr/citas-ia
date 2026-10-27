@@ -4,10 +4,11 @@ AuditService — Registro inmutable de acciones críticas.
 Principio V (Constitución): Toda acción relevante MUST escribirse en audit_logs.
 Responsabilidad única (Principio X): solo escribe audit_logs; nada más.
 """
+import json
 import logging
 from typing import Optional
 
-from core.supabase_client import get_supabase
+from core.database import _pool
 
 log = logging.getLogger(__name__)
 
@@ -26,32 +27,24 @@ class AuditService:
         after_data: Optional[dict] = None,
         ip_address: Optional[str] = None,
     ) -> None:
-        """
-        Persiste una entrada en audit_logs.
-
-        Args:
-            workspace_id: Workspace al que pertenece la acción.
-            actor_user_id: ID del usuario que ejecutó la acción.
-            action: Nombre de la acción, ej: 'appointment.cancel'.
-            entity_type: Tipo de entidad afectada, ej: 'appointment'.
-            entity_id: ID de la entidad afectada.
-            before_data: Estado de la entidad antes del cambio.
-            after_data: Estado de la entidad después del cambio.
-            ip_address: IP del actor si está disponible.
-        """
-        supabase = get_supabase()
-        entry = {
-            "workspace_id": workspace_id,
-            "actor_user_id": actor_user_id,
-            "action": action,
-            "entity_type": entity_type,
-            "entity_id": entity_id,
-            "before_data": before_data,
-            "after_data": after_data,
-            "ip_address": ip_address,
-        }
+        if _pool is None:
+            return
         try:
-            supabase.table("audit_logs").insert(entry).execute()
+            async with _pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO audit_logs
+                        (workspace_id, actor_user_id, action, entity_type, entity_id, before_data, after_data)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """,
+                    workspace_id,
+                    actor_user_id,
+                    action,
+                    entity_type,
+                    entity_id,
+                    json.dumps(before_data) if before_data is not None else None,
+                    json.dumps(after_data) if after_data is not None else None,
+                )
         except Exception as e:
             # El fallo de auditoría NUNCA debe romper la operación principal
             log.error("[audit] fallo al escribir | action=%s | entity=%s/%s | err=%s",

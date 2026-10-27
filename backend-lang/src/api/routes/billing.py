@@ -4,12 +4,13 @@ Solo super_admin puede gestionar planes; workspace_owner ve su suscripción.
 """
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
+import asyncpg
+from core.database import get_db
 from core.security import require_role, require_workspace_access
-from core.supabase_client import get_supabase
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -48,10 +49,9 @@ class SubscriptionOut(BaseModel):
     response_model=list[BillingPlanOut],
     summary="Listar planes disponibles (público)",
 )
-async def list_plans():
-    supabase = get_supabase()
-    result = supabase.table("billing_plans").select("*").eq("is_active", True).execute()
-    return result.data or []
+async def list_plans(db: asyncpg.Connection = Depends(get_db)):
+    rows = await db.fetch("SELECT * FROM billing_plans WHERE is_active = TRUE")
+    return [dict(r) for r in rows]
 
 
 @router.get(
@@ -60,19 +60,17 @@ async def list_plans():
     summary="Ver suscripción activa del workspace",
     dependencies=[Depends(require_workspace_access("owner"))],
 )
-async def get_subscription(workspace_id: str):
-    supabase = get_supabase()
-    result = (
-        supabase.table("subscriptions")
-        .select("*")
-        .eq("workspace_id", workspace_id)
-        .eq("status", "active")
-        .single()
-        .execute()
+async def get_subscription(
+    workspace_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    row = await db.fetchrow(
+        "SELECT * FROM subscriptions WHERE workspace_id = $1 AND status = 'active'",
+        workspace_id,
     )
-    if not result.data:
+    if not row:
         raise HTTPException(status_code=404, detail="Suscripción activa no encontrada.")
-    return result.data
+    return dict(row)
 
 
 @router.patch(
@@ -86,22 +84,24 @@ async def update_subscription_status(
     new_status: str,
     notes: Optional[str] = None,
     current_user: dict = Depends(require_role("super_admin")),
+    db: asyncpg.Connection = Depends(get_db),
 ):
     allowed = {"active", "pending_payment", "suspended", "cancelled", "expired"}
     if new_status not in allowed:
         raise HTTPException(status_code=422, detail=f"Estado inválido. Permitidos: {allowed}")
 
-    supabase = get_supabase()
-    data = {"status": new_status}
     if notes:
-        data["notes"] = notes
-    result = (
-        supabase.table("subscriptions")
-        .update(data)
-        .eq("workspace_id", workspace_id)
-        .execute()
-    )
-    if not result.data:
+        row = await db.fetchrow(
+            "UPDATE subscriptions SET status=$1, notes=$2 WHERE workspace_id=$3 RETURNING *",
+            new_status, notes, workspace_id,
+        )
+    else:
+        row = await db.fetchrow(
+            "UPDATE subscriptions SET status=$1 WHERE workspace_id=$2 RETURNING *",
+            new_status, workspace_id,
+        )
+
+    if not row:
         raise HTTPException(status_code=404, detail="Suscripción no encontrada.")
     log.info("[billing] status=%s | workspace=%s | by=%s", new_status, workspace_id, current_user.get("sub"))
-    return result.data[0]
+    return dict(row)

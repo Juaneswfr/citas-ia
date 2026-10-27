@@ -7,8 +7,9 @@ Principio V: Todo lo que ocurre en el sistema debe poder auditarse.
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 
+import asyncpg
+from core.database import get_db
 from core.security import require_workspace_access
-from core.supabase_client import get_supabase
 from schemas.conversation import (
     ConversationOut, CustomerOut, CustomerUpdate, MessageOut
 )
@@ -25,10 +26,12 @@ router = APIRouter(tags=["conversations", "customers"])
     summary="Listar clientes del workspace",
     dependencies=[Depends(require_workspace_access("staff"))],
 )
-async def list_customers(workspace_id: str):
-    supabase = get_supabase()
-    result = supabase.table("customers").select("*").eq("workspace_id", workspace_id).execute()
-    return result.data or []
+async def list_customers(
+    workspace_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    rows = await db.fetch("SELECT * FROM customers WHERE workspace_id = $1", workspace_id)
+    return [dict(r) for r in rows]
 
 
 @router.get(
@@ -37,19 +40,18 @@ async def list_customers(workspace_id: str):
     summary="Detalle de un cliente",
     dependencies=[Depends(require_workspace_access("staff"))],
 )
-async def get_customer(workspace_id: str, customer_id: str):
-    supabase = get_supabase()
-    result = (
-        supabase.table("customers")
-        .select("*")
-        .eq("id", customer_id)
-        .eq("workspace_id", workspace_id)
-        .single()
-        .execute()
+async def get_customer(
+    workspace_id: str,
+    customer_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    row = await db.fetchrow(
+        "SELECT * FROM customers WHERE id = $1 AND workspace_id = $2",
+        customer_id, workspace_id,
     )
-    if not result.data:
+    if not row:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
-    return result.data
+    return dict(row)
 
 
 @router.patch(
@@ -58,19 +60,33 @@ async def get_customer(workspace_id: str, customer_id: str):
     summary="Actualizar notas o datos del cliente",
     dependencies=[Depends(require_workspace_access("staff"))],
 )
-async def update_customer(workspace_id: str, customer_id: str, body: CustomerUpdate):
-    supabase = get_supabase()
+async def update_customer(
+    workspace_id: str,
+    customer_id: str,
+    body: CustomerUpdate,
+    db: asyncpg.Connection = Depends(get_db),
+):
     data = body.model_dump(exclude_none=True)
-    result = (
-        supabase.table("customers")
-        .update(data)
-        .eq("id", customer_id)
-        .eq("workspace_id", workspace_id)
-        .execute()
+    if not data:
+        row = await db.fetchrow(
+            "SELECT * FROM customers WHERE id = $1 AND workspace_id = $2",
+            customer_id, workspace_id,
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+        return dict(row)
+
+    fields = list(data.keys())
+    values = list(data.values())
+    set_clause = ", ".join(f"{f} = ${i+3}" for i, f in enumerate(fields))
+
+    row = await db.fetchrow(
+        f"UPDATE customers SET {set_clause} WHERE id = $1 AND workspace_id = $2 RETURNING *",
+        customer_id, workspace_id, *values,
     )
-    if not result.data:
+    if not row:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
-    return result.data[0]
+    return dict(row)
 
 
 # ── Conversaciones ────────────────────────────────────────────────────────────
@@ -81,13 +97,22 @@ async def update_customer(workspace_id: str, customer_id: str, body: CustomerUpd
     summary="Listar conversaciones del workspace",
     dependencies=[Depends(require_workspace_access("staff"))],
 )
-async def list_conversations(workspace_id: str, status: str = None):
-    supabase = get_supabase()
-    query = supabase.table("conversations").select("*").eq("workspace_id", workspace_id)
+async def list_conversations(
+    workspace_id: str,
+    status: str = None,
+    db: asyncpg.Connection = Depends(get_db),
+):
     if status:
-        query = query.eq("status", status)
-    result = query.order("last_message_at", desc=True).execute()
-    return result.data or []
+        rows = await db.fetch(
+            "SELECT * FROM conversations WHERE workspace_id = $1 AND status = $2 ORDER BY last_message_at DESC",
+            workspace_id, status,
+        )
+    else:
+        rows = await db.fetch(
+            "SELECT * FROM conversations WHERE workspace_id = $1 ORDER BY last_message_at DESC",
+            workspace_id,
+        )
+    return [dict(r) for r in rows]
 
 
 @router.get(
@@ -96,19 +121,18 @@ async def list_conversations(workspace_id: str, status: str = None):
     summary="Detalle de conversación",
     dependencies=[Depends(require_workspace_access("staff"))],
 )
-async def get_conversation(workspace_id: str, conversation_id: str):
-    supabase = get_supabase()
-    result = (
-        supabase.table("conversations")
-        .select("*")
-        .eq("id", conversation_id)
-        .eq("workspace_id", workspace_id)
-        .single()
-        .execute()
+async def get_conversation(
+    workspace_id: str,
+    conversation_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    row = await db.fetchrow(
+        "SELECT * FROM conversations WHERE id = $1 AND workspace_id = $2",
+        conversation_id, workspace_id,
     )
-    if not result.data:
+    if not row:
         raise HTTPException(status_code=404, detail="Conversación no encontrada.")
-    return result.data
+    return dict(row)
 
 
 @router.get(
@@ -117,14 +141,13 @@ async def get_conversation(workspace_id: str, conversation_id: str):
     summary="Mensajes de una conversación",
     dependencies=[Depends(require_workspace_access("staff"))],
 )
-async def list_messages(workspace_id: str, conversation_id: str):
-    supabase = get_supabase()
-    result = (
-        supabase.table("messages")
-        .select("*")
-        .eq("conversation_id", conversation_id)
-        .eq("workspace_id", workspace_id)
-        .order("sent_at")
-        .execute()
+async def list_messages(
+    workspace_id: str,
+    conversation_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    rows = await db.fetch(
+        "SELECT * FROM messages WHERE conversation_id = $1 AND workspace_id = $2 ORDER BY sent_at",
+        conversation_id, workspace_id,
     )
-    return result.data or []
+    return [dict(r) for r in rows]

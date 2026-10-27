@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
 
 from core.config import get_settings
-from core.supabase_client import get_supabase
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])

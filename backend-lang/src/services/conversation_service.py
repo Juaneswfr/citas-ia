@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 from datetime import datetime, timezone
 
-from core.supabase_client import get_supabase
+from core.database import _pool
 
 log = logging.getLogger(__name__)
 
@@ -28,87 +28,79 @@ class ConversationService:
         Returns:
             Fila de la tabla conversations.
         """
-        supabase = get_supabase()
+        async with _pool.acquire() as db:
+            # Buscar canal por phone_number_id del negocio
+            channel = await db.fetchrow(
+                "SELECT id, workspace_id FROM channels WHERE phone_number_id = $1 AND status = 'active' LIMIT 1",
+                phone_number_id,
+            )
+            if not channel:
+                log.warning("[conv] canal no encontrado para phone_number_id=%s", phone_number_id)
+                raise ValueError(f"No hay canal activo para phone_number_id={phone_number_id}")
 
-        # Buscar canal por phone_number_id del negocio (no por teléfono del cliente)
-        channel_result = (
-            supabase.table("channels")
-            .select("id, workspace_id")
-            .eq("phone_number_id", phone_number_id)
-            .eq("status", "active")
-            .limit(1)
-            .execute()
-        )
-        if not channel_result.data:
-            log.warning("[conv] canal no encontrado para phone_number_id=%s", phone_number_id)
-            raise ValueError(f"No hay canal activo para phone_number_id={phone_number_id}")
+            workspace_id = channel["workspace_id"]
+            channel_id = channel["id"]
 
-        # Alias para compatibilidad con el resto del método
-        phone = customer_phone
+            # Buscar o crear cliente
+            customer = await ConversationService._find_or_create_customer(
+                workspace_id=workspace_id,
+                phone=customer_phone,
+                channel_id=channel_id,
+            )
 
-        channel = channel_result.data[0]
-        workspace_id = channel["workspace_id"]
-        channel_id = channel["id"]
+            # Buscar conversación abierta o activa
+            conv = await db.fetchrow(
+                """
+                SELECT * FROM conversations
+                WHERE workspace_id = $1 AND customer_id = $2 AND status IN ('open', 'active')
+                ORDER BY last_message_at DESC LIMIT 1
+                """,
+                workspace_id,
+                customer["id"],
+            )
+            if conv:
+                return dict(conv)
 
-        # Buscar o crear cliente
-        customer = await ConversationService._find_or_create_customer(
-            workspace_id=workspace_id,
-            phone=phone,
-            channel_id=channel_id,
-        )
-
-        # Buscar conversación abierta o activa
-        conv_result = (
-            supabase.table("conversations")
-            .select("*")
-            .eq("workspace_id", workspace_id)
-            .eq("customer_id", customer["id"])
-            .in_("status", ["open", "active"])
-            .order("last_message_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-
-        if conv_result.data:
-            return conv_result.data[0]
-
-        # Crear nueva conversación
-        new_conv = supabase.table("conversations").insert({
-            "workspace_id": workspace_id,
-            "channel_id": channel_id,
-            "customer_id": customer["id"],
-            "status": "open",
-            "needs_review": False,
-        }).execute()
-
-        log.info("[conv] nueva conversación | workspace=%s | customer=%s",
-                 workspace_id, customer["id"])
-        return new_conv.data[0]
+            # Crear nueva conversación
+            new_conv = await db.fetchrow(
+                """
+                INSERT INTO conversations (workspace_id, channel_id, customer_id, status, needs_review)
+                VALUES ($1, $2, $3, 'open', FALSE)
+                RETURNING *
+                """,
+                workspace_id,
+                channel_id,
+                customer["id"],
+            )
+            log.info("[conv] nueva conversación | workspace=%s | customer=%s",
+                     workspace_id, customer["id"])
+            return dict(new_conv)
 
     @staticmethod
     async def _find_or_create_customer(
         workspace_id: str, phone: str, channel_id: str
     ) -> dict:
         """Encuentra o crea el cliente por teléfono dentro del workspace."""
-        supabase = get_supabase()
-        result = (
-            supabase.table("customers")
-            .select("*")
-            .eq("workspace_id", workspace_id)
-            .eq("phone", phone)
-            .single()
-            .execute()
-        )
-        if result.data:
-            return result.data
+        async with _pool.acquire() as db:
+            row = await db.fetchrow(
+                "SELECT * FROM customers WHERE workspace_id = $1 AND phone = $2",
+                workspace_id, phone,
+            )
+            if row:
+                return dict(row)
 
-        new_customer = supabase.table("customers").insert({
-            "workspace_id": workspace_id,
-            "phone": phone,
-            "source_channel_id": channel_id,
-            "last_seen_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
-        return new_customer.data[0]
+            new_row = await db.fetchrow(
+                """
+                INSERT INTO customers (workspace_id, phone, source_channel_id, last_seen_at)
+                VALUES ($1, $2, $3, $4)
+                RETURNING *
+                """,
+                workspace_id,
+                phone,
+                channel_id,
+                datetime.now(timezone.utc),
+            )
+            return dict(new_row)
 
     @staticmethod
     async def save_message(
@@ -129,27 +121,36 @@ class ConversationService:
             direction: 'inbound' | 'outbound'
             sender_type: 'customer' | 'agent' | 'system'
         """
-        supabase = get_supabase()
-        now = datetime.now(timezone.utc).isoformat()
-        data = {
-            "conversation_id": conversation_id,
-            "workspace_id": workspace_id,
-            "channel_id": channel_id,
-            "customer_id": customer_id,
-            "direction": direction,
-            "sender_type": sender_type,
-            "message_type": message_type,
-            "content": content,
-            "provider_message_id": provider_message_id,
-            "status": "sent" if direction == "outbound" else "received",
-            "sent_at": now if direction == "outbound" else None,
-            "received_at": now if direction == "inbound" else None,
-        }
-        result = supabase.table("messages").insert(data).execute()
+        async with _pool.acquire() as db:
+            now = datetime.now(timezone.utc)
+            row = await db.fetchrow(
+                """
+                INSERT INTO messages
+                    (conversation_id, workspace_id, channel_id, customer_id,
+                     direction, sender_type, message_type, content,
+                     provider_message_id, status, sent_at, received_at)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                RETURNING *
+                """,
+                conversation_id,
+                workspace_id,
+                channel_id,
+                customer_id,
+                direction,
+                sender_type,
+                message_type,
+                content,
+                provider_message_id,
+                "sent" if direction == "outbound" else "received",
+                now if direction == "outbound" else None,
+                now if direction == "inbound" else None,
+            )
 
-        # Actualizar last_message_at en la conversación
-        supabase.table("conversations").update(
-            {"last_message_at": now, "status": "active"}
-        ).eq("id", conversation_id).execute()
+            # Actualizar last_message_at en la conversación
+            await db.execute(
+                "UPDATE conversations SET last_message_at = $1, status = 'active' WHERE id = $2",
+                now,
+                conversation_id,
+            )
 
-        return result.data[0]
+            return dict(row)

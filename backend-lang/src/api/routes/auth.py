@@ -1,20 +1,21 @@
 """
-Router /auth — Autenticación y sesión.
+Router /auth — Autenticación y sesión sin Supabase.
 
+Usa bcrypt + JWT propio + asyncpg (Postgres directo).
 Seguridad (Principio XI):
 - POST /login y /refresh no requieren JWT (son de entrada).
-- Todos los demás endpoints de la API sí lo requieren.
-- Contraseñas NUNCA se retornan en responses.
 - Errores de auth no exponen detalles internos.
 """
 import logging
 import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import RedirectResponse
 
-from core.security import create_access_token, get_current_user
-from core.supabase_client import get_supabase
+from core.database import get_db
+from core.security import create_access_token, decode_token, get_current_user
 from schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
+
+import asyncpg
+from passlib.hash import bcrypt as bcrypt_ctx
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -25,159 +26,137 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     response_model=TokenResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar nuevo dueño de negocio",
-    description="Crea cuenta Supabase + workspace en un solo paso. Retorna JWT listo para usar.",
 )
-async def register(body: RegisterRequest):
+async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_db)):
     """
-    Onboarding completo en un paso:
-    1. Crea usuario en Supabase Auth con rol workspace_owner
-    2. Crea el workspace en la BD
-    3. Actualiza user_metadata con workspace_id
-    4. Retorna JWT con role + workspace_id listos
+    Onboarding en un paso: crea usuario + workspace + membership atómicamente.
     """
-    supabase = get_supabase()
-
-    # 1. Crear usuario en Supabase Auth
-    try:
-        signup = supabase.auth.admin.create_user({
-            "email": body.email,
-            "password": body.password,
-            "email_confirm": True,  # Auto-confirmar para no necesitar email de verificación
-            "user_metadata": {"role": "workspace_owner"},
-        })
-    except Exception as e:
-        log.warning("[auth] register error | email=%s | err=%s", body.email, e)
+    # Verificar email disponible
+    existing = await db.fetchrow("SELECT id FROM users WHERE email = $1", body.email)
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No se pudo crear la cuenta. El email puede estar en uso.",
         )
 
-    user = signup.user
-    if not user:
-        raise HTTPException(status_code=500, detail="Error creando usuario.")
+    password_hash = bcrypt_ctx.hash(body.password)
 
-    # 2. Crear workspace
-    ws_result = supabase.table("workspaces").insert({
-        "name": body.workspace_name,
-        "slug": body.workspace_slug,
-        "timezone": body.timezone,
-        "country": "CO",
-        "is_active": True,
-    }).execute()
+    async with db.transaction():
+        # 1. Crear usuario
+        user_id = await db.fetchval(
+            """
+            INSERT INTO users (email, password_hash, name, role, is_active)
+            VALUES ($1, $2, $3, 'workspace_owner', TRUE)
+            RETURNING id
+            """,
+            body.email,
+            password_hash,
+            body.email.split("@")[0],
+        )
 
-    if not ws_result.data:
-        # Revertir: eliminar el usuario creado
-        supabase.auth.admin.delete_user(user.id)
-        raise HTTPException(status_code=500, detail="Error creando workspace.")
+        # 2. Crear workspace
+        workspace_id = await db.fetchval(
+            """
+            INSERT INTO workspaces (name, slug, timezone, country, is_active)
+            VALUES ($1, $2, $3, 'CO', TRUE)
+            RETURNING id
+            """,
+            body.workspace_name,
+            body.workspace_slug,
+            body.timezone,
+        )
 
-    workspace_id = ws_result.data[0]["id"]
+        # 3. Vincular usuario al workspace
+        await db.execute(
+            """
+            INSERT INTO workspace_members (workspace_id, user_id, member_role, status)
+            VALUES ($1, $2, 'workspace_owner', 'active')
+            """,
+            workspace_id,
+            user_id,
+        )
 
-    # 3. Actualizar metadata del usuario con workspace_id
-    supabase.auth.admin.update_user_by_id(user.id, {
-        "user_metadata": {
-            "role": "workspace_owner",
-            "workspace_id": workspace_id,
-        }
-    })
-
-    # 4. Emitir JWT con contexto completo
     token = create_access_token({
-        "sub": user.id,
-        "email": user.email,
+        "sub": user_id,
+        "email": body.email,
         "role": "workspace_owner",
         "workspace_id": workspace_id,
     })
 
-    log.info("[auth] register | user=%s | workspace=%s", user.id, workspace_id)
-    return TokenResponse(
-        access_token=token,
-        expires_in=3600,
-        workspace_id=workspace_id,
-    )
+    log.info("[auth] register | user=%s | workspace=%s", user_id, workspace_id)
+    return TokenResponse(access_token=token, expires_in=3600, workspace_id=workspace_id)
 
 
 @router.post(
     "/login",
     response_model=TokenResponse,
     summary="Iniciar sesión con email y contraseña",
-    description="Retorna JWT de acceso. Las credenciales se validan contra Supabase Auth.",
 )
-async def login(body: LoginRequest):
-    supabase = get_supabase()
-    try:
-        response = supabase.auth.sign_in_with_password(
-            {"email": body.email, "password": body.password}
-        )
-    except Exception:
-        # No exponer si el email existe o no (Principio XI)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales inválidas.",
-        )
-
-    user = response.user
-    session = response.session
-    if not user or not session:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas."
-        )
-
-    token = create_access_token(
-        {
-            "sub": user.id,
-            "email": user.email,
-            "role": user.user_metadata.get("role", "viewer"),
-            "workspace_id": user.user_metadata.get("workspace_id", ""),
-        }
+async def login(body: LoginRequest, db: asyncpg.Connection = Depends(get_db)):
+    row = await db.fetchrow(
+        """
+        SELECT u.id, u.email, u.password_hash, u.role, u.is_active,
+               wm.workspace_id
+        FROM users u
+        LEFT JOIN workspace_members wm
+            ON wm.user_id = u.id AND wm.status = 'active'
+        WHERE u.email = $1
+        LIMIT 1
+        """,
+        body.email,
     )
-    log.info("[auth] login | user_id=%s", user.id)
-    return TokenResponse(
-        access_token=token,
-        expires_in=3600,
-        workspace_id=user.user_metadata.get("workspace_id", ""),
+
+    # No exponer si el email existe o no (Principio XI)
+    invalid = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas."
     )
+
+    if not row or not row["password_hash"]:
+        raise invalid
+    if not bcrypt_ctx.verify(body.password, row["password_hash"]):
+        raise invalid
+    if not row["is_active"]:
+        raise invalid
+
+    workspace_id = row["workspace_id"] or ""
+    token = create_access_token({
+        "sub": row["id"],
+        "email": row["email"],
+        "role": row["role"] or "viewer",
+        "workspace_id": workspace_id,
+    })
+
+    log.info("[auth] login | user_id=%s", row["id"])
+    return TokenResponse(access_token=token, expires_in=3600, workspace_id=workspace_id)
 
 
 @router.post(
     "/refresh",
     response_model=TokenResponse,
-    summary="Renovar token de sesión",
+    summary="Renovar token — pasa el JWT actual en el body",
 )
 async def refresh(body: RefreshRequest):
-    supabase = get_supabase()
+    """Valida el JWT existente y emite uno nuevo con la misma identidad."""
     try:
-        response = supabase.auth.refresh_session(body.refresh_token)
-    except Exception:
+        payload = decode_token(body.refresh_token)
+    except HTTPException:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token de refresco inválido."
         )
-
-    user = response.user
-    session = response.session
-    if not user or not session:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token de refresco inválido."
-        )
-
-    token = create_access_token(
-        {
-            "sub": user.id,
-            "email": user.email,
-            "role": user.user_metadata.get("role", "viewer"),
-            "workspace_id": user.user_metadata.get("workspace_id", ""),
-        }
-    )
+    token = create_access_token({
+        "sub": payload.get("sub"),
+        "email": payload.get("email"),
+        "role": payload.get("role"),
+        "workspace_id": payload.get("workspace_id"),
+    })
     return TokenResponse(
         access_token=token,
         expires_in=3600,
-        workspace_id=user.user_metadata.get("workspace_id", ""),
+        workspace_id=payload.get("workspace_id", ""),
     )
 
 
-@router.get(
-    "/me",
-    summary="Datos del usuario autenticado actual",
-)
+@router.get("/me", summary="Datos del usuario autenticado actual")
 async def me(current_user: dict = Depends(get_current_user)):
     return {
         "user_id": current_user.get("sub"),
@@ -192,8 +171,7 @@ async def me(current_user: dict = Depends(get_current_user)):
     summary="Genera la URL de autorización OAuth de Google Calendar",
 )
 async def google_calendar_authorize_url(workspace_id: str, return_to: str = "onboarding"):
-    """Construye la URL de OAuth de Google con scope Calendar y workspace_id en el state."""
-    import json
+    import json as _json
     from core.config import get_settings
     settings = get_settings()
 
@@ -203,7 +181,7 @@ async def google_calendar_authorize_url(workspace_id: str, return_to: str = "onb
             detail="Google Calendar no está configurado en este servidor.",
         )
 
-    state = json.dumps({"workspace_id": workspace_id, "return_to": return_to})
+    state = _json.dumps({"workspace_id": workspace_id, "return_to": return_to})
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
@@ -214,63 +192,59 @@ async def google_calendar_authorize_url(workspace_id: str, return_to: str = "onb
         "state": state,
     }
     url = "https://accounts.google.com/o/oauth2/auth?" + urllib.parse.urlencode(params)
-    log.info("[auth] Google Calendar OAuth URL generada | workspace=%s | return_to=%s", workspace_id, return_to)
     return {"url": url}
 
 
 @router.get(
     "/google/callback",
-    summary="Callback OAuth de Google Calendar — intercambia el código, guarda el token y redirige al frontend",
+    summary="Callback OAuth de Google Calendar",
 )
-async def google_oauth_callback(code: str, state: str = ""):
-    """
-    Google redirige aquí tras la autorización del usuario.
-    - Intercambia el code por refresh_token
-    - Cifra el token (Principio VII) y lo persiste en calendars
-    - Redirige al frontend con el resultado
-    """
-    import json
+async def google_oauth_callback(
+    code: str,
+    state: str = "",
+    db: asyncpg.Connection = Depends(get_db),
+):
+    import json as _json
+    from fastapi.responses import RedirectResponse
     from integrations.google_calendar import exchange_oauth_code
     from core.config import get_settings
     settings = get_settings()
 
-    # Parsear state: puede ser JSON {"workspace_id": ..., "return_to": ...} o string plano (compat.)
     workspace_id = ""
     return_to = "onboarding"
     try:
-        parsed = json.loads(state)
+        parsed = _json.loads(state)
         workspace_id = parsed.get("workspace_id", "").strip()
         return_to = parsed.get("return_to", "onboarding")
-    except (json.JSONDecodeError, AttributeError):
+    except (ValueError, AttributeError):
         workspace_id = state.strip()
 
     frontend = settings.frontend_url
 
-    def error_redirect() -> RedirectResponse:
+    def error_redirect():
         if return_to == "settings":
             return RedirectResponse(url=f"{frontend}/settings?calendar_error=1", status_code=302)
         return RedirectResponse(url=f"{frontend}/onboarding?step=2&calendar_error=1", status_code=302)
 
     result = await exchange_oauth_code(code)
     if not result:
-        log.warning("[auth] Google OAuth callback fallido | workspace=%s", workspace_id)
         return error_redirect()
 
     if workspace_id:
         try:
-            supabase = get_supabase()
-            supabase.table("calendars").upsert(
-                {
-                    "workspace_id": workspace_id,
-                    "name": "Google Calendar",
-                    "google_calendar_id": "primary",
-                    "oauth_refresh_token_encrypted": result["encrypted_refresh_token"],
-                    "sync_enabled": True,
-                    "sync_status": "active",
-                },
-                on_conflict="workspace_id,google_calendar_id",
-            ).execute()
-            log.info("[auth] Google Calendar conectado | workspace=%s | return_to=%s", workspace_id, return_to)
+            await db.execute(
+                """
+                INSERT INTO calendars
+                    (workspace_id, name, google_calendar_id, oauth_refresh_token_encrypted, sync_enabled, sync_status)
+                VALUES ($1, 'Google Calendar', 'primary', $2, TRUE, 'active')
+                ON CONFLICT (workspace_id, google_calendar_id) DO UPDATE
+                    SET oauth_refresh_token_encrypted = EXCLUDED.oauth_refresh_token_encrypted,
+                        sync_enabled = TRUE, sync_status = 'active'
+                """,
+                workspace_id,
+                result["encrypted_refresh_token"],
+            )
+            log.info("[auth] Google Calendar conectado | workspace=%s", workspace_id)
         except Exception as e:
             log.error("[auth] Error guardando calendario | workspace=%s | err=%s", workspace_id, e)
             return error_redirect()

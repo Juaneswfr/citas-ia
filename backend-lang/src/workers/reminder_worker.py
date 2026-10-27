@@ -27,32 +27,33 @@ async def run_reminders() -> None:
     Busca citas confirmadas próximas y envía recordatorios WhatsApp + email.
     Diseñado para ejecutarse cada 30 minutos via scheduler.
     """
-    from core.supabase_client import get_supabase
+    from core.database import _pool
     from services.whatsapp_service import WhatsAppService
     from services.email_service import EmailService
 
-    supabase = get_supabase()
+    if _pool is None:
+        return
+
     now = datetime.now(timezone.utc)
 
     for hours_before, label in _REMINDER_WINDOWS:
         target_start = now + timedelta(hours=hours_before)
         window_from = target_start - timedelta(minutes=_TOLERANCE_MINUTES)
         window_to = target_start + timedelta(minutes=_TOLERANCE_MINUTES)
+        sent_field = f"reminder_{label.replace('h', '')}h_sent"
 
-        # Citas confirmadas dentro de la ventana de recordatorio
-        result = (
-            supabase.table("appointments")
-            .select(
-                "id, workspace_id, start_at, customer_id, service_id, calendar_id, "
-                "reminder_24h_sent, reminder_2h_sent"
+        async with _pool.acquire() as db:
+            appointments = await db.fetch(
+                f"""
+                SELECT id, workspace_id, start_at, customer_id, service_id, {sent_field}
+                FROM appointments
+                WHERE status = 'confirmed'
+                  AND start_at >= $1 AND start_at <= $2
+                """,
+                window_from,
+                window_to,
             )
-            .eq("status", "confirmed")
-            .gte("start_at", window_from.isoformat())
-            .lte("start_at", window_to.isoformat())
-            .execute()
-        )
 
-        appointments = result.data or []
         if not appointments:
             continue
 
@@ -60,55 +61,39 @@ async def run_reminders() -> None:
 
         for appt in appointments:
             appt_id = appt["id"]
-            already_sent_field = f"reminder_{label.replace('h', '')}h_sent"
 
             # Evitar reenvíos
-            if appt.get(already_sent_field):
+            if appt.get(sent_field):
                 continue
 
-            # Obtener canal activo del workspace
-            channel = (
-                supabase.table("channels")
-                .select("phone_number_id")
-                .eq("workspace_id", appt["workspace_id"])
-                .eq("status", "active")
-                .limit(1)
-                .execute()
-            )
-            if not channel.data:
-                log.warning("[reminders] sin canal activo | workspace=%s | appt=%s",
-                            appt["workspace_id"], appt_id)
-                continue
+            async with _pool.acquire() as db:
+                channel = await db.fetchrow(
+                    "SELECT phone_number_id FROM channels WHERE workspace_id=$1 AND status='active' LIMIT 1",
+                    appt["workspace_id"],
+                )
+                if not channel:
+                    log.warning("[reminders] sin canal activo | workspace=%s | appt=%s",
+                                appt["workspace_id"], appt_id)
+                    continue
 
-            phone_number_id = channel.data[0]["phone_number_id"]
+                customer = await db.fetchrow(
+                    "SELECT phone, name, email FROM customers WHERE id=$1", appt["customer_id"]
+                )
+                if not customer or not customer["phone"]:
+                    log.warning("[reminders] cliente sin teléfono | appt=%s", appt_id)
+                    continue
 
-            # Obtener teléfono del cliente
-            customer = (
-                supabase.table("customers")
-                .select("phone, name")
-                .eq("id", appt["customer_id"])
-                .single()
-                .execute()
-            )
-            if not customer.data or not customer.data.get("phone"):
-                log.warning("[reminders] cliente sin teléfono | appt=%s", appt_id)
-                continue
+                service = await db.fetchrow(
+                    "SELECT name FROM services WHERE id=$1", appt["service_id"]
+                )
 
-            customer_phone = customer.data["phone"]
-            customer_name = customer.data.get("name", "")
+            phone_number_id = channel["phone_number_id"]
+            customer_phone = customer["phone"]
+            customer_name = customer["name"] or ""
+            customer_email = customer["email"] or ""
+            service_name = service["name"] if service else "tu cita"
 
-            # Obtener nombre del servicio
-            service = (
-                supabase.table("services")
-                .select("name")
-                .eq("id", appt["service_id"])
-                .single()
-                .execute()
-            )
-            service_name = service.data.get("name", "tu cita") if service.data else "tu cita"
-
-            # Formatear hora de la cita
-            start_at = datetime.fromisoformat(appt["start_at"])
+            start_at = appt["start_at"]
             hora = start_at.strftime("%I:%M %p")
             fecha = start_at.strftime("%d/%m/%Y")
 
@@ -125,17 +110,13 @@ async def run_reminders() -> None:
                 phone_number_id=phone_number_id,
             )
 
-            # Email de recordatorio si el cliente tiene email registrado
-            customer_email = customer.data.get("email", "")
             if customer_email:
-                workspace_result = (
-                    supabase.table("workspaces")
-                    .select("name")
-                    .eq("id", appt["workspace_id"])
-                    .single()
-                    .execute()
-                )
-                business_name = workspace_result.data.get("name", "") if workspace_result.data else ""
+                workspace_row = None
+                async with _pool.acquire() as db:
+                    workspace_row = await db.fetchrow(
+                        "SELECT name FROM workspaces WHERE id=$1", appt["workspace_id"]
+                    )
+                business_name = workspace_row["name"] if workspace_row else ""
                 await EmailService.send_appointment_reminder(
                     customer_email=customer_email,
                     customer_name=customer_name,
@@ -146,10 +127,10 @@ async def run_reminders() -> None:
                 )
 
             if sent or customer_email:
-                # Marcar recordatorio como enviado
-                supabase.table("appointments").update(
-                    {already_sent_field: True}
-                ).eq("id", appt_id).execute()
+                async with _pool.acquire() as db:
+                    await db.execute(
+                        f"UPDATE appointments SET {sent_field}=TRUE WHERE id=$1", appt_id
+                    )
                 log.info("[reminders] enviado | appt=%s | to=%s | ventana=%s",
                          appt_id, customer_phone, label)
             else:
@@ -160,7 +141,7 @@ async def run_reminders() -> None:
 async def _reminder_loop() -> None:
     """Loop asíncrono que ejecuta run_reminders() cada 30 minutos."""
     log.info("[reminders] scheduler iniciado — primera ejecución en 60s, luego cada 30 minutos")
-    await asyncio.sleep(60)  # Esperar que el servidor y Supabase estén listos
+    await asyncio.sleep(60)  # Esperar que el pool esté listo
     while True:
         try:
             await run_reminders()

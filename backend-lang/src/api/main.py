@@ -11,6 +11,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+from core.config import get_settings
+from core.database import create_pool, close_pool
+
 from api.routes.auth import router as auth_router
 from api.routes.workspaces import router as workspaces_router
 from api.routes.services import router as services_router
@@ -31,6 +34,9 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("[startup] CitasIA API iniciando")
+    settings = get_settings()
+    await create_pool(settings.database_url)
+    log.info("[startup] Pool PostgreSQL creado")
 
     # T038: Iniciar scheduler de recordatorios en background
     from workers.reminder_worker import start_reminder_scheduler
@@ -44,6 +50,7 @@ async def lifespan(app: FastAPI):
         await reminder_task
     except Exception:
         pass
+    await close_pool()
     log.info("[shutdown] CitasIA API detenida")
 
 

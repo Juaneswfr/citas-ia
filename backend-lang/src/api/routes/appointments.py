@@ -9,8 +9,9 @@ Principio XI: Análisis de seguridad aplicado a cada endpoint.
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+import asyncpg
+from core.database import get_db
 from core.security import require_workspace_access
-from core.supabase_client import get_supabase
 from schemas.appointment import (
     AppointmentCreate, AppointmentOut, AppointmentUpdate,
     AvailabilityBlockCreate, AvailabilityBlockOut,
@@ -30,20 +31,26 @@ router = APIRouter(tags=["appointments"])
 )
 async def list_appointments(
     workspace_id: str,
-    status: str = Query(None, description="Filtrar por estado: pending|confirmed|cancelled|completed"),
-    from_date: str = Query(None, description="Desde fecha ISO, ej: 2026-06-01"),
-    to_date: str = Query(None, description="Hasta fecha ISO"),
+    status: str = Query(None),
+    from_date: str = Query(None),
+    to_date: str = Query(None),
+    db: asyncpg.Connection = Depends(get_db),
 ):
-    supabase = get_supabase()
-    query = supabase.table("appointments").select("*").eq("workspace_id", workspace_id)
+    params = [workspace_id]
+    filters = ["workspace_id = $1"]
     if status:
-        query = query.eq("status", status)
+        params.append(status)
+        filters.append(f"status = ${len(params)}")
     if from_date:
-        query = query.gte("start_at", from_date)
+        params.append(from_date)
+        filters.append(f"start_at >= ${len(params)}")
     if to_date:
-        query = query.lte("start_at", to_date)
-    result = query.order("start_at").execute()
-    return result.data or []
+        params.append(to_date)
+        filters.append(f"start_at <= ${len(params)}")
+
+    where = " AND ".join(filters)
+    rows = await db.fetch(f"SELECT * FROM appointments WHERE {where} ORDER BY start_at", *params)
+    return [dict(r) for r in rows]
 
 
 @router.post(
@@ -56,43 +63,42 @@ async def create_appointment(
     workspace_id: str,
     body: AppointmentCreate,
     current_user: dict = Depends(require_workspace_access("staff")),
+    db: asyncpg.Connection = Depends(get_db),
 ):
-    """
-    Flujo:
-    1. Verificar disponibilidad en Google Calendar (Principio VI).
-    2. Crear evento en Calendar.
-    3. Si Calendar falla → NO crear cita en BD (Principio VIII).
-    4. Persistir cita con google_event_id.
-    5. Registrar en audit_logs.
-    """
     from services.calendar_service import CalendarService
     from services.audit_service import AuditService
 
-    supabase = get_supabase()
-
-    # Obtener servicio para calcular end_at y nombre del evento
-    svc = supabase.table("services").select("name, duration_minutes, buffer_minutes").eq("id", body.service_id).single().execute()
-    if not svc.data:
+    # Obtener servicio
+    svc = await db.fetchrow(
+        "SELECT name, duration_minutes, buffer_minutes FROM services WHERE id = $1",
+        body.service_id,
+    )
+    if not svc:
         raise HTTPException(status_code=404, detail="Servicio no encontrado.")
 
     from datetime import timedelta
-    end_at = body.start_at + timedelta(minutes=svc.data["duration_minutes"])
-    service_name = svc.data.get("name", "")
+    end_at = body.start_at + timedelta(minutes=svc["duration_minutes"])
+    service_name = svc["name"]
 
-    # Obtener nombre del cliente para el evento
+    # Nombre del cliente
     customer_name = ""
     if body.customer_id:
-        cust = supabase.table("customers").select("name, phone").eq("id", body.customer_id).single().execute()
-        if cust.data:
-            customer_name = cust.data.get("name") or cust.data.get("phone", "")
+        cust = await db.fetchrow(
+            "SELECT name, phone FROM customers WHERE id = $1", body.customer_id
+        )
+        if cust:
+            customer_name = cust["name"] or cust["phone"] or ""
 
     # Obtener calendario
-    cal = supabase.table("calendars").select("*").eq("id", body.calendar_id).eq("workspace_id", workspace_id).single().execute()
-    if not cal.data:
+    cal = await db.fetchrow(
+        "SELECT * FROM calendars WHERE id = $1 AND workspace_id = $2",
+        body.calendar_id, workspace_id,
+    )
+    if not cal:
         raise HTTPException(status_code=404, detail="Calendario no encontrado.")
 
-    # Verificar disponibilidad y crear evento en Calendar (Principio VI)
-    cal_service = CalendarService(cal.data)
+    # Verificar disponibilidad y crear evento (Principio VI)
+    cal_service = CalendarService(dict(cal))
     is_available = await cal_service.check_availability(body.start_at, end_at)
     if not is_available:
         raise HTTPException(
@@ -100,30 +106,43 @@ async def create_appointment(
             detail="El horario solicitado no está disponible.",
         )
 
-    google_event_id = await cal_service.create_event(body, end_at, service_name=service_name, customer_name=customer_name)
+    google_event_id = await cal_service.create_event(
+        body, end_at, service_name=service_name, customer_name=customer_name
+    )
     if not google_event_id:
-        # Principio VIII: no confirmar si Calendar falla
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="No se pudo crear el evento en Google Calendar. La cita no fue registrada.",
         )
 
-    # Persistir cita
     data = body.model_dump()
-    data.update({
-        "workspace_id": workspace_id,
-        "end_at": end_at.isoformat(),
-        "status": "confirmed",
-        "google_event_id": google_event_id,
-        "created_by": current_user.get("sub"),
-    })
-    result = supabase.table("appointments").insert(data).execute()
-    if not result.data:
+    row = await db.fetchrow(
+        """
+        INSERT INTO appointments
+            (workspace_id, customer_id, service_id, channel_id, calendar_id,
+             start_at, end_at, status, price_cop, home_service_price_cop,
+             is_home_service, home_address, google_event_id, created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,'confirmed',$8,$9,$10,$11,$12,$13)
+        RETURNING *
+        """,
+        workspace_id,
+        data.get("customer_id"),
+        data.get("service_id"),
+        data.get("channel_id"),
+        data.get("calendar_id"),
+        data.get("start_at"),
+        end_at.isoformat(),
+        data.get("price_cop"),
+        data.get("home_service_price_cop", 0),
+        data.get("is_home_service", False),
+        data.get("home_address"),
+        google_event_id,
+        current_user.get("sub"),
+    )
+    if not row:
         raise HTTPException(status_code=500, detail="Error persistiendo la cita.")
 
-    appointment = result.data[0]
-
-    # Audit log (Principio V)
+    appointment = dict(row)
     await AuditService.log(
         workspace_id=workspace_id,
         actor_user_id=current_user.get("sub"),
@@ -132,7 +151,6 @@ async def create_appointment(
         entity_id=appointment["id"],
         after_data=appointment,
     )
-
     log.info("[appointments] created | workspace=%s | id=%s | start=%s",
              workspace_id, appointment["id"], body.start_at)
     return appointment
@@ -144,86 +162,75 @@ async def create_appointment(
     summary="Obtener detalle de una cita",
     dependencies=[Depends(require_workspace_access("staff"))],
 )
-async def get_appointment(workspace_id: str, appointment_id: str):
-    supabase = get_supabase()
-    result = (
-        supabase.table("appointments")
-        .select("*")
-        .eq("id", appointment_id)
-        .eq("workspace_id", workspace_id)
-        .single()
-        .execute()
+async def get_appointment(
+    workspace_id: str,
+    appointment_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    row = await db.fetchrow(
+        "SELECT * FROM appointments WHERE id = $1 AND workspace_id = $2",
+        appointment_id, workspace_id,
     )
-    if not result.data:
+    if not row:
         raise HTTPException(status_code=404, detail="Cita no encontrada.")
-    return result.data
+    return dict(row)
 
 
 @router.patch(
     "/workspaces/{workspace_id}/appointments/{appointment_id}",
     response_model=AppointmentOut,
-    summary="Actualizar estado de cita. Cancelación requiere confirmación previa (Principio IX).",
+    summary="Actualizar estado de cita.",
     dependencies=[Depends(require_workspace_access("manager"))],
 )
 async def update_appointment(
     workspace_id: str,
     appointment_id: str,
     body: AppointmentUpdate,
-    confirmed: bool = Query(
-        False,
-        description="Debe ser true para cancelaciones. El agente MUST haber solicitado confirmación al dueño (Principio IX).",
-    ),
+    confirmed: bool = Query(False),
     current_user: dict = Depends(require_workspace_access("manager")),
+    db: asyncpg.Connection = Depends(get_db),
 ):
-    """
-    Principio IX: La cancelación requiere confirmed=true.
-    El agente debe haber solicitado confirmación explícita al dueño antes de llamar este endpoint.
-    """
     if body.status == "cancelled" and not confirmed:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="La cancelación requiere confirmación explícita. Pasa confirmed=true tras obtener aprobación del dueño.",
         )
 
-    supabase = get_supabase()
-
-    # Verificar estado actual (no se puede cancelar una cita ya completada)
-    current = (
-        supabase.table("appointments")
-        .select("status, google_event_id, calendar_id")
-        .eq("id", appointment_id)
-        .eq("workspace_id", workspace_id)
-        .single()
-        .execute()
+    current = await db.fetchrow(
+        "SELECT status, google_event_id, calendar_id FROM appointments WHERE id = $1 AND workspace_id = $2",
+        appointment_id, workspace_id,
     )
-    if not current.data:
+    if not current:
         raise HTTPException(status_code=404, detail="Cita no encontrada.")
 
-    invalid_transitions = {"completed", "noshow"}
-    if current.data["status"] in invalid_transitions and body.status == "cancelled":
+    if current["status"] in {"completed", "noshow"} and body.status == "cancelled":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"No se puede cancelar una cita en estado '{current.data['status']}'.",
+            detail=f"No se puede cancelar una cita en estado '{current['status']}'.",
         )
 
     data = body.model_dump(exclude_none=True)
-    data["cancelled_by"] = current_user.get("sub") if body.status == "cancelled" else None
+    if body.status == "cancelled":
+        data["cancelled_by"] = current_user.get("sub")
 
-    result = (
-        supabase.table("appointments")
-        .update(data)
-        .eq("id", appointment_id)
-        .eq("workspace_id", workspace_id)
-        .execute()
+    fields = list(data.keys())
+    values = list(data.values())
+    set_clause = ", ".join(f"{f} = ${i+3}" for i, f in enumerate(fields))
+
+    row = await db.fetchrow(
+        f"UPDATE appointments SET {set_clause} WHERE id = $1 AND workspace_id = $2 RETURNING *",
+        appointment_id, workspace_id, *values,
     )
 
     # Eliminar evento de Calendar si se cancela (Principio VI)
-    if body.status == "cancelled" and current.data.get("google_event_id"):
+    if body.status == "cancelled" and current["google_event_id"]:
         from services.calendar_service import CalendarService
-        cal = supabase.table("calendars").select("*").eq("id", current.data["calendar_id"]).single().execute()
-        if cal.data:
-            cal_service = CalendarService(cal.data)
-            await cal_service.delete_event(current.data["google_event_id"])
+        cal = await db.fetchrow(
+            "SELECT * FROM calendars WHERE id = $1", current["calendar_id"]
+        )
+        if cal:
+            cal_service = CalendarService(dict(cal))
+            await cal_service.delete_event(current["google_event_id"])
 
     from services.audit_service import AuditService
     await AuditService.log(
@@ -232,13 +239,12 @@ async def update_appointment(
         action=f"appointment.{body.status or 'update'}",
         entity_type="appointment",
         entity_id=appointment_id,
-        before_data=current.data,
-        after_data=result.data[0] if result.data else {},
+        before_data=dict(current),
+        after_data=dict(row) if row else {},
     )
-
     log.info("[appointments] updated | workspace=%s | id=%s | status=%s | by=%s",
              workspace_id, appointment_id, body.status, current_user.get("sub"))
-    return result.data[0]
+    return dict(row)
 
 
 # ── Bloques de disponibilidad ─────────────────────────────────────────────────
@@ -249,15 +255,14 @@ async def update_appointment(
     summary="Listar bloqueos de agenda",
     dependencies=[Depends(require_workspace_access("staff"))],
 )
-async def list_blocks(workspace_id: str):
-    supabase = get_supabase()
-    result = (
-        supabase.table("availability_blocks")
-        .select("*")
-        .eq("workspace_id", workspace_id)
-        .execute()
+async def list_blocks(
+    workspace_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    rows = await db.fetch(
+        "SELECT * FROM availability_blocks WHERE workspace_id = $1", workspace_id
     )
-    return result.data or []
+    return [dict(r) for r in rows]
 
 
 @router.post(
@@ -269,30 +274,37 @@ async def list_blocks(workspace_id: str):
 async def create_block(
     workspace_id: str,
     body: AvailabilityBlockCreate,
-    confirmed: bool = Query(False, description="true = dueño confirmó el bloqueo (Principio IX)"),
+    confirmed: bool = Query(False),
     current_user: dict = Depends(require_workspace_access("manager")),
+    db: asyncpg.Connection = Depends(get_db),
 ):
-    """Principio IX: El agente MUST solicitar confirmación antes de llamar este endpoint."""
     if not confirmed:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="El bloqueo de agenda requiere confirmación explícita del dueño. Pasa confirmed=true.",
         )
 
-    supabase = get_supabase()
     data = body.model_dump()
-    data.update({
-        "workspace_id": workspace_id,
-        "source": "manual",
-        "created_by": current_user.get("sub"),
-    })
-    result = supabase.table("availability_blocks").insert(data).execute()
-    if not result.data:
+    row = await db.fetchrow(
+        """
+        INSERT INTO availability_blocks
+            (workspace_id, calendar_id, start_at, end_at, block_type, reason, source, created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,'manual',$7)
+        RETURNING *
+        """,
+        workspace_id,
+        data.get("calendar_id"),
+        data.get("start_at"),
+        data.get("end_at"),
+        data.get("block_type"),
+        data.get("reason"),
+        current_user.get("sub"),
+    )
+    if not row:
         raise HTTPException(status_code=500, detail="Error creando bloqueo.")
-
-    log.info("[blocks] created | workspace=%s | start=%s | end=%s | by=%s",
-             workspace_id, body.start_at, body.end_at, current_user.get("sub"))
-    return result.data[0]
+    log.info("[blocks] created | workspace=%s | start=%s | by=%s",
+             workspace_id, body.start_at, current_user.get("sub"))
+    return dict(row)
 
 
 @router.delete(
@@ -305,12 +317,16 @@ async def delete_block(
     block_id: str,
     confirmed: bool = Query(False),
     current_user: dict = Depends(require_workspace_access("manager")),
+    db: asyncpg.Connection = Depends(get_db),
 ):
     if not confirmed:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Eliminar un bloqueo requiere confirmed=true.",
         )
-    supabase = get_supabase()
-    supabase.table("availability_blocks").delete().eq("id", block_id).eq("workspace_id", workspace_id).execute()
-    log.info("[blocks] deleted | workspace=%s | block=%s | by=%s", workspace_id, block_id, current_user.get("sub"))
+    await db.execute(
+        "DELETE FROM availability_blocks WHERE id = $1 AND workspace_id = $2",
+        block_id, workspace_id,
+    )
+    log.info("[blocks] deleted | workspace=%s | block=%s | by=%s",
+             workspace_id, block_id, current_user.get("sub"))

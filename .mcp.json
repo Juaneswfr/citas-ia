@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "kapso": {
+      "type": "http",
+      "url": "https://api.kapso.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer 1bf4b0be5d27779e982084dbd2c236a8faf694e674a9cac899ba17625f80af57"
+      }
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=awaqbywcijoameyoasxg"
+    }
+  }
+}
