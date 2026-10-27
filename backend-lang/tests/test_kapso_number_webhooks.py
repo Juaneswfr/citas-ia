@@ -9,6 +9,8 @@ import httpx
 import pytest
 from cryptography.fernet import Fernet
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from api.routes import webhooks
 from services.kapso_onboarding import (
@@ -117,6 +119,7 @@ TOKEN = "tok-abc"
 
 @pytest.fixture
 def route(monkeypatch):
+    webhooks._kapso_limiter.reset()
     state = SimpleNamespace(enabled=True)
     monkeypatch.setattr(webhooks, "get_settings", lambda: SimpleNamespace(
         kapso_enabled=state.enabled, kapso_secrets_key=KEY))
@@ -142,17 +145,19 @@ def route(monkeypatch):
     monkeypatch.setattr(webhooks, "_process_kapso_events", process)
     app = FastAPI()
     app.include_router(webhooks.router)
+    app.state.limiter = webhooks._kapso_limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    async def post(token=TOKEN, key="k1", secret=SECRET, payload=None):
+    async def post(token=TOKEN, key="k1", secret=SECRET, payload=None, sig=None):
         body = json.dumps(payload or {"message": {"from": "57300"}}).encode()
         headers = {"X-Webhook-Event": "whatsapp.message.received", "X-Idempotency-Key": key,
-                   "X-Webhook-Signature": hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()}
+                   "X-Webhook-Signature": sig or hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()}
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
             r = await c.post(f"/webhooks/kapso/n/{token}", content=body, headers=headers)
         await asyncio.sleep(0)
         return r
 
-    return SimpleNamespace(post=post, processed=processed, state=state)
+    return SimpleNamespace(post=post, processed=processed, state=state, mp=monkeypatch)
 
 
 async def test_route_valid_signature_processes(route, caplog):
@@ -183,3 +188,58 @@ async def test_route_same_idempotency_key_processed_once(route):
     assert (await route.post()).status_code == 200
     r = await route.post()
     assert r.json() == {"status": "duplicate"} and len(route.processed) == 1
+
+
+async def test_route_non_ascii_signature_401(route):
+    r = await route.post(sig=("é" * 64).encode())
+    assert r.status_code == 401 and not route.processed
+
+
+async def test_route_undecryptable_secret_503_no_details(route, caplog):
+    caplog.set_level(logging.DEBUG)
+    async def bad(t):
+        return {"phone_number_id": PID, "webhook_secret_encrypted": "garbage"}
+    route.mp.setattr(webhooks, "_get_channel_by_webhook_token", bad)
+    r = await route.post()
+    assert r.status_code == 503
+    assert _app_log(caplog, "InvalidToken") and not _app_log(caplog, "garbage", KEY)
+    assert not route.processed
+
+
+async def test_route_body_over_1mb_413(route):
+    r = await route.post(payload={"a": "x" * (webhooks._MAX_BODY + 1)}, sig="bad")
+    assert r.status_code == 413
+
+
+async def test_route_rate_limit_429(route):
+    codes = [(await route.post(token="nope", key=f"k{i}")).status_code for i in range(301)]
+    assert codes[:300] == [404] * 300 and codes[300] == 429
+
+
+async def test_route_failed_processing_releases_key_and_retry_processes(route):
+    seen_keys = set()
+    n = []
+
+    async def claim(key, event):
+        if key in seen_keys:
+            return False
+        seen_keys.add(key)
+        return True
+
+    async def release(key):
+        seen_keys.discard(key)
+
+    async def flaky(event, items):
+        n.append(1)
+        if len(n) == 1:
+            raise RuntimeError("boom")
+        route.processed.append((event, items))
+
+    route.mp.setattr(webhooks, "_claim_idempotency_key", claim)
+    route.mp.setattr(webhooks, "_release_idempotency_key", release)
+    route.mp.setattr(webhooks, "_process_kapso_events", flaky)
+    assert (await route.post(key="x")).status_code == 200
+    await asyncio.sleep(0.01)
+    assert (await route.post(key="x")).json() == {"status": "ok"}
+    await asyncio.sleep(0.01)
+    assert len(route.processed) == 1

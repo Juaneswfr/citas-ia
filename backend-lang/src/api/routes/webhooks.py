@@ -5,9 +5,12 @@ Principio XI: Todo webhook MUST validar firma/token antes de procesar.
 Principio VII: No exponer secretos en logs ni responses.
 SC-007: Rate limiting 200 req/min por workspace en /webhooks/whatsapp.
 """
+import asyncio
 import hashlib
 import hmac
+import json
 import logging
+from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
 
@@ -24,6 +27,32 @@ def _get_workspace_from_request(request: Request) -> str:
 
 
 _limiter = Limiter(key_func=_get_workspace_from_request)
+# Kapso: la clave es la IP, no X-Workspace-ID (un header que el emisor controla anularía el límite).
+_kapso_limiter = Limiter(key_func=lambda request: request.client.host if request.client else "unknown")
+_KAPSO_LIMIT = "300/minute"
+_MAX_BODY = 1024 * 1024  # 1 MB
+
+# Referencias fuertes: el loop solo guarda weak refs a las tareas y el GC podría recolectarlas.
+_bg_tasks: set = set()
+
+
+def _spawn(coro):
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+async def _read_body_limited(request: Request) -> bytes:
+    """Lee el cuerpo y responde 413 si supera 1 MB, sin bufferizar más de lo permitido."""
+    cl = request.headers.get("content-length", "")
+    if cl.isdigit() and int(cl) > _MAX_BODY:
+        raise HTTPException(status_code=413)
+    buf = bytearray()
+    async for chunk in request.stream():
+        buf += chunk
+        if len(buf) > _MAX_BODY:
+            raise HTTPException(status_code=413)
+    return bytes(buf)
 
 
 def _verify_whatsapp_signature(request_body: bytes, signature_header: str) -> bool:
@@ -32,6 +61,8 @@ def _verify_whatsapp_signature(request_body: bytes, signature_header: str) -> bo
     Principio XI: Sin verificación de firma, el endpoint es un vector de ataque.
     """
     settings = get_settings()
+    if not settings.whatsapp_app_secret:  # fail closed: nunca firmar con clave vacía
+        return False
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     expected = "sha256=" + hmac.new(
@@ -39,7 +70,7 @@ def _verify_whatsapp_signature(request_body: bytes, signature_header: str) -> bo
         request_body,
         hashlib.sha256,
     ).hexdigest()
-    return hmac.compare_digest(expected, signature_header)
+    return hmac.compare_digest(expected.encode(), signature_header.encode())
 
 
 @router.get(
@@ -80,6 +111,9 @@ async def whatsapp_inbound(request: Request):
     6. Lanzar agente LangGraph (async, no bloquea el ACK).
     7. Responder 200 inmediatamente (WhatsApp requiere ACK < 20s).
     """
+    if not get_settings().whatsapp_app_secret:
+        log.error("[webhooks/whatsapp] WHATSAPP_APP_SECRET no configurado — webhook deshabilitado")
+        raise HTTPException(status_code=503, detail="Webhook no disponible.")
     body_bytes = await request.body()
     sig = request.headers.get("X-Hub-Signature-256", "")
 
@@ -136,22 +170,16 @@ async def _process_whatsapp_payload(payload: dict):
 
 
 def _verify_kapso_signature(request_body: bytes, signature_header: str) -> bool:
-    """HMAC-SHA256 hex del raw body (X-Webhook-Signature) contra el secreto de proyecto o de número.
+    """HMAC-SHA256 hex del raw body (X-Webhook-Signature) contra el secreto de PROYECTO únicamente.
 
-    El evento va en un header sin firmar, así que no se usa para elegir secreto: se prueban todos
-    (sin cortocircuito) y basta que uno coincida. KAPSO_WEBHOOK_SECRET es solo compatibilidad.
+    Los mensajes se firman con el secreto de cada número y entran por /kapso/n/{token}.
     """
-    s = get_settings()
-    secrets = [x for x in (s.kapso_webhook_secret_project, s.kapso_webhook_secret_number,
-                           s.kapso_webhook_secret) if x]
+    secret = get_settings().kapso_webhook_secret_project
     sig = (signature_header or "").strip()
-    if not secrets or not sig:
+    if not secret or not sig:
         return False
-    ok = False
-    for secret in secrets:
-        expected = hmac.new(secret.encode(), request_body, hashlib.sha256).hexdigest()
-        ok |= hmac.compare_digest(expected, sig)
-    return ok
+    expected = hmac.new(secret.encode(), request_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected.encode(), sig.encode())
 
 
 async def _claim_idempotency_key(key: str, event: str) -> bool:
@@ -167,6 +195,30 @@ async def _claim_idempotency_key(key: str, event: str) -> bool:
     return row is not None
 
 
+async def _release_idempotency_key(key: str) -> None:
+    from core import database
+
+    async with database._pool.acquire() as conn:
+        await conn.execute("DELETE FROM public.kapso_webhook_events WHERE idempotency_key=$1", key)
+
+
+async def _run_kapso_task(key: str, event: str, items: list) -> None:
+    """Procesa en background; si falla, libera la clave para que el reintento de Kapso procese.
+
+    Riesgo residual: en un lote con fallo parcial, el reintento reprocesa también los ítems que ya
+    habían salido bien (mensajes duplicados); y si el proceso muere (o falla la propia liberación)
+    tras reclamar la clave, el evento se pierde. Cierre real: cola/outbox persistente o idempotencia por mensaje.
+    """
+    try:
+        await _process_kapso_events(event, items)
+    except Exception as e:
+        log.error("[webhooks/kapso] procesamiento falló, liberando clave | err=%s", type(e).__name__)
+        try:
+            await _release_idempotency_key(key)
+        except Exception as e2:
+            log.error("[webhooks/kapso] no se pudo liberar la clave | err=%s", type(e2).__name__)
+
+
 async def _get_channel_by_webhook_token(token: str):
     from core import database
 
@@ -178,20 +230,26 @@ async def _get_channel_by_webhook_token(token: str):
 
 
 @router.post("/kapso/n/{token}", summary="Mensajes entrantes de Kapso (webhook por número)")
+@_kapso_limiter.limit(_KAPSO_LIMIT)
 async def kapso_number_inbound(token: str, request: Request):
     s = get_settings()
     if not s.kapso_enabled:
         raise HTTPException(status_code=404)
+    body_bytes = await _read_body_limited(request)
     channel = await _get_channel_by_webhook_token(token)
     if channel is None or not channel["webhook_secret_encrypted"]:
         raise HTTPException(status_code=404)
 
     from services.kapso_onboarding import decrypt_secret
 
-    body_bytes = await request.body()
-    secret = decrypt_secret(s.kapso_secrets_key, channel["webhook_secret_encrypted"])
+    try:
+        secret = decrypt_secret(s.kapso_secrets_key, channel["webhook_secret_encrypted"])
+    except (InvalidToken, ValueError) as e:
+        log.error("[webhooks/kapso/n] no se pudo descifrar el secreto del canal | err=%s", type(e).__name__)
+        raise HTTPException(status_code=503)
     expected = hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, request.headers.get("X-Webhook-Signature", "").strip()):
+    sig = request.headers.get("X-Webhook-Signature", "").strip()
+    if not hmac.compare_digest(expected.encode(), sig.encode()):
         log.warning("[webhooks/kapso/n] firma inválida — rechazado")
         raise HTTPException(status_code=401)
 
@@ -203,31 +261,35 @@ async def kapso_number_inbound(token: str, request: Request):
         log.info("[webhooks/kapso/n] duplicado ignorado | event=%s", event)
         return {"status": "duplicate"}
     try:
-        payload = await request.json()
+        payload = json.loads(body_bytes)
     except ValueError:
+        raise HTTPException(status_code=400)
+    if not isinstance(payload, dict):
         raise HTTPException(status_code=400)
     batch = request.headers.get("X-Webhook-Batch", "").lower() == "true"
     items = payload.get("data") if batch and isinstance(payload.get("data"), list) else [payload]
     # El número lo fija el canal del token, no el cuerpo: un secreto no sirve para otro número.
     items = [{**i, "phone_number_id": channel["phone_number_id"]} for i in items if isinstance(i, dict)]
 
-    import asyncio
     if event == "whatsapp.message.received":
-        asyncio.create_task(_process_kapso_events(event, items))
+        _spawn(_run_kapso_task(key, event, items))
     return {"status": "ok"}
 
 
-@router.post("/kapso", summary="Eventos entrantes de Kapso")
+@router.post("/kapso", summary="Eventos de proyecto de Kapso (no mensajes)")
+@_kapso_limiter.limit(_KAPSO_LIMIT)
 async def kapso_inbound(request: Request):
     if not get_settings().kapso_enabled:
         raise HTTPException(status_code=404)
 
-    body_bytes = await request.body()
+    body_bytes = await _read_body_limited(request)
     if not _verify_kapso_signature(body_bytes, request.headers.get("X-Webhook-Signature", "")):
         log.warning("[webhooks/kapso] firma inválida — rechazado")
         raise HTTPException(status_code=401)
 
     event = request.headers.get("X-Webhook-Event", "")
+    if event.startswith("whatsapp.message."):  # los mensajes solo entran por /kapso/n/{token}
+        raise HTTPException(status_code=400)
     key = request.headers.get("X-Idempotency-Key", "")
     if not key:
         raise HTTPException(status_code=400)
@@ -237,15 +299,16 @@ async def kapso_inbound(request: Request):
         return {"status": "duplicate"}
 
     try:
-        payload = await request.json()
+        payload = json.loads(body_bytes)
     except ValueError:
+        raise HTTPException(status_code=400)
+    if not isinstance(payload, dict):
         raise HTTPException(status_code=400)
     # Lote (X-Webhook-Batch: true): eventos en payload["data"]; sin lote: el payload es el evento.
     batch = request.headers.get("X-Webhook-Batch", "").lower() == "true"
     items = payload.get("data") if batch and isinstance(payload.get("data"), list) else [payload]
 
-    import asyncio
-    asyncio.create_task(_process_kapso_events(event, items))
+    _spawn(_run_kapso_task(key, event, items))
     return {"status": "ok"}
 
 
@@ -260,6 +323,7 @@ async def _process_kapso_events(event: str, items: list):
         from services import kapso_onboarding as ko
         s = get_settings()
         client = ko.KapsoPlatformClient(s.kapso_api_key, s.kapso_base_url)
+        failed = False
         for item in items:
             try:
                 async with database._pool.acquire() as conn:
@@ -272,13 +336,17 @@ async def _process_kapso_events(event: str, items: list):
                         await ko.deprovision_number_webhook(
                             conn, client, phone_number_id=item["phone_number_id"])
             except Exception as e:
+                failed = True
                 log.error("[webhooks/kapso] error en %s | err=%s", event, type(e).__name__)
+        if failed:
+            raise RuntimeError("kapso_item_failed")  # _run_kapso_task libera la clave
         return
     if event != "whatsapp.message.received":
         return
     from services.conversation_service import ConversationService
     from services.agent_service import AgentService
 
+    failed = False
     for item in items:
         try:
             msg = item.get("message") or {}
@@ -302,7 +370,10 @@ async def _process_kapso_events(event: str, items: list):
             )
             await AgentService.run(conversation=conversation, message=text)
         except Exception as e:
+            failed = True
             log.error("[webhooks/kapso] error procesando evento | err=%s", type(e).__name__, exc_info=False)
+    if failed:
+        raise RuntimeError("kapso_item_failed")  # _run_kapso_task libera la clave
 
 
 @router.post(

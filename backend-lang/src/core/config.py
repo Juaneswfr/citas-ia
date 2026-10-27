@@ -55,9 +55,9 @@ class Settings(BaseSettings):
     kapso_api_key: str = Field(default="", alias="KAPSO_API_KEY")
     # Secreto del webhook de PROYECTO (eventos como whatsapp.phone_number.created).
     kapso_webhook_secret_project: str = Field(default="", alias="KAPSO_WEBHOOK_SECRET_PROJECT")
-    # Secreto del webhook de NÚMERO (mensajes: whatsapp.message.received).
+    # Obsoleto: los mensajes se verifican con el secreto cifrado de cada canal (/webhooks/kapso/n/{token}).
     kapso_webhook_secret_number: str = Field(default="", alias="KAPSO_WEBHOOK_SECRET_NUMBER")
-    # Solo compatibilidad: se sigue aceptando si está definido, pero ya no basta con KAPSO_ENABLED=true.
+    # Obsoleto: ya no se usa para verificar firmas (la ruta de proyecto solo usa el secreto de proyecto).
     kapso_webhook_secret: str = Field(default="", alias="KAPSO_WEBHOOK_SECRET")
     kapso_base_url: str = Field(default="https://api.kapso.ai", alias="KAPSO_BASE_URL")
     # Clave Fernet (base64 urlsafe de 32 bytes) que cifra el secreto de webhook de cada canal.
@@ -73,6 +73,12 @@ class Settings(BaseSettings):
                 "KAPSO_ENABLED=true requiere KAPSO_API_KEY, KAPSO_WEBHOOK_SECRET_PROJECT "
                 "y KAPSO_SECRETS_KEY"
             )
+        if self.kapso_enabled:
+            from cryptography.fernet import Fernet
+            try:
+                Fernet(self.kapso_secrets_key.encode())
+            except Exception:
+                raise ValueError("KAPSO_SECRETS_KEY no es una clave Fernet válida")
         return self
 
     # ── Sentry ─────────────────────────────────────────────────────────────
@@ -83,6 +89,7 @@ class Settings(BaseSettings):
         env_file = [".env", ".env.local"]
         env_file_encoding = "utf-8"
         populate_by_name = True
+        hide_input_in_errors = True  # un ValidationError no debe imprimir secretos del entorno
         extra = "ignore"
 
 
