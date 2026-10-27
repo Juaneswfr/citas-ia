@@ -55,14 +55,16 @@ class AgentService:
             # Preparar contexto estructurado para el agente
             context = await AgentService._build_context(workspace_id, conversation)
 
-            # TODO: Llamar al grafo LangGraph de citas (T043)
+            from services.appointment_agent import run_agent
+            res = await run_agent(context, message)
+            agent_error = res["error"]
             output = {
-                "reply_text": "Recibido, en un momento te atiendo.",
-                "action_type": "noop",
+                "reply_text": res["reply_text"],
+                "action_type": "create_appointment" if res["booked"] else "noop",
                 "action_payload": {},
                 "confidence": 1.0,
                 "next_step": "end",
-                "needs_review": False,
+                "needs_review": bool(agent_error),
             }
 
             latency_ms = int((time.monotonic() - start_ts) * 1000)
@@ -95,15 +97,26 @@ class AgentService:
                         provider_message_id=sent.message_id or None,
                     )
 
-            # Actualizar agent_run como completado
+            # Actualizar agent_run (error + alerta si el LLM falló, tras enviar el fallback honesto)
             if run_id:
                 async with _pool.acquire() as db:
                     await db.execute(
-                        "UPDATE agent_runs SET status='completed', output_summary=$1, ended_at=$2 WHERE id=$3",
+                        f"UPDATE agent_runs SET status='{'error' if agent_error else 'completed'}', "
+                        "output_summary=$1, ended_at=$2 WHERE id=$3",
                         reply[:500],
                         datetime.now(timezone.utc),
                         run_id,
                     )
+                    if agent_error:
+                        await db.execute(
+                            """
+                            INSERT INTO agent_alerts (workspace_id, conversation_id, severity, reason, resolved)
+                            VALUES ($1,$2,'error',$3,FALSE)
+                            """,
+                            workspace_id,
+                            conversation["id"],
+                            agent_error[:500],
+                        )
 
             log.info("[agent] run completado | conv=%s | latency=%dms",
                      conversation["id"], latency_ms)
@@ -143,7 +156,7 @@ class AgentService:
                 workspace_id,
             )
             workspace = await db.fetchrow(
-                "SELECT name FROM workspaces WHERE id=$1", workspace_id
+                "SELECT name,timezone FROM workspaces WHERE id=$1", workspace_id
             )
 
             channel = None
