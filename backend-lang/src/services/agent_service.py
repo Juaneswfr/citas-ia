@@ -74,11 +74,15 @@ class AgentService:
                 phone_number_id = context.get("channel", {}).get("phone_number_id")
                 if customer_phone:
                     from services.whatsapp_service import WhatsAppService
-                    await WhatsAppService.send_message(
+                    sent = await WhatsAppService.send_text(
                         to=customer_phone,
                         text=reply,
                         phone_number_id=phone_number_id,
+                        provider=context.get("channel", {}).get("provider"),
                     )
+                    if not sent.ok:
+                        # va al except: run en error + alerta, sin guardar outbound no entregado
+                        raise RuntimeError(f"envio_whatsapp_fallido: {sent.error}")
                     from services.conversation_service import ConversationService
                     await ConversationService.save_message(
                         conversation_id=conversation["id"],
@@ -88,6 +92,7 @@ class AgentService:
                         direction="outbound",
                         sender_type="agent",
                         content=reply,
+                        provider_message_id=sent.message_id or None,
                     )
 
             # Actualizar agent_run como completado
@@ -144,7 +149,7 @@ class AgentService:
             channel = None
             if conversation.get("channel_id"):
                 ch = await db.fetchrow(
-                    "SELECT phone_number,phone_number_id FROM channels WHERE id=$1",
+                    "SELECT phone_number,phone_number_id,provider FROM channels WHERE id=$1",
                     conversation["channel_id"],
                 )
                 channel = dict(ch) if ch else None

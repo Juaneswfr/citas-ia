@@ -28,3 +28,9 @@
   - Usuarios existentes no tienen password_hash — deberán resetear contraseña tras la migración
   - La columna reminder_24h_sent/reminder_2h_sent en appointments puede no existir en Supabase — verifica antes de migrar
   datos
+## 2026-10-27 — Kapso outbound (t_24ff8dbb)
+  - whatsapp_service.py: `send_text` (devuelve SendResult) y `send_message(provider=)`; provider "kapso" envía por KapsoProvider con KAPSO_API_KEY/KAPSO_BASE_URL; Meta sin cambios
+  - whatsapp_provider.py: reintento acotado (máx 2, backoff ≤2s) en 429 y 5xx; 4xx sin reintento; logs de Kapso sin teléfono
+  - agent_service.py: envío fallido → run en error + agent_alerts, sin guardar outbound; guarda provider_message_id (wamid)
+  - tests/test_kapso_outbound.py nuevo
+  - No migré: reminder_worker sigue enviando solo por Meta (no recibe provider del canal)
