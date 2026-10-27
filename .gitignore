@@ -62,3 +62,6 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── MCP local (contiene credenciales) ──
+.mcp.json
