@@ -31,6 +31,7 @@ class WhatsAppService:
         to: str,
         text: str,
         phone_number_id: Optional[str] = None,
+        provider: Optional[str] = None,
     ) -> bool:
         """
         Envía un mensaje de texto a un número WhatsApp.
@@ -39,10 +40,13 @@ class WhatsAppService:
             to: Número E.164 del destinatario (ej: "+573001234567").
             text: Texto del mensaje (≤4096 caracteres).
             phone_number_id: Override del phone_number_id del canal; si None usa el de Settings.
+            provider: provider del canal; "kapso" envía por Kapso, otro valor usa Meta Graph.
 
         Returns:
-            True si Meta confirmó el envío, False si hubo error.
+            True si el proveedor confirmó el envío, False si hubo error.
         """
+        if provider == "kapso":
+            return (await WhatsAppService.send_text(to, text, phone_number_id, provider)).ok
         settings = get_settings()
 
         pid = phone_number_id or settings.whatsapp_phone_number_id
@@ -84,6 +88,28 @@ class WhatsAppService:
         except Exception as e:
             log.error("[whatsapp] error enviando mensaje | to=%s | err=%s", to, e)
             return False
+
+    @staticmethod
+    async def send_text(
+        to: str,
+        text: str,
+        phone_number_id: Optional[str] = None,
+        provider: Optional[str] = None,
+    ):
+        """Como send_message pero devuelve SendResult (con el wamid si el proveedor lo entrega)."""
+        # import tardío: whatsapp_provider importa este módulo
+        from services.whatsapp_provider import KapsoProvider, SendResult
+
+        if provider != "kapso":
+            ok = await WhatsAppService.send_message(to, text, phone_number_id)
+            return SendResult(ok=ok, error="" if ok else "meta_send_failed")
+        settings = get_settings()
+        if not (settings.kapso_api_key and phone_number_id):
+            log.error("[kapso] KAPSO_API_KEY o phone_number_id del canal no configurado — mensaje no enviado")
+            return SendResult(ok=False, error="not_configured")
+        return await KapsoProvider(settings.kapso_api_key, settings.kapso_base_url).send_text(
+            to=to, text=text, phone_number_id=phone_number_id
+        )
 
     @staticmethod
     async def send_template(
