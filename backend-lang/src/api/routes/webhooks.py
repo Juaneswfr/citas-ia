@@ -135,6 +135,117 @@ async def _process_whatsapp_payload(payload: dict):
         log.error("[webhooks/whatsapp] error procesando payload | err=%s", e, exc_info=True)
 
 
+def _verify_kapso_signature(request_body: bytes, signature_header: str) -> bool:
+    """HMAC-SHA256 hex del raw body (X-Webhook-Signature) contra el secreto de proyecto o de número.
+
+    El evento va en un header sin firmar, así que no se usa para elegir secreto: se prueban todos
+    (sin cortocircuito) y basta que uno coincida. KAPSO_WEBHOOK_SECRET es solo compatibilidad.
+    """
+    s = get_settings()
+    secrets = [x for x in (s.kapso_webhook_secret_project, s.kapso_webhook_secret_number,
+                           s.kapso_webhook_secret) if x]
+    sig = (signature_header or "").strip()
+    if not secrets or not sig:
+        return False
+    ok = False
+    for secret in secrets:
+        expected = hmac.new(secret.encode(), request_body, hashlib.sha256).hexdigest()
+        ok |= hmac.compare_digest(expected, sig)
+    return ok
+
+
+async def _claim_idempotency_key(key: str, event: str) -> bool:
+    """True si la clave es nueva (se reclama); False si ya existía (reintento)."""
+    from core import database
+
+    async with database._pool.acquire() as conn:
+        row = await conn.fetchval(
+            "INSERT INTO public.kapso_webhook_events (idempotency_key, event) "
+            "VALUES ($1, $2) ON CONFLICT (idempotency_key) DO NOTHING RETURNING 1",
+            key, event,
+        )
+    return row is not None
+
+
+@router.post("/kapso", summary="Eventos entrantes de Kapso")
+async def kapso_inbound(request: Request):
+    if not get_settings().kapso_enabled:
+        raise HTTPException(status_code=404)
+
+    body_bytes = await request.body()
+    if not _verify_kapso_signature(body_bytes, request.headers.get("X-Webhook-Signature", "")):
+        log.warning("[webhooks/kapso] firma inválida — rechazado")
+        raise HTTPException(status_code=401)
+
+    event = request.headers.get("X-Webhook-Event", "")
+    key = request.headers.get("X-Idempotency-Key", "")
+    if not key:
+        raise HTTPException(status_code=400)
+
+    if not await _claim_idempotency_key(key, event):
+        log.info("[webhooks/kapso] duplicado ignorado | event=%s", event)
+        return {"status": "duplicate"}
+
+    try:
+        payload = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400)
+    # Lote (X-Webhook-Batch: true): eventos en payload["data"]; sin lote: el payload es el evento.
+    batch = request.headers.get("X-Webhook-Batch", "").lower() == "true"
+    items = payload.get("data") if batch and isinstance(payload.get("data"), list) else [payload]
+
+    import asyncio
+    asyncio.create_task(_process_kapso_events(event, items))
+    return {"status": "ok"}
+
+
+async def _process_kapso_events(event: str, items: list):
+    """Procesa mensajes entrantes de Kapso fuera del ciclo de request.
+
+    SUPUESTO (sin verificar): nombres de headers (X-Webhook-Signature/Event/X-Idempotency-Key),
+    evento "whatsapp.message.received" y forma del payload vienen del plan, no de docs oficiales.
+    """
+    if event == "whatsapp.phone_number.created":
+        from core import database
+        from services.kapso_onboarding import KapsoOnboardingService
+        for item in items:
+            try:
+                async with database._pool.acquire() as conn:
+                    await KapsoOnboardingService.handle_phone_number_created(conn, item)
+            except Exception as e:
+                log.error("[webhooks/kapso] error en phone_number.created | err=%s", type(e).__name__)
+        return
+    if event != "whatsapp.message.received":
+        return
+    from services.conversation_service import ConversationService
+    from services.agent_service import AgentService
+
+    for item in items:
+        try:
+            msg = item.get("message") or {}
+            customer_phone = msg.get("from")
+            text = (msg.get("text") or {}).get("body", "")
+            business_phone_number_id = item.get("phone_number_id")
+            if not customer_phone or not text or not business_phone_number_id:
+                continue
+            conversation = await ConversationService.find_or_create(
+                customer_phone=customer_phone, phone_number_id=business_phone_number_id
+            )
+            conversation["customer_phone"] = customer_phone
+            await ConversationService.save_message(
+                conversation_id=conversation["id"],
+                workspace_id=conversation["workspace_id"],
+                channel_id=conversation["channel_id"],
+                customer_id=conversation.get("customer_id"),
+                direction="inbound",
+                sender_type="customer",
+                content=text,
+            )
+            await AgentService.run(conversation=conversation, message=text)
+        except Exception as e:
+            log.error("[webhooks/kapso] error procesando evento | err=%s", type(e).__name__, exc_info=False)
+
+
 @router.post(
     "/google-calendar",
     summary="Notificaciones de cambio de Google Calendar",

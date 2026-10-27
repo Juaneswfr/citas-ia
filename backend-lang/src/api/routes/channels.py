@@ -39,12 +39,12 @@ async def list_channels(
     response_model=ChannelOut,
     status_code=201,
     summary="Registrar canal de WhatsApp coexistente",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def create_channel(
     workspace_id: str,
     body: ChannelCreate,
-    current_user: dict = Depends(require_workspace_access("owner")),
+    current_user: dict = Depends(require_workspace_access("workspace_owner")),
     db: asyncpg.Connection = Depends(get_db),
 ):
     import json
@@ -77,13 +77,13 @@ async def create_channel(
     "/workspaces/{workspace_id}/channels/{channel_id}/status",
     response_model=ChannelOut,
     summary="Cambiar estado del canal (active|paused|disconnected)",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def update_channel_status(
     workspace_id: str,
     channel_id: str,
     new_status: str,
-    current_user: dict = Depends(require_workspace_access("owner")),
+    current_user: dict = Depends(require_workspace_access("workspace_owner")),
     db: asyncpg.Connection = Depends(get_db),
 ):
     from services.audit_service import AuditService
@@ -124,7 +124,7 @@ async def update_channel_status(
 async def embedded_signup_connect(
     workspace_id: str,
     body: EmbeddedSignupRequest,
-    current_user: dict = Depends(require_workspace_access("owner")),
+    current_user: dict = Depends(require_workspace_access("workspace_owner")),
     db: asyncpg.Connection = Depends(get_db),
 ):
     import json
@@ -227,12 +227,12 @@ async def list_calendars(
     response_model=CalendarOut,
     status_code=201,
     summary="Conectar Google Calendar con OAuth",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def connect_calendar(
     workspace_id: str,
     body: CalendarCreate,
-    current_user: dict = Depends(require_workspace_access("owner")),
+    current_user: dict = Depends(require_workspace_access("workspace_owner")),
     db: asyncpg.Connection = Depends(get_db),
 ):
     from integrations.google_calendar import exchange_oauth_code
@@ -267,12 +267,12 @@ async def connect_calendar(
     "/workspaces/{workspace_id}/calendars/{calendar_id}",
     status_code=204,
     summary="Desconectar calendario.",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def disconnect_calendar(
     workspace_id: str,
     calendar_id: str,
-    current_user: dict = Depends(require_workspace_access("owner")),
+    current_user: dict = Depends(require_workspace_access("workspace_owner")),
     db: asyncpg.Connection = Depends(get_db),
 ):
     await db.execute(
