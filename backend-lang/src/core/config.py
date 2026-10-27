@@ -60,16 +60,18 @@ class Settings(BaseSettings):
     # Solo compatibilidad: se sigue aceptando si está definido, pero ya no basta con KAPSO_ENABLED=true.
     kapso_webhook_secret: str = Field(default="", alias="KAPSO_WEBHOOK_SECRET")
     kapso_base_url: str = Field(default="https://api.kapso.ai", alias="KAPSO_BASE_URL")
+    # Clave Fernet (base64 urlsafe de 32 bytes) que cifra el secreto de webhook de cada canal.
+    kapso_secrets_key: str = Field(default="", alias="KAPSO_SECRETS_KEY")
 
     @model_validator(mode="after")
     def _require_kapso_secrets(self):
         # Solo nombres de variables en el mensaje; nunca valores.
         if self.kapso_enabled and not (
-            self.kapso_api_key and self.kapso_webhook_secret_project and self.kapso_webhook_secret_number
+            self.kapso_api_key and self.kapso_webhook_secret_project and self.kapso_secrets_key
         ):
             raise ValueError(
                 "KAPSO_ENABLED=true requiere KAPSO_API_KEY, KAPSO_WEBHOOK_SECRET_PROJECT "
-                "y KAPSO_WEBHOOK_SECRET_NUMBER"
+                "y KAPSO_SECRETS_KEY"
             )
         return self
 

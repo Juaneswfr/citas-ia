@@ -18,10 +18,11 @@ Con `KAPSO_ENABLED=false` (valor por defecto) las rutas de Kapso responden 404 y
 Para activarlo hacen falta:
 - `KAPSO_API_KEY`: clave del proyecto Kapso. **Rótala antes de usarla** si alguna vez estuvo en el repo.
 - `KAPSO_WEBHOOK_SECRET_PROJECT`: secreto del webhook de proyecto (eventos de conexión).
-- `KAPSO_WEBHOOK_SECRET_NUMBER`: secreto del webhook de número (mensajes).
+- `KAPSO_SECRETS_KEY`: clave Fernet (base64 urlsafe de 32 bytes) que cifra el secreto del webhook de cada número. Cada canal recibe su propio webhook (`/webhooks/kapso/n/{token}`) al llegar `whatsapp.phone_number.created`; la URL base sale de `FRONTEND_URL`.
+- `KAPSO_WEBHOOK_SECRET_NUMBER`: obsoleto (solo compatibilidad en `/webhooks/kapso`).
 - `KAPSO_BASE_URL`: opcional, por defecto `https://api.kapso.ai`.
 
-Con `KAPSO_ENABLED=true` el arranque exige la clave y los dos secretos.
+Con `KAPSO_ENABLED=true` el arranque exige `KAPSO_API_KEY`, `KAPSO_WEBHOOK_SECRET_PROJECT` y `KAPSO_SECRETS_KEY`.
 
 ## Tests
 

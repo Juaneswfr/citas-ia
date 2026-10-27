@@ -167,6 +167,56 @@ async def _claim_idempotency_key(key: str, event: str) -> bool:
     return row is not None
 
 
+async def _get_channel_by_webhook_token(token: str):
+    from core import database
+
+    async with database._pool.acquire() as conn:
+        return await conn.fetchrow(
+            "SELECT phone_number_id, webhook_secret_encrypted FROM public.channels WHERE webhook_token=$1",
+            token,
+        )
+
+
+@router.post("/kapso/n/{token}", summary="Mensajes entrantes de Kapso (webhook por número)")
+async def kapso_number_inbound(token: str, request: Request):
+    s = get_settings()
+    if not s.kapso_enabled:
+        raise HTTPException(status_code=404)
+    channel = await _get_channel_by_webhook_token(token)
+    if channel is None or not channel["webhook_secret_encrypted"]:
+        raise HTTPException(status_code=404)
+
+    from services.kapso_onboarding import decrypt_secret
+
+    body_bytes = await request.body()
+    secret = decrypt_secret(s.kapso_secrets_key, channel["webhook_secret_encrypted"])
+    expected = hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, request.headers.get("X-Webhook-Signature", "").strip()):
+        log.warning("[webhooks/kapso/n] firma inválida — rechazado")
+        raise HTTPException(status_code=401)
+
+    key = request.headers.get("X-Idempotency-Key", "")
+    if not key:
+        raise HTTPException(status_code=400)
+    event = request.headers.get("X-Webhook-Event", "")
+    if not await _claim_idempotency_key(key, event):
+        log.info("[webhooks/kapso/n] duplicado ignorado | event=%s", event)
+        return {"status": "duplicate"}
+    try:
+        payload = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400)
+    batch = request.headers.get("X-Webhook-Batch", "").lower() == "true"
+    items = payload.get("data") if batch and isinstance(payload.get("data"), list) else [payload]
+    # El número lo fija el canal del token, no el cuerpo: un secreto no sirve para otro número.
+    items = [{**i, "phone_number_id": channel["phone_number_id"]} for i in items if isinstance(i, dict)]
+
+    import asyncio
+    if event == "whatsapp.message.received":
+        asyncio.create_task(_process_kapso_events(event, items))
+    return {"status": "ok"}
+
+
 @router.post("/kapso", summary="Eventos entrantes de Kapso")
 async def kapso_inbound(request: Request):
     if not get_settings().kapso_enabled:
@@ -205,15 +255,24 @@ async def _process_kapso_events(event: str, items: list):
     SUPUESTO (sin verificar): nombres de headers (X-Webhook-Signature/Event/X-Idempotency-Key),
     evento "whatsapp.message.received" y forma del payload vienen del plan, no de docs oficiales.
     """
-    if event == "whatsapp.phone_number.created":
+    if event in ("whatsapp.phone_number.created", "whatsapp.phone_number.deleted"):
         from core import database
-        from services.kapso_onboarding import KapsoOnboardingService
+        from services import kapso_onboarding as ko
+        s = get_settings()
+        client = ko.KapsoPlatformClient(s.kapso_api_key, s.kapso_base_url)
         for item in items:
             try:
                 async with database._pool.acquire() as conn:
-                    await KapsoOnboardingService.handle_phone_number_created(conn, item)
+                    if event.endswith(".created"):
+                        if await ko.KapsoOnboardingService.handle_phone_number_created(conn, item):
+                            await ko.provision_number_webhook(
+                                conn, client, phone_number_id=item["phone_number_id"],
+                                base_url=s.frontend_url, secrets_key=s.kapso_secrets_key)
+                    elif item.get("phone_number_id"):
+                        await ko.deprovision_number_webhook(
+                            conn, client, phone_number_id=item["phone_number_id"])
             except Exception as e:
-                log.error("[webhooks/kapso] error en phone_number.created | err=%s", type(e).__name__)
+                log.error("[webhooks/kapso] error en %s | err=%s", event, type(e).__name__)
         return
     if event != "whatsapp.message.received":
         return

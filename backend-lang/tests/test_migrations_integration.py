@@ -67,3 +67,22 @@ async def test_same_phone_number_id_cannot_coexist(conn):
             await conn.execute(ins, ws[1], "+572")
     finally:
         await tr.rollback()
+
+
+async def test_migration_005_webhook_columns_and_unique_token(conn):
+    cols = {r["column_name"] for r in await conn.fetch(
+        "SELECT column_name FROM information_schema.columns WHERE table_name='channels'")}
+    assert {"webhook_token", "kapso_webhook_id", "webhook_secret_encrypted"} <= cols
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        ws = await conn.fetchval(
+            "INSERT INTO public.workspaces (name, slug) VALUES ('w', $1) RETURNING id",
+            "w-" + os.urandom(3).hex())
+        ins = ("INSERT INTO public.channels (workspace_id, channel_type, provider, phone_number, "
+               "phone_number_id, webhook_token) VALUES ($1,'whatsapp','kapso',$2,$3,$4)")
+        await conn.execute(ins, ws, "+571", "P1", "tok")
+        with pytest.raises(asyncpg.UniqueViolationError):
+            await conn.execute(ins, ws, "+572", "P2", "tok")
+    finally:
+        await tr.rollback()

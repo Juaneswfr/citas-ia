@@ -6,11 +6,13 @@ Rutas/esquemas verificados contra openapi-platform.yaml (POST /customers, POST
 Principio XI: la API key y la URL del setup link no se registran en logs.
 """
 import logging
+import secrets
 from datetime import datetime
 from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
+from cryptography.fernet import Fernet
 
 log = logging.getLogger(__name__)
 
@@ -32,17 +34,36 @@ class KapsoPlatformClient:
         self._transport = transport
         self._timeout = timeout
 
-    async def _post(self, path: str, body: dict) -> dict:
+    async def _request(self, method: str, path: str, body: Optional[dict] = None):
         try:
             async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as c:
-                resp = await c.post(
-                    self._base + path, json=body, headers={"X-API-Key": self._api_key}
+                resp = await c.request(
+                    method, self._base + path, json=body, headers={"X-API-Key": self._api_key}
                 )
         except httpx.HTTPError as e:
             raise KapsoError(f"network_error:{type(e).__name__}") from None
         if resp.status_code >= 400:
             raise KapsoError(f"http_{resp.status_code}")
-        return resp.json()["data"]
+        return resp
+
+    async def _post(self, path: str, body: dict) -> dict:
+        return (await self._request("POST", path, body)).json()["data"]
+
+    async def create_phone_number_webhook(
+        self, phone_number_id: str, *, url: str, secret_key: str, events: list[str]
+    ) -> dict:
+        return await self._post(
+            f"/whatsapp/phone_numbers/{phone_number_id}/webhooks",
+            {"whatsapp_webhook": {
+                "url": url, "secret_key": secret_key, "events": events,
+                "kind": "kapso", "payload_version": "v2", "active": True,
+            }},
+        )
+
+    async def delete_phone_number_webhook(self, phone_number_id: str, webhook_id: str) -> None:
+        await self._request(
+            "DELETE", f"/whatsapp/phone_numbers/{phone_number_id}/webhooks/{webhook_id}"
+        )
 
     async def create_customer(self, *, name: str, external_customer_id: str) -> dict:
         return await self._post(
@@ -154,3 +175,69 @@ class KapsoOnboardingService:
         )
         log.info("[kapso/onboarding] canal enlazado | workspace=%s | phone_number_id=%s", workspace_id, pid)
         return True
+
+
+def encrypt_secret(key: str, plain: str) -> str:
+    return Fernet(key.encode()).encrypt(plain.encode()).decode()
+
+
+def decrypt_secret(key: str, token: str) -> str:
+    return Fernet(key.encode()).decrypt(token.encode()).decode()
+
+
+async def provision_number_webhook(
+    db, client: KapsoPlatformClient, *, phone_number_id: str, base_url: str, secrets_key: str
+) -> bool:
+    """Crea el webhook del número (una sola vez por canal). True si lo creó.
+
+    Reclama el canal con un UPDATE condicional (webhook_token IS NULL) antes de llamar a Kapso,
+    así dos eventos concurrentes no crean dos webhooks. Si Kapso falla, se libera el reclamo.
+    """
+    token, secret = secrets.token_urlsafe(24), secrets.token_urlsafe(32)
+    pid = str(phone_number_id)
+    claimed = await db.fetchval(
+        "UPDATE channels SET webhook_token=$2, webhook_secret_encrypted=$3, updated_at=now() "
+        "WHERE phone_number_id=$1 AND webhook_token IS NULL RETURNING id",
+        pid, token, encrypt_secret(secrets_key, secret),
+    )
+    if claimed is None:
+        return False
+    try:
+        wh = await client.create_phone_number_webhook(
+            pid, url=f"{base_url.rstrip('/')}/webhooks/kapso/n/{token}", secret_key=secret,
+            events=["whatsapp.message.received"],
+        )
+        await db.execute("UPDATE channels SET kapso_webhook_id=$2 WHERE id=$1", claimed, str(wh["id"]))
+    except Exception as e:
+        # shortcut: si Kapso creó el webhook pero falló el UPDATE queda huérfano; reconciliar con GET .../webhooks si pasa.
+        await db.execute(
+            "UPDATE channels SET webhook_token=NULL, webhook_secret_encrypted=NULL WHERE id=$1", claimed
+        )
+        log.error("[kapso/webhook] no se pudo crear el webhook | phone_number_id=%s | err=%s",
+                  pid, e if isinstance(e, KapsoError) else type(e).__name__)
+        return False
+    log.info("[kapso/webhook] webhook de número creado | phone_number_id=%s", pid)
+    return True
+
+
+async def deprovision_number_webhook(db, client: KapsoPlatformClient, *, phone_number_id: str) -> bool:
+    """Borra el webhook del número en Kapso (404 = ya no existe) y limpia token/secreto del canal."""
+    pid = str(phone_number_id)
+    row = await db.fetchrow(
+        "SELECT id, kapso_webhook_id FROM channels WHERE phone_number_id=$1", pid
+    )
+    if row is None:
+        return False
+    if row["kapso_webhook_id"]:
+        try:
+            await client.delete_phone_number_webhook(pid, row["kapso_webhook_id"])
+        except KapsoError as e:
+            if str(e) != "http_404":
+                log.error("[kapso/webhook] no se pudo borrar el webhook | phone_number_id=%s | err=%s", pid, e)
+                return False
+    await db.execute(
+        "UPDATE channels SET webhook_token=NULL, kapso_webhook_id=NULL, "
+        "webhook_secret_encrypted=NULL, updated_at=now() WHERE id=$1", row["id"]
+    )
+    log.info("[kapso/webhook] webhook de número eliminado | phone_number_id=%s", pid)
+    return True
