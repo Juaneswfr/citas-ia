@@ -4,7 +4,7 @@ Carga variables de entorno y expone settings tipados.
 """
 import os
 from functools import lru_cache
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     resend_from_email: str = Field(
         default="Hilo <noreply@hilo.esjuanez.com>", alias="RESEND_FROM_EMAIL"
     )
+
+    # ── Kapso (proveedor WhatsApp) ─────────────────────────────────────────
+    kapso_enabled: bool = Field(default=False, alias="KAPSO_ENABLED")
+    kapso_api_key: str = Field(default="", alias="KAPSO_API_KEY")
+    kapso_webhook_secret: str = Field(default="", alias="KAPSO_WEBHOOK_SECRET")
+    kapso_base_url: str = Field(default="https://api.kapso.ai", alias="KAPSO_BASE_URL")
+
+    @model_validator(mode="after")
+    def _require_kapso_secrets(self):
+        # Solo nombres de variables en el mensaje; nunca valores.
+        if self.kapso_enabled and not (self.kapso_api_key and self.kapso_webhook_secret):
+            raise ValueError("KAPSO_ENABLED=true requiere KAPSO_API_KEY y KAPSO_WEBHOOK_SECRET")
+        return self
 
     # ── Sentry ─────────────────────────────────────────────────────────────
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
