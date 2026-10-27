@@ -6,10 +6,12 @@ skills-lock.json
 .venv/
 venv/
 env/
-
+front-app
+.env*
+backend-lang/.env
+backend-lang/.env.development
 # ── Variables de entorno y secretos ────────────────────────────────────────
-.env
-.env.*
+
 !.env.example
 
 # ── Python ──────────────────────────────────────────────────────────────────

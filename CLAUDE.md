@@ -4,7 +4,7 @@ backend-lang
 Para ajustes del front siempre verifica el diseño custm de HILO
 
 # El front end compatible de estar en 
-front-app
+front
 
 ## Active Technologies
 - Python 3.12+ + FastAPI 0.136+, LangGraph 1.2+, supabase-py, Pydantic v2, httpx, cryptography (Fernet), google-api-python-client, pydantic-settings (master)
