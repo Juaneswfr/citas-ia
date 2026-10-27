@@ -16,3 +16,8 @@ front
 - master: Added Python 3.12+ + FastAPI 0.136+, LangGraph 1.2+, supabase-py, Pydantic v2, httpx, cryptography (Fernet), google-api-python-client, pydantic-settings
 
 Agrega cambios en los logs.md
+
+## Agente de citas (backend-lang/src/agents/citas)
+- LLM propone herramientas; el backend las ejecuta. workspace/customer/channel/conversation vienen de `CitasContext`, nunca del LLM.
+- Confirmación al cliente solo tras commit; fallo de BD/Calendar → mensaje fijo de "no se pudo". Sin `AGENT_LLM_API_KEY` falla cerrado.
+- Pendiente DBA: constraint de no-solapamiento en `appointments` (ver logs.md).

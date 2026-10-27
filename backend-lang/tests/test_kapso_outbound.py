@@ -126,7 +126,11 @@ async def _run(monkeypatch, sent):
 
     async def save(**kw): saved.append(kw)
 
+    async def agent(conv, msg, run_id, context):
+        return {"reply_text": "hola cliente", "action_type": "reply", "action_payload": {}}
+
     monkeypatch.setattr(AgentService, "_build_context", staticmethod(ctx))
+    monkeypatch.setattr(AgentService, "_run_agent", staticmethod(agent))
     monkeypatch.setattr(WhatsAppService, "send_text", staticmethod(send))
     from services.conversation_service import ConversationService
     monkeypatch.setattr(ConversationService, "save_message", staticmethod(save))

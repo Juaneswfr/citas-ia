@@ -55,15 +55,7 @@ class AgentService:
             # Preparar contexto estructurado para el agente
             context = await AgentService._build_context(workspace_id, conversation)
 
-            # TODO: Llamar al grafo LangGraph de citas (T043)
-            output = {
-                "reply_text": "Recibido, en un momento te atiendo.",
-                "action_type": "noop",
-                "action_payload": {},
-                "confidence": 1.0,
-                "next_step": "end",
-                "needs_review": False,
-            }
+            output = await AgentService._run_agent(conversation, message, run_id, context)
 
             latency_ms = int((time.monotonic() - start_ts) * 1000)
 
@@ -132,6 +124,23 @@ class AgentService:
             return None
 
     @staticmethod
+    async def _run_agent(conversation: dict, message: str, run_id, context: dict) -> dict:
+        """Cablea dependencias reales (LLM, asyncpg, Calendar) y corre el grafo de citas.
+
+        Lanza LLMNotConfigured si no hay clave: el run queda en error y no se responde nada.
+        """
+        from agents.citas import run_citas_agent
+        from agents.citas.llm import build_llm
+        from agents.citas.repository import PgCitasRepository
+        from core.config import get_settings
+        from services.calendar_service import CalendarService
+
+        return await run_citas_agent(
+            conversation=conversation, message=message, run_id=run_id, context=context,
+            llm=build_llm(get_settings()), repo=PgCitasRepository(_pool),
+            calendar_factory=CalendarService)
+
+    @staticmethod
     async def _build_context(workspace_id: str, conversation: dict) -> dict:
         """
         Construye el contexto estructurado que recibe el agente.
@@ -143,7 +152,7 @@ class AgentService:
                 workspace_id,
             )
             workspace = await db.fetchrow(
-                "SELECT name FROM workspaces WHERE id=$1", workspace_id
+                "SELECT name,timezone FROM workspaces WHERE id=$1", workspace_id
             )
 
             channel = None

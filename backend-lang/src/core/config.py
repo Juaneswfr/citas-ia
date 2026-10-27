@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     # ── Agente ─────────────────────────────────────────────────────────────
     graph_timeout: int = Field(default=90, alias="GRAPH_TIMEOUT")
+    # LLM del agente de citas. Sin AGENT_LLM_API_KEY el agente falla cerrado (run en error + alerta).
+    agent_llm_provider: str = Field(default="anthropic", alias="AGENT_LLM_PROVIDER")
+    agent_llm_model: str = Field(default="claude-sonnet-5-5", alias="AGENT_LLM_MODEL")
+    agent_llm_api_key: str = Field(default="", alias="AGENT_LLM_API_KEY")
 
     # ── Redis / Workers ────────────────────────────────────────────────────
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
