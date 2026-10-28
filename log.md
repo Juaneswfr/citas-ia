@@ -42,3 +42,41 @@
 
 **Actualizaciones a claude.md:**
 - Sin RLS (D-U6), PK surrogate aceptada (D-U5), estado del gate con la remota aplicada, riesgo de guards "owner" hasta T002.
+
+### [AGENTE: security] [FECHA: 2026-10-28 UTC]
+**Cambios:**
+- T002 (t_36af8fc3): `require_workspace_access("owner")` → `("workspace_owner")` en workspaces.py (invite_member, remove_member), services.py (deactivate_service, 2 usos) y billing.py (get_subscription). Textos: "Requiere rol workspace_owner." y cabecera de services.py.
+- Motivo: ROLE_HIERARCHY no contiene "owner"; el guard era inalcanzable salvo super_admin. security.py/auth.py sin tocar (T003/T004).
+- Verificación: grep sin literales "owner" sueltos en los 3 archivos; `PYTHONPATH=src .venv/bin/pytest -q` en backend-lang: 83 passed, 5 skipped, 0 failed.
+
+**Archivos modificados:** backend-lang/src/api/routes/workspaces.py, services.py, billing.py, log.md, claude.md, logs.md
+**Commit:** ver `git log` (feat(auth): T002 reemplazar rol owner por workspace_owner ...)
+
+**Actualizaciones a claude.md:**
+- Riesgo de guards "owner" resuelto; pendiente T003/T004.
+
+### [AGENTE: security] [FECHA: 2026-10-28 UTC]
+**Cambios:**
+- T004 (t_e4ed4773): `PATCH /workspaces/{id}` sigue con guard `manager`, pero `is_active` explícito solo lo admiten `super_admin` y `workspace_owner` (403 "Permisos insuficientes para esta operación." si no). `MemberInvite.member_role` documenta `workspace_owner`.
+- CORS explícito (FR-009): `CORS_ALLOWED_ORIGINS` (coma-separada, default = origen de `FRONTEND_URL`); `*` o entradas vacías abortan el arranque con error que nombra la variable. `main.py` usa esa lista, con métodos y cabeceras explícitos (Authorization, Content-Type, X-XSRF-TOKEN, X-Correlation-ID).
+- Rate limit (FR-008, D15) en `core/security.py`: `rate_limit_hit` (upsert de ventana fija sobre `rate_limits`, hits desde 1), `rate_limit_purge`, `enforce_login_rate_limit` (10/min por IP; al exceder, bloqueo de 15 min; 429 + Retry-After; BD caída → 503), `client_ip` (X-Real-IP solo con `TRUST_PROXY_HEADERS=true`; nunca X-Forwarded-For). `POST /auth/login` lo invoca antes de consultar usuario y bcrypt; log `auth.login.rate_limited` solo con ip.
+- `reminder_worker._reminder_loop` llama a `rate_limit_purge(24h)` en cada ciclo (errores solo se registran).
+- `pyproject.toml`: `[tool.pytest.ini_options] pythonpath = ["src"]` (sin él, pytest del venv del repo principal importaba el `src` del repo principal y no el del worktree).
+- Tests nuevos: tests/test_t004_rate_limit_cors_is_active.py (13). Suite backend-lang: 96 passed, 5 skipped, 0 failed.
+
+**Archivos modificados:** backend-lang/src/api/main.py, api/routes/auth.py, api/routes/workspaces.py, core/config.py, core/security.py, schemas/workspace.py, workers/reminder_worker.py, backend-lang/pyproject.toml, backend-lang/tests/test_t004_rate_limit_cors_is_active.py, log.md, logs.md, claude.md
+**Commit:** ver `git log` (feat(auth): T004 ...)
+
+**Actualizaciones a claude.md:**
+- Sección T004: decisiones (CORS, rate limit, trust_proxy_headers), sin adaptaciones de fixtures y pendientes (T010/T012, T034, T006).
+
+### [AGENTE: security] [FECHA: 2026-10-28 UTC]
+**Cambios:**
+- T004 corrección (revisión de seguridad): el bloqueo de login de 15 min era de ventana fija alineada al reloj (podía durar ~1 s). Ahora `enforce_login_rate_limit` inserta una fila `login:block:{ip}` con `window_start = now()` (ON CONFLICT DO NOTHING) al exceder 10/min, y antes de contar comprueba si existe una con `window_start > now() - 900 s` → 429 con `Retry-After = max(1, 900 - edad)`. Los intentos bloqueados no cuentan ni extienden el bloqueo. Límite por minuto sin cambios.
+- Tests: reescrito el de bloqueo y añadido `test_login_block_is_rolling_900s_from_trigger` (899 s → 429, 901 s → no bloqueado). Suite: 97 passed, 5 skipped.
+
+**Archivos modificados:** backend-lang/src/core/security.py, backend-lang/tests/test_t004_rate_limit_cors_is_active.py, log.md, logs.md, claude.md
+**Commit:** ver `git log` (fix(auth): T004 bloqueo de login de 15 min ...)
+
+**Actualizaciones a claude.md:**
+- Decisión de bloqueo rolling de 900 s desde el último disparo.

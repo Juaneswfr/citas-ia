@@ -147,6 +147,11 @@ async def _reminder_loop() -> None:
             await run_reminders()
         except Exception as e:
             log.error("[reminders] error en ciclo | err=%s", e, exc_info=True)
+        try:
+            from core.security import rate_limit_purge
+            await rate_limit_purge(24 * 3600)  # ventanas de rate_limits con más de 24 h
+        except Exception as e:
+            log.error("[rate_limits] purge falló | err=%s", type(e).__name__)
         await asyncio.sleep(30 * 60)  # 30 minutos
 
 

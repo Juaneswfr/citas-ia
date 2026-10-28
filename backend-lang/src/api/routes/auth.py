@@ -8,10 +8,13 @@ Seguridad (Principio XI):
 """
 import logging
 import urllib.parse
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from core.database import get_db
-from core.security import create_access_token, decode_token, get_current_user
+from core.security import (
+    client_ip, create_access_token, db_fetchrow, decode_token, enforce_login_rate_limit,
+    get_current_user,
+)
 from schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
 import asyncpg
@@ -19,6 +22,31 @@ from passlib.hash import bcrypt as bcrypt_ctx
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Membresía activa más antigua, determinista (FR-007); el caller añade el WHERE.
+_USER_SQL = """
+    SELECT u.id, u.email, u.password_hash, u.role, u.is_active,
+           wm.workspace_id, wm.member_role
+    FROM users u
+    LEFT JOIN LATERAL (
+        SELECT workspace_id, member_role FROM workspace_members
+        WHERE user_id = u.id AND status = 'active'
+        ORDER BY COALESCE(joined_at, created_at) ASC, id ASC
+        LIMIT 1
+    ) wm ON TRUE
+    """
+
+
+def _issue_token(row) -> tuple[str, str]:
+    workspace_id = row["workspace_id"] or ""
+    token = create_access_token({
+        "sub": row["id"],
+        "email": row["email"],
+        "role": row["role"],
+        "member_role": row["member_role"],
+        "workspace_id": workspace_id,
+    })
+    return token, workspace_id
 
 
 @router.post(
@@ -80,6 +108,7 @@ async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_d
         "sub": user_id,
         "email": body.email,
         "role": "workspace_owner",
+        "member_role": "workspace_owner",
         "workspace_id": workspace_id,
     })
 
@@ -92,41 +121,35 @@ async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_d
     response_model=TokenResponse,
     summary="Iniciar sesión con email y contraseña",
 )
-async def login(body: LoginRequest, db: asyncpg.Connection = Depends(get_db)):
-    row = await db.fetchrow(
-        """
-        SELECT u.id, u.email, u.password_hash, u.role, u.is_active,
-               wm.workspace_id
-        FROM users u
-        LEFT JOIN workspace_members wm
-            ON wm.user_id = u.id AND wm.status = 'active'
-        WHERE u.email = $1
-        LIMIT 1
-        """,
-        body.email,
-    )
+async def login(
+    body: LoginRequest, request: Request, db: asyncpg.Connection = Depends(get_db)
+):
+    await enforce_login_rate_limit(client_ip(request))  # antes de consultar usuario / bcrypt (FR-008)
+    row = await db.fetchrow(_USER_SQL + "WHERE u.email = $1", body.email)
 
     # No exponer si el email existe o no (Principio XI)
     invalid = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas."
     )
 
-    if not row or not row["password_hash"]:
-        raise invalid
-    if not bcrypt_ctx.verify(body.password, row["password_hash"]):
-        raise invalid
-    if not row["is_active"]:
+    if (
+        not row
+        or not row["password_hash"]
+        or not bcrypt_ctx.verify(body.password, row["password_hash"])
+        or not row["is_active"]
+    ):
+        log.warning("[auth] auth.login.failed")
         raise invalid
 
-    workspace_id = row["workspace_id"] or ""
-    token = create_access_token({
-        "sub": row["id"],
-        "email": row["email"],
-        "role": row["role"] or "viewer",
-        "workspace_id": workspace_id,
-    })
+    if row["workspace_id"] is None and row["role"] != "super_admin":
+        log.warning("[auth] auth.login.failed | user_id=%s | motivo=sin_membresia", row["id"])
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="tu cuenta no tiene negocio asignado",
+        )
 
-    log.info("[auth] login | user_id=%s", row["id"])
+    token, workspace_id = _issue_token(row)
+    log.info("[auth] auth.login.success | user_id=%s", row["id"])
     return TokenResponse(access_token=token, expires_in=3600, workspace_id=workspace_id)
 
 
@@ -136,24 +159,24 @@ async def login(body: LoginRequest, db: asyncpg.Connection = Depends(get_db)):
     summary="Renovar token — pasa el JWT actual en el body",
 )
 async def refresh(body: RefreshRequest):
-    """Valida el JWT existente y emite uno nuevo con la misma identidad."""
+    """Valida el JWT y emite uno nuevo con rol/workspace vigentes en BD (no los del token viejo)."""
     try:
         payload = decode_token(body.refresh_token)
     except HTTPException:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token de refresco inválido."
         )
-    token = create_access_token({
-        "sub": payload.get("sub"),
-        "email": payload.get("email"),
-        "role": payload.get("role"),
-        "workspace_id": payload.get("workspace_id"),
-    })
-    return TokenResponse(
-        access_token=token,
-        expires_in=3600,
-        workspace_id=payload.get("workspace_id", ""),
-    )
+    sub = payload.get("sub")
+    # BD caída → 503 (db_fetchrow), nunca 401: el front distingue "sesión inválida" de "BD caída"
+    row = await db_fetchrow(_USER_SQL + "WHERE u.id::text = $1", str(sub)) if sub else None
+    invalid = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión inválida")
+    if not row or not row["is_active"]:
+        raise invalid
+    if row["workspace_id"] is None and row["role"] != "super_admin":
+        raise invalid
+
+    token, workspace_id = _issue_token(row)
+    return TokenResponse(access_token=token, expires_in=3600, workspace_id=workspace_id)
 
 
 @router.get("/me", summary="Datos del usuario autenticado actual")
@@ -162,6 +185,7 @@ async def me(current_user: dict = Depends(get_current_user)):
         "user_id": current_user.get("sub"),
         "email": current_user.get("email"),
         "role": current_user.get("role"),
+        "member_role": current_user.get("member_role"),
         "workspace_id": current_user.get("workspace_id"),
     }
 

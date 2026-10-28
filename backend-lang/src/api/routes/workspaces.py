@@ -74,13 +74,21 @@ async def get_workspace(
     "/{workspace_id}",
     response_model=WorkspaceOut,
     summary="Actualizar configuración del workspace",
-    dependencies=[Depends(require_workspace_access("manager"))],
 )
 async def update_workspace(
     workspace_id: str,
     body: WorkspaceUpdate,
+    current_user: dict = Depends(require_workspace_access("manager")),
     db: asyncpg.Connection = Depends(get_db),
 ):
+    # FR-005: is_active solo para workspace_owner y super_admin
+    if body.is_active is not None and not (
+        current_user.get("role") == "super_admin"
+        or current_user.get("member_role") == "workspace_owner"
+    ):
+        raise HTTPException(
+            status_code=403, detail="Permisos insuficientes para esta operación."
+        )
     data = body.model_dump(exclude_none=True)
     if not data:
         raise HTTPException(status_code=422, detail="Sin campos para actualizar.")
@@ -122,7 +130,7 @@ async def list_members(
     response_model=MemberOut,
     status_code=status.HTTP_201_CREATED,
     summary="Invitar a un nuevo miembro",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def invite_member(
     workspace_id: str,
@@ -151,8 +159,8 @@ async def invite_member(
 @router.delete(
     "/{workspace_id}/members/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Remover miembro del workspace. Requiere rol owner.",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    summary="Remover miembro del workspace. Requiere rol workspace_owner.",
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def remove_member(
     workspace_id: str,
