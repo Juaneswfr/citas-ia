@@ -45,12 +45,6 @@
   - 006_convergencia_remota.sql y 007_roles_rate_limits.sql sin RLS (D-U6); aplicadas en la remota en una transacción, gate PASS
   - member_role 'owner' → 'workspace_owner'; tabla rate_limits(key, window_start, hits)
   - Riesgo hasta T002: guards require_workspace_access("owner") ya no coinciden con el rol migrado
-## 2026-10-28 — T002 guards owner → workspace_owner (t_36af8fc3, security)
-  - workspaces.py, services.py y billing.py: require_workspace_access("workspace_owner"); riesgo anterior resuelto
-  - pytest backend-lang: 83 passed, 5 skipped
-## 2026-10-28 — T004 is_active, CORS y rate limit de login (t_e4ed4773, security)
-  - PATCH /workspaces: is_active solo workspace_owner/super_admin; CORS por CORS_ALLOWED_ORIGINS (sin "*"); rate limit de login 10/min + bloqueo 15 min sobre rate_limits (503 si la BD falla)
-  - TRUST_PROXY_HEADERS (default false) para leer X-Real-IP; purga de rate_limits en el reminder worker
-  - pytest backend-lang: 96 passed, 5 skipped
-  - No migré: rate limit de register (T010/T012) ni de webhooks (T034)
-  - Corrección: bloqueo de login rolling de 900 s desde el disparo (fila login:block con window_start = now()), no ventana alineada; pytest 97 passed, 5 skipped
+## 2026-10-28 — T009 cuenta (t_37460f88, dba)
+  - 008_auth_tokens_trial.sql: users.email_verified_at, auth_tokens (solo hash), subscriptions.status con 'trial', plan Trial, backfill trial, slug único si falta
+  - Validada solo en Postgres efímero (no aplicada en remota); DOWN probado

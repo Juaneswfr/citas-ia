@@ -42,15 +42,27 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
 - Copia fiel (pg_dump 17.11 de la remota restaurado sin stubs) + 006 + 007 en una transacción: PASS; solo diferencias permitidas.
 - **Remota (PG 17.11): aplicada** en una transacción (006 + 007, COMMIT) y verificada por catálogo en solo lectura: PASS, catálogo
   idéntico a la copia ensayada. Backup previo: `scratch/t001/remote_backup_20261028T183712Z.dump` (sha256 51368880…910b).
-- T002 hecha (security): los guards de workspaces.py, services.py y billing.py usan `workspace_owner`; suite backend-lang 83 passed, 5 skipped.
-- Pendiente inmediato: T003/T004 (security.py / lógica de `require_workspace_access`).
+- Pendiente inmediato: T002 (los guards `require_workspace_access("owner")` en workspaces.py, services.py y billing.py ya no
+  coinciden con el rol migrado `workspace_owner` hasta que T002 los cambie).
 
-## T004 — is_active, CORS explícito y rate limit de login
-- **is_active (FR-005):** el guard de `PATCH /workspaces/{id}` sigue siendo `manager` (matriz fila 6); si el body trae `is_active` (no None) el handler exige `super_admin` o `member_role == workspace_owner` (fila 7), si no 403 con el texto de `_insufficient`. 404 sin cambios.
-- **CORS (FR-009):** `CORS_ALLOWED_ORIGINS` coma-separada → `Settings.cors_allowed_origins`; default solo `FRONTEND_URL`. `*` o entrada vacía → falla al cargar Settings (mensaje nombra la variable). `allow_credentials=True`; métodos y cabeceras explícitos (Authorization, Content-Type, X-XSRF-TOKEN, X-Correlation-ID); si el front usa otra cabecera personalizada hay que añadirla. `main.py` lee `get_settings()` al importarse.
-- **Rate limit (FR-008, D15):** `rate_limit_hit` (ventana fija, upsert con `hits = 1` en VALUES → cuenta desde 1; ver nota de T001) sobre `rate_limits`, sin migraciones ni RLS. `enforce_login_rate_limit`: primero busca una fila `login:block:{ip}` con `window_start > now() - 900 s` (solo lectura) → 429 con `Retry-After = max(1, 900 - edad)`; si no hay, cuenta `login:min:{ip}` (ventana fija alineada de 60 s, FR-008) y el 11.º intento inserta la fila de bloqueo con `window_start = now()` (`ON CONFLICT DO NOTHING`) y responde 429 + Retry-After 900. Se ejecuta antes de consultar usuario/bcrypt; cada intento no bloqueado cuenta. Cualquier fallo de BD → 503 (fail-closed).
-- **Bloqueo rolling de 900 s (corrección tras revisión):** la versión inicial usaba ventana fija alineada al reloj de 900 s y el bloqueo podía durar de ~1 s a 15 min. Ahora dura exactamente 900 s desde el último disparo; los intentos bloqueados se rechazan antes de contar, así que no cuentan ni lo extienden. El test que dependía de la ventana alineada (`del pool.hits[...]` + 429) se reescribió con el doble de la fila de bloqueo por edad (899 s → 429, 901 s → no bloqueado) sin quitar sus aserciones. `rate_limit_purge` (24 h) también limpia estas filas.
-- **Limpieza:** `rate_limit_purge(older_than_seconds)` la llama `_reminder_loop` cada 30 min con 24 h; nunca el request de login.
-- **trust_proxy_headers:** `nginx/nginx.conf` setea `X-Real-IP $remote_addr` y es el único ingress en docker-compose (backend sin puerto publicado), así que `TRUST_PROXY_HEADERS=true` es seguro en ese despliegue. Default False: sin proxy confiable un cliente podría falsificar X-Real-IP y evadir el límite. Nunca se lee X-Forwarded-For.
-- **Fixtures:** ningún test existente hacía login por la ruta, así que no se adaptó ninguna fixture ni se tocó ninguna aserción. Único cambio de infraestructura de tests: `pythonpath = ["src"]` en pyproject (pytest del venv principal importaba el `src` del repo principal).
-- **Pendientes:** rate limit de `/auth/register` (T010/T012, reutiliza `rate_limit_hit`); rate limit de webhooks (T034); tests de matriz y rate limit end-to-end (T006); aplicar `TRUST_PROXY_HEADERS=true` y `CORS_ALLOWED_ORIGINS` en el .env de producción.
+## T009 — Cuenta: 008_auth_tokens_trial.sql (dba, 2026-10-28)
+
+### Decisiones
+- **Nombre 008** (no 007: 007 ya es `007_roles_rate_limits.sql` de T001). Sin BEGIN/COMMIT, idempotente.
+- **Sin RLS** en auth_tokens ni en ningún cambio (D-U6).
+- **workspaces.slug ya es UNIQUE desde 001** (`workspaces_slug_key`): 008 solo comprueba por catálogo (pg_index, `indnatts=1`
+  e `indkey[0]` = attnum de slug; `indkey` es int2vector base 0, comparar como array no funciona) y crea `workspaces_slug_uq`
+  solo si falta. En la BD canónica es no-op. `idx_workspaces_slug` (no único) se conserva.
+- **Plan Trial:** name='Trial', price_cop=0, billing_interval='one_time', is_active=TRUE; INSERT ... WHERE NOT EXISTS.
+- **Backfill (único mecanismo, US-013(b)):** subscriptions 'trial' con el plan Trial para cada workspace sin fila;
+  current_period_start NULL (FR-106: fallback a workspaces.created_at). Filas existentes intactas.
+- **subscriptions.status:** DROP por catálogo de los CHECK que mencionan status → ADD `subscriptions_status_check` con 'trial'.
+- **users.email_verified_at** TIMESTAMPTZ NULL. CHECK de users.role sin cambios.
+- **auth_tokens:** solo `token_hash` (SHA-256 hex, UNIQUE), nunca el token en claro; un solo uso vía `used_at`;
+  ON DELETE CASCADE desde users; índice (user_id, purpose).
+- **DOWN** (comentado al final de 008, probado): cambia datos a propósito trial→pending_payment; el plan Trial se borra
+  solo si no está referenciado, si no queda is_active=FALSE.
+
+### Deudas / abiertas
+- La duración del trial (14 días) no tiene columna en billing_plans; la administra super_admin (FR-106) — falta decidir dónde vive.
+- 008 **no aplicada en la remota**: solo validada en PG 17.10 efímero; la aplicación remota la autoriza el usuario.
