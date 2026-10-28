@@ -5,7 +5,7 @@ FROM oven/bun:1-alpine AS build
 WORKDIR /app
 
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # .env debe existir en el server (VITE_* se inlinan en el bundle del cliente)
 COPY . .
