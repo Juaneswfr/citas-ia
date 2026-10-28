@@ -347,7 +347,7 @@ Como **dueño**, quiero que el panel muestre solo datos reales de mi negocio y s
 - **FR-049**: Firma ausente o inválida DEBE rechazarse sin escribir filas: **403** en Meta (se conserva `webhooks.py:122`) y **401** en Kapso (se conserva `webhooks.py:288`). Mensajes no de texto DEBEN responderse con "por ahora solo leo texto"; `GET /webhooks/whatsapp` sin `hub.challenge` → 400; con `WHATSAPP_APP_SECRET` (o el secreto de Kapso) vacío → 503 sin procesar; `phone_number_id` sin canal activo → 200 sin procesar y log de advertencia (sin escribir filas).
 - **FR-050**: El envío por canal Meta DEBE usar el token cifrado del canal (`decrypt_token`), con el token global solo como respaldo (auditoria-git).
 - **FR-051**: `docker-compose.yml` DEBE montar el directorio de build del front que confirme el usuario (**bloqueado por la pregunta abierta 9**: `./front/dist` según auditoria-git frente a `front-app/dist` desplegado por FTP; no se cambia el montaje sin esa respuesta) y el backend DEBE fijar `bcrypt>=4.3,<5` en `pyproject.toml` y `requirements.txt` (auditoria-git).
-- **FR-052**: DEBE existir un arnés de pruebas de estrés (`backend-lang/tests/stress/`) con preflight de cero tráfico real, según `pruebas-estres.md` §4 (ejecutarlo requiere autorización del usuario). Sin autorización, las fases 3 a 5 cierran con el **gate alternativo** de tests funcionales (ver "Gate alternativo sin arnés").
+- **FR-052**: DEBE existir un arnés de pruebas de estrés (`backend-lang/tests/stress/`) con preflight de cero tráfico real, según `pruebas-estres.md` §4. **Ejecución autorizada (D-U2)**: corre en local con PostgreSQL efímero y tráfico simulado, sin mensajes reales a WhatsApp/Meta/Kapso ni llamadas reales a Google Calendar, y las fases 3 a 5 cierran con él. El **gate alternativo** de tests funcionales (ver "Gate alternativo sin arnés") queda solo como respaldo si el arnés no puede correr.
 
 **Reserva por WhatsApp (US-008)**
 - **FR-053**: `consultar_disponibilidad` y `create_appointment` DEBEN aplicar horario laboral, `availability_blocks`, `buffer_minutes`, anticipación mínima (S4) y free/busy de Google.
@@ -503,7 +503,7 @@ Fuera de la matriz (no dependen del rol): `POST /auth/register`, `POST /auth/log
 
 ### Gate alternativo sin arnés
 
-Si el usuario no autoriza el arnés de estrés (FR-052), las fases 3 a 5 cierran con tests funcionales contra una BD PostgreSQL de prueba y dobles de Kapso, Meta y Google (sin tráfico real):
+**Respaldo, no criterio por defecto (D-U2)**: el arnés está autorizado y es el gate de las fases 3 a 5. Este gate solo aplica si el arnés no puede correr (p. ej., ni Docker ni PostgreSQL local disponibles, o preflight de cero tráfico real fallido); el motivo se anota en `pruebas-estres-resultados.md`. En ese caso las fases 3 a 5 cierran con tests funcionales contra una BD PostgreSQL de prueba y dobles de Kapso, Meta y Google (sin tráfico real):
 
 | SC | Test funcional que lo sustituye | Tarea que lo crea / lo ejecuta |
 |---|---|---|
@@ -514,7 +514,7 @@ Si el usuario no autoriza el arnés de estrés (FR-052), las fases 3 a 5 cierran
 | SC-009 | Doble de Google con 5 s de latencia → `GET /` responde mientras tanto (Google en hilo) | T042 / T043 |
 | SC-005 | 2 instancias del ciclo del worker sobre 200 citas → 0 duplicados y 100 % de cobertura | T049 / T050 |
 
-SC-007 y SC-008 (latencias p95/p99) no tienen sustituto funcional: sin arnés quedan **no medidos** y se registran como riesgo aceptado del piloto en `pruebas-estres-resultados.md`.
+SC-007 y SC-008 (latencias p95/p99) no tienen sustituto funcional: si se usa este respaldo, quedan **no medidos** y se registran como riesgo aceptado del piloto en `pruebas-estres-resultados.md`.
 
 ---
 
@@ -531,7 +531,18 @@ SC-007 y SC-008 (latencias p95/p99) no tienen sustituto funcional: sin arnés qu
 - Embedded Signup de Meta como camino principal (B3.2 queda como legado oculto si S1 se confirma).
 - Reemplazar `services/appointment_agent.py` por el diseño LangGraph del commit `167cc22` (descartado en auditoria-git salvo decisión contraria).
 - Revisión de contenido de la landing (precios, textos, claims) y comparación visual fina con `html/hilo/*`.
-- Rotación de las credenciales expuestas en el historial de git: `.mcp.json` (commit `4d462a7`) y la URL de PostgreSQL por defecto de `front/drizzle.config.ts` (valor `***`). Quitarla del código sí está en alcance (FR-105); rotarla es tarea operativa del usuario (pregunta abierta 8).
+- Rotación de las credenciales expuestas en el historial de git: `.mcp.json` (commit `4d462a7`) y la URL de PostgreSQL por defecto de `front/drizzle.config.ts` (valor `***`). Quitarla del código sí está en alcance (FR-105, cumplido en `94f8e44`, D-U4); rotarla es tarea operativa del usuario (pregunta abierta 8). Reescribir el historial del repo público queda fuera de alcance (D-U3).
+
+---
+
+## Decisiones del usuario (2026-10-28)
+
+Vigentes; prevalecen sobre cualquier texto anterior de esta spec, del plan o de las tareas que las contradiga.
+
+- **D-U1 — Gate R1: convergencia de la BD remota (opción a)**. El gate de T001 encontró que el esquema remoto no coincide con `backend-lang/migrations/001..005`. No se reconstruye la BD ni se borran datos: T001 aplica primero `backend-lang/migrations/006_convergencia_remota.sql`, idempotente (`IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`), que agrega lo que falta: tabla `kapso_webhook_events` (003), constraint `kapso_customers_setup_status_check` (004), índices únicos `channels_phone_number_id_uq` y `channels_webhook_token_uq` (004/005), defaults alineados y políticas RLS mínimas de las tablas existentes. Roles y `rate_limits` pasan a `007_roles_rate_limits.sql`; las siguientes se renumeran hasta `015_billing.sql`. Reglas: (1) todo cambio de CHECK va en orden DROP → UPDATE → ADD dentro de una transacción (UPDATE primero falla); (2) secuencia obligatoria: validar 001..005 + convergencia en PostgreSQL efímero → backup lógico (`pg_dump`) de la remota → aplicación en transacción con verificación de catálogo; (3) `rate_limits` (T001), `auth_tokens` (T009) y `oauth_states` (T023) se crean en sus tareas con RLS. **Deuda documentada** (no se borra): columnas extra de Alembic `appointments.reminder_sent`, `appointments.reminder_1h_sent`, `appointments.reminder_24h_sent`, `users.password_hash` y `kapso_customers.id`. Decisión posterior: `reminder_24h_sent` se reutiliza como columna de FR-076 (T048, `ADD COLUMN IF NOT EXISTS`); `reminder_sent` y `reminder_1h_sent` quedan sin uso y se evalúa su retiro tras el piloto; `users.password_hash` se contrasta con la columna de contraseña que usa `auth.py` y, si es un duplicado, se retira tras el piloto con migración propia; `kapso_customers.id` se conserva mientras no choque con la clave de 004 (se revisa en la misma migración de limpieza). Ninguna limpieza se hace sin nueva decisión del usuario.
+- **D-U2 — Arnés de estrés autorizado (FR-052)**. Las tareas de estrés y los gates "con arnés" se ejecutan (T036, T037, T043, T050). Ejecución local con PostgreSQL efímero y tráfico simulado, preflight de cero tráfico real, sin mensajes reales a WhatsApp/Meta/Kapso y sin llamadas reales a Google Calendar. Si Docker no está disponible en WSL, se usa PostgreSQL local. El "Gate alternativo sin arnés" queda como respaldo.
+- **D-U3 — Historial**: no se reescribe el historial del repositorio público. La clave de Kapso ya la rotó el usuario. Las credenciales que siguen en el historial se mitigan solo por rotación (pregunta abierta 8 para la contraseña de PostgreSQL; plan R4).
+- **D-U4 — Commit `94f8e44`** (quita la credencial por defecto de `front/drizzle.config.ts`): aceptado. FR-105 queda **cumplido** (T005); T008 lo revisa.
 
 ---
 
@@ -546,7 +557,7 @@ Etiquetas: `[NEGOCIO]` = decisión comercial o de producto; `[USUARIO]` = decisi
 5. **[NEGOCIO] Cobro y suspensión (S8)**: ¿cobro manual por transferencia/Nequi y suspensión tras 10 días en `pending_payment`?
 6. **[NEGOCIO] Perfil de carga del lanzamiento**: ¿200 workspaces, 20 msg/s de pico y 2 000 citas/día? Todos los SLO de SC-005…SC-012 dependen de este número.
 7. **[USUARIO] Arquitectura del agente**: ¿se mantiene `services/appointment_agent.py` (master) o se prefiere el diseño LangGraph de `167cc22`? (auditoria-git, decisión 3a).
-8. **[USUARIO] Rotación de credenciales expuestas**: ¿cuándo se rotan la credencial del historial de `.mcp.json` (commit `4d462a7`) y la contraseña de PostgreSQL que `front/drizzle.config.ts` trae como valor por defecto (`***`)? Ese archivo está versionado en `f0e97b0`, así que la contraseña queda en el historial aunque T005 la quite del código (FR-105). ¿Esa contraseña es la de la BD de producción?
+8. **[USUARIO] Rotación de credenciales expuestas**: ¿cuándo se rotan la credencial del historial de `.mcp.json` (commit `4d462a7`) y la contraseña de PostgreSQL que `front/drizzle.config.ts` trae como valor por defecto (`***`)? Ese archivo está versionado en `f0e97b0`, así que la contraseña queda en el historial aunque T005 la quitó del código en `94f8e44` (FR-105) y el historial no se reescribe (D-U3). ¿Esa contraseña es la de la BD de producción? (La clave de Kapso ya está rotada, D-U3.)
 9. **[USUARIO] Directorio de despliegue del front**: ¿`docker-compose.yml` debe montar `./front/dist` (auditoria-git) o se mantiene `front-app/dist`, que se despliega por FTP (`docker-compose.yml:4,12`; `front-app/` tiene `.git`, `Dockerfile` y `.env` propios)? Bloquea la parte de montaje de FR-051 y T036.
 10. **[NEGOCIO] Unidad de cobro ("conversación facturable")**: ¿qué se cuenta como una conversación facturable: la conversación de 24 h que factura Meta, una sesión de 24 h desde el primer inbound del cliente, o un hilo (`conversations`) con al menos un inbound en el mes? Bloquea FR-088, FR-089, la parte de consumo de FR-091 y el cálculo del excedente (pregunta 4).
 
@@ -556,11 +567,11 @@ Etiquetas: `[NEGOCIO]` = decisión comercial o de producto; `[USUARIO]` = decisi
 - **Cerrado** — `member_role='workspace_owner'` viola el CHECK (`001:51` solo admite `owner|manager|staff|viewer`, y `auth.py` inserta `workspace_owner`): T001 lo altera. `viewer` es un `member_role`, no un `users.role`, así que no necesita caber en el CHECK de `users`. `subscriptions.status` no admite `trial` (`001:270`): T009 lo altera.
 - **Cerrado** — El webhook por número de Kapso se provisiona con la URL del front (`webhooks.py:334`): FR-027.
 - **Cerrado** — `GET /calendars` da 500 con filas creadas por OAuth (`connected_by_user_id: str` obligatorio en `schemas/channel.py:56`): FR-033.
-- Si la BD de producción coincide con `backend-lang/migrations/001..005` (no se inspeccionó; T001 lo compara con `information_schema` antes de aplicar 006).
-- Conteo de tablas: CLAUDE.md dice 13 tablas aplicadas y RLS activo; migrations/ suma 19 (17 en 001 + 003 + 004). Pendiente de verificación en la BD real (T001 detiene la migración ante diferencia) y RLS en rate_limits, auth_tokens, oauth_states.
-- Existencia de `reminder_24h_sent`/`reminder_2h_sent`, `google_notification_channel_id` y `next_sync_token` en la BD real (H12).
+- **Cerrado** — La BD de producción **no** coincide con `backend-lang/migrations/001..005` (gate R1 de T001). Se resuelve por convergencia (D-U1): `006_convergencia_remota.sql` y verificación de catálogo como gate de T001.
+- Conteo de tablas y RLS: CLAUDE.md dice 13 tablas aplicadas y RLS activo; migrations/ suma 19. La diferencia la cubre la convergencia (D-U1); la verificación de catálogo de T001 confirma tablas y RLS, y `rate_limits`, `auth_tokens` y `oauth_states` nacen con RLS (T001, T009, T023).
+- Existencia de `reminder_2h_sent` (`reminder_24h_sent` ya existe en la remota como columna extra de Alembic, D-U1), `google_notification_channel_id` y `next_sync_token` en la BD real (H12).
 - **Cerrado** — Colisión de slug en `/auth/register`: `slug` es `UNIQUE` (`001_initial_schema.sql:33`) y `auth.py:58-67` no captura la colisión → 500 probable (inferido por lectura, no ejecutado): FR-018 y T010.
-- Versión de PostgreSQL de producción (SUPUESTO 15) y uso de Docker sin root para el arnés de estrés.
+- Versión de PostgreSQL de producción (SUPUESTO 15; el PostgreSQL efímero de D-U1 y D-U2 debe usar la misma versión mayor) y disponibilidad de Docker en WSL para el arnés (si no, PostgreSQL local, D-U2).
 - Contenido de los tests del respaldo `wip-untracked.tgz` (no se pudo leer, auditoria-git).
 - **Cerrado** — `front/drizzle.config.ts` está versionado (`git ls-files` en `f0e97b0`): FR-105 y T005; rotación en la pregunta abierta 8.
 - **Insumo a corregir** — `pruebas-estres.md` §6 (tabla de severidad, fila BLOQUEANTE) dice "E2 (413/401 en Meta y Kapso)". Según §E2 y FR-049 debe decir "413/403 en Meta, 413/401 en Kapso". No se edita aquí porque es un insumo; manda FR-049.

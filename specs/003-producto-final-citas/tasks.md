@@ -3,30 +3,30 @@
 **Feature**: `003-producto-final-citas` | **Branch**: master | **Fecha**: 2026-10-28
 **Input**: [plan.md](./plan.md), [spec.md](./spec.md) y los 5 insumos de esta carpeta.
 
-**Leyenda**: `[P]` = puede correr en paralelo con otras tareas cuyas dependencias ya estén cumplidas y no comparta archivos con ellas. `(nuevo)` = archivo a crear; su carpeta existe en `f0e97b0`. `(solo ejecución)` / `(solo lectura)` = el reviewer lo ejecuta o lo lee, no lo edita. Orden de capas por historia: dba → security → backend → frontend → reviewer (excepciones en plan.md). Esquema canónico: `backend-lang/migrations/` (plan D14); ninguna tarea edita `front/drizzle/` ni `front/src/db/schema.ts` (T005 edita solo `front/drizzle.config.ts`, por seguridad). Los tests los crea la última tarea backend/security de cada historia; el reviewer no crea código ni tests. El detalle técnico de cada tarea está en `plan.md` (decisiones D1–D17) y en los FR que cubre (tabla final).
+**Leyenda**: `[P]` = puede correr en paralelo con otras tareas cuyas dependencias ya estén cumplidas y no comparta archivos con ellas. `(nuevo)` = archivo a crear; su carpeta existe en `f0e97b0`. `(solo ejecución)` / `(solo lectura)` = el reviewer lo ejecuta o lo lee, no lo edita. Orden de capas por historia: dba → security → backend → frontend → reviewer (excepciones en plan.md). Esquema canónico: `backend-lang/migrations/` (plan D14); ninguna tarea edita `front/drizzle/` ni `front/src/db/schema.ts` (T005 edita solo `front/drizzle.config.ts`, por seguridad). Los tests los crea la última tarea backend/security de cada historia; el reviewer no crea código ni tests. El detalle técnico de cada tarea está en `plan.md` (decisiones D1–D17) y en los FR que cubre (tabla final). Decisiones del usuario del 2026-10-28 (D-U1…D-U4, spec): T001 hace la convergencia remota antes de roles/rate_limits (migraciones renumeradas 006…015); el arnés de estrés está autorizado (T036, T037, T043, T050); T005 está cumplida en `94f8e44`. Ninguna tarea queda marcada `[B]` por estas decisiones; siguen bloqueadas solo las partes que dependen de las preguntas abiertas 4, 9 y 10.
 
 ---
 
 ## Fase 1 — Seguridad y esquema
 
-## T001 — Esquema canónico en migrations: CHECK de member_role con workspace_owner y tabla rate_limits
+## T001 — Convergencia remota (006) + roles y rate_limits (007): CHECK de member_role con workspace_owner y tabla rate_limits
 - **Agente:** dba
 - **Depende de:** —
 - **Paralelo:** No
 - **Historia:** US-001
-- **Archivos:** backend-lang/migrations/006_roles_rate_limits.sql (nuevo), backend-lang/migrations/001_initial_schema.sql (solo lectura), backend-lang/migrations/003_kapso_webhook_events.sql (solo lectura), backend-lang/migrations/004_kapso_onboarding.sql (solo lectura)
-- **Alcance:** (1) Antes de migrar, comparar `information_schema`/`pg_constraint` de la BD destino con 001..005 (plan R1). **Condición de parada:** si el esquema real difiere del canónico (tablas, columnas o CHECK; CLAUDE.md dice 13 tablas y migrations/ suma 19), NO se aplica 006: se detiene la migración y se reporta la diferencia (no basta con documentarla). Se registra también el estado de RLS de las tablas existentes y el pendiente de RLS en `rate_limits`, `auth_tokens` y `oauth_states`. (2) `UPDATE workspace_members SET member_role='workspace_owner' WHERE member_role='owner'`, luego `DROP CONSTRAINT` + `ADD CONSTRAINT … CHECK (member_role IN ('workspace_owner','manager','staff','viewer'))`. (3) Crear `rate_limits(key, window_start, hits)` (plan D15). Tablas que solo existen en el esquema canónico y faltan en drizzle (confirman D14, no se tocan aquí): `agent_runs`, `tool_calls`, `agent_alerts` (se migra en T039), `kapso_webhook_events`, `kapso_customers`. Tablas que faltan en el esquema canónico y crean otras tareas: `auth_tokens` (T009), `oauth_states` (T023).
+- **Archivos:** backend-lang/migrations/006_convergencia_remota.sql (nuevo), backend-lang/migrations/007_roles_rate_limits.sql (nuevo), backend-lang/migrations/001_initial_schema.sql (solo lectura), backend-lang/migrations/003_kapso_webhook_events.sql (solo lectura), backend-lang/migrations/004_kapso_onboarding.sql (solo lectura), backend-lang/migrations/005_kapso_number_webhooks.sql (solo lectura)
+- **Alcance (decisión D-U1 de la spec, opción a: convergencia, sin reconstruir ni borrar datos):** (1) **`006_convergencia_remota.sql`**, idempotente (`CREATE TABLE/INDEX IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT`, `DROP POLICY IF EXISTS` + `CREATE POLICY`), agrega a la BD remota lo que le falta frente a 001..005 según el reporte del gate R1: tabla `kapso_webhook_events` (003), constraint `kapso_customers_setup_status_check` (004), índices únicos `channels_phone_number_id_uq` y `channels_webhook_token_uq` (004/005), defaults alineados con 001..005 y las políticas RLS mínimas de las tablas existentes. **No borra** las columnas extra de Alembic (`appointments.reminder_sent`, `reminder_1h_sent`, `reminder_24h_sent`, `users.password_hash`, `kapso_customers.id`): quedan como deuda documentada (spec, D-U1). (2) **`007_roles_rate_limits.sql`**: en una sola transacción y en este orden obligatorio, `DROP CONSTRAINT IF EXISTS` del CHECK de `member_role` → `UPDATE workspace_members SET member_role='workspace_owner' WHERE member_role='owner'` → `ADD CONSTRAINT … CHECK (member_role IN ('workspace_owner','manager','staff','viewer'))` (el orden UPDATE primero falla contra el CHECK actual). Crear `rate_limits(key, window_start, hits)` con RLS (plan D15). (3) **Secuencia obligatoria de aplicación**: (a) validar en un PostgreSQL efímero 001..005 + 006 + 007, y además aplicar 006 dos veces para probar la idempotencia; (b) backup lógico previo de la remota (`pg_dump`, sin imprimir la cadena de conexión) y aplicación de 006 y 007 en transacción; (c) `auth_tokens` (T009) y `oauth_states` (T023) se crean en sus tareas, con RLS. **Gate de verificación de T001 (condición de parada):** tras aplicar, una consulta de catálogo (`information_schema`, `pg_constraint`, `pg_indexes`, `pg_policies`) confirma en la remota la tabla, el constraint, los dos índices únicos, los defaults, RLS activo en las tablas existentes y en `rate_limits`, y el CHECK nuevo de `member_role` con 0 filas `owner`. Cualquier diferencia restante distinta de las columnas extra de Alembic → no se cierra T001 y no arrancan T002–T004/T009; se revierte (`ROLLBACK` o restauración del backup) y se reporta. Tablas que solo existen en el esquema canónico y faltan en drizzle (confirman D14, no se tocan aquí): `agent_runs`, `tool_calls`, `agent_alerts` (se migra en T039), `kapso_webhook_events`, `kapso_customers`. Tablas que faltan en el esquema canónico y crean otras tareas: `auth_tokens` (T009), `oauth_states` (T023).
 
 ## T002 — Reemplazar el rol "owner" por workspace_owner en 4 guards
 - **Agente:** security
-- **Depende de:** T001
+- **Depende de:** T001 (gate de convergencia aprobado)
 - **Paralelo:** Sí [P]
 - **Historia:** US-001
 - **Archivos:** backend-lang/src/api/routes/workspaces.py, backend-lang/src/api/routes/services.py, backend-lang/src/api/routes/billing.py
 
 ## T003 — JWT con member_role, login determinista, 403 sin membresías y refresh/membresía contra BD (fail-closed 503)
 - **Agente:** security
-- **Depende de:** T001
+- **Depende de:** T001 (gate de convergencia aprobado)
 - **Paralelo:** Sí [P]
 - **Historia:** US-001
 - **Archivos:** backend-lang/src/core/security.py, backend-lang/src/api/routes/auth.py
@@ -34,7 +34,7 @@
 
 ## T004 — is_active solo owner, CORS explícito y rate limit de login sobre rate_limits
 - **Agente:** security
-- **Depende de:** T002, T003
+- **Depende de:** T002, T003 (y, por ellas, T001 con el gate de convergencia aprobado: usa `rate_limits` de `007_roles_rate_limits.sql`)
 - **Paralelo:** No
 - **Historia:** US-001
 - **Archivos:** backend-lang/src/api/routes/workspaces.py, backend-lang/src/schemas/workspace.py, backend-lang/src/api/main.py, backend-lang/src/api/routes/auth.py, backend-lang/src/core/security.py
@@ -45,7 +45,8 @@
 - **Paralelo:** Sí [P]
 - **Historia:** US-001
 - **Archivos:** front/drizzle.config.ts
-- **Alcance:** FR-105. El archivo está versionado en `f0e97b0` y trae como respaldo una URL de PostgreSQL con usuario y contraseña (`***`; no se copia en ningún documento, log ni commit). Leer solo `process.env.DATABASE_URL` y lanzar un error explícito si falta. Comprobar con `git grep` que ningún otro archivo versionado trae URLs de BD con credenciales y anotar el resultado (sin valores). La rotación de la credencial no es parte de esta tarea: es la pregunta abierta 8 de la spec.
+- **Estado:** **cumplida** en el commit `94f8e44` de `master` (decisión D-U4 de la spec). Queda pendiente solo la revisión de T008, que lee el archivo en ese commit; el `git grep` del alcance se anota allí si no quedó registrado.
+- **Alcance:** FR-105. El archivo está versionado en `f0e97b0` y trae como respaldo una URL de PostgreSQL con usuario y contraseña (`***`; no se copia en ningún documento, log ni commit). Leer solo `process.env.DATABASE_URL` y lanzar un error explícito si falta. Comprobar con `git grep` que ningún otro archivo versionado trae URLs de BD con credenciales y anotar el resultado (sin valores). La rotación de la credencial no es parte de esta tarea (pregunta abierta 8 de la spec; la clave de Kapso ya la rotó el usuario y el historial no se reescribe, D-U3).
 
 ## T006 — Equipo (listar, invitar, remover), POST /workspaces/ con membresía y tests de roles, login sin membresía y rate limit
 - **Agente:** backend
@@ -75,8 +76,8 @@
 - **Depende de:** T001
 - **Paralelo:** No
 - **Historia:** US-002
-- **Archivos:** backend-lang/migrations/007_auth_tokens_trial.sql (nuevo)
-- **Alcance:** `DROP CONSTRAINT` + `ADD CONSTRAINT … CHECK (status IN ('trial','active','pending_payment','suspended','cancelled','expired'))` en `subscriptions`; plan semilla `Trial` (precio 0) en `billing_plans`; `trial` para cada workspace sin fila en `subscriptions` (único mecanismo de backfill, US-013(b)); `users.email_verified_at`; tabla `auth_tokens`; índice único de `workspaces.slug` si falta.
+- **Archivos:** backend-lang/migrations/008_auth_tokens_trial.sql (nuevo)
+- **Alcance:** `DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT … CHECK (status IN ('trial','active','pending_payment','suspended','cancelled','expired'))` en `subscriptions`; plan semilla `Trial` (precio 0) en `billing_plans`; `trial` para cada workspace sin fila en `subscriptions` (único mecanismo de backfill, US-013(b)); `users.email_verified_at`; tabla `auth_tokens` con RLS (D-U1); índice único de `workspaces.slug` si falta.
 
 ## T010 — Registro transaccional con trial, slug alternativo, 400 genérico (enumeración aceptada, D16) y 503 con rollback
 - **Agente:** backend
@@ -126,7 +127,7 @@
 - **Depende de:** T009
 - **Paralelo:** No
 - **Historia:** US-003
-- **Archivos:** backend-lang/migrations/008_workspace_settings.sql (nuevo)
+- **Archivos:** backend-lang/migrations/009_workspace_settings.sql (nuevo)
 
 ## T016 — Validación IANA, settings tipados, preset idempotente, tono en el prompt y tests
 - **Agente:** backend
@@ -185,7 +186,8 @@
 - **Depende de:** T015
 - **Paralelo:** No
 - **Historia:** US-005
-- **Archivos:** backend-lang/migrations/009_calendar_oauth.sql (nuevo)
+- **Archivos:** backend-lang/migrations/010_calendar_oauth.sql (nuevo)
+- **Alcance:** la tabla `oauth_states` se crea con RLS (D-U1).
 
 ## T024 — OAuth de Calendar con JWT, state firmado y nonce de un solo uso
 - **Agente:** security
@@ -255,7 +257,7 @@
 - **Depende de:** T023
 - **Paralelo:** No
 - **Historia:** US-007
-- **Archivos:** backend-lang/migrations/010_conversations_dedup.sql (nuevo)
+- **Archivos:** backend-lang/migrations/011_conversations_dedup.sql (nuevo)
 
 ## T033 — Dedup por wamid, tareas con referencia fuerte, drenado al apagar, no-texto, secreto vacío y canal inexistente
 - **Agente:** backend
@@ -284,15 +286,16 @@
 - **Depende de:** T034, T035
 - **Paralelo:** No
 - **Historia:** US-007
-- **Archivos:** docker-compose.yml, backend-lang/pyproject.toml, backend-lang/requirements.txt, backend-lang/tests/test_webhook_reliability.py (nuevo), backend-lang/tests/stress/ (nuevo; ejecutarlo requiere autorización)
-- **Alcance:** (1) **Confirmar con el usuario antes de cambiar el montaje** de `docker-compose.yml` (`./front/dist` frente a `front-app/dist` desplegado por FTP; pregunta abierta 9 de la spec). Sin respuesta, el montaje no se toca y solo se aplica `bcrypt>=4.3,<5`. (2) `test_webhook_reliability.py` cubre el gate alternativo (SC-006, SC-010, SC-012) y el rechazo de firma: 403 en Meta, 401 en Kapso, 413 antes de la firma, 0 filas escritas (FR-043, FR-049). Cubre además los escenarios de US-007 que implementan T035 y T033: (3) escenario 2 / FR-046, serialización: dos inbound del mismo cliente con < 2 s de diferencia (`asyncio.gather`, agente doble con latencia) → las dos corridas de `agent_runs` de esa conversación no se solapan en el tiempo (`started_at` de la segunda ≥ `finished_at` de la primera), y dos conversaciones distintas sí corren en paralelo; (4) escenario 4 / FR-049, no-texto: un mensaje `audio` y uno `image` (Meta y Kapso) → 1 outbound "por ahora solo leo texto" cada uno y ninguna corrida del agente.
+- **Archivos:** docker-compose.yml, backend-lang/pyproject.toml, backend-lang/requirements.txt, backend-lang/tests/test_webhook_reliability.py (nuevo), backend-lang/tests/stress/ (nuevo; ejecución autorizada, D-U2)
+- **Alcance:** (0) Arnés de estrés autorizado (D-U2, FR-052): `tests/stress/` corre en local contra PostgreSQL efímero (Docker; si Docker no está disponible en WSL, PostgreSQL local) con tráfico simulado y dobles de Kapso, Meta y Google; incluye el preflight de cero tráfico real de `pruebas-estres.md` §4 (aborta si detecta egress a WhatsApp/Meta/Kapso/Google). (1) **Confirmar con el usuario antes de cambiar el montaje** de `docker-compose.yml` (`./front/dist` frente a `front-app/dist` desplegado por FTP; pregunta abierta 9 de la spec). Sin respuesta, el montaje no se toca y solo se aplica `bcrypt>=4.3,<5`. (2) `test_webhook_reliability.py` cubre el gate alternativo (SC-006, SC-010, SC-012) y el rechazo de firma: 403 en Meta, 401 en Kapso, 413 antes de la firma, 0 filas escritas (FR-043, FR-049). Cubre además los escenarios de US-007 que implementan T035 y T033: (3) escenario 2 / FR-046, serialización: dos inbound del mismo cliente con < 2 s de diferencia (`asyncio.gather`, agente doble con latencia) → las dos corridas de `agent_runs` de esa conversación no se solapan en el tiempo (`started_at` de la segunda ≥ `finished_at` de la primera), y dos conversaciones distintas sí corren en paralelo; (4) escenario 4 / FR-049, no-texto: un mensaje `audio` y uno `image` (Meta y Kapso) → 1 outbound "por ahora solo leo texto" cada uno y ninguna corrida del agente.
 
-## T037 — Revisión US-007: gate alternativo funcional y, con autorización, escenarios E1, E2, E8, E9, E11
+## T037 — Revisión US-007: escenarios de estrés E1, E2, E8, E9, E11 con arnés y tests funcionales de confiabilidad
 - **Agente:** reviewer
 - **Depende de:** T036, T004
 - **Paralelo:** No
 - **Historia:** US-007
-- **Archivos:** backend-lang/tests/test_webhook_reliability.py (solo ejecución), backend-lang/tests/stress/ (solo ejecución, requiere autorización), specs/003-producto-final-citas/pruebas-estres-resultados.md (nuevo)
+- **Archivos:** backend-lang/tests/test_webhook_reliability.py (solo ejecución), backend-lang/tests/stress/ (solo ejecución, autorizada D-U2), specs/003-producto-final-citas/pruebas-estres-resultados.md (nuevo)
+- **Alcance:** gate por defecto con arnés (D-U2): SC-006, SC-007, SC-008, SC-010, SC-012 medidos con el preflight de cero tráfico real aprobado. El gate alternativo de la spec solo aplica como respaldo si el arnés no puede correr (se anota el motivo en `pruebas-estres-resultados.md`).
 
 ---
 
@@ -303,14 +306,14 @@
 - **Depende de:** T032
 - **Paralelo:** No
 - **Historia:** US-008
-- **Archivos:** backend-lang/migrations/011_appointments_exclusion.sql (nuevo)
+- **Archivos:** backend-lang/migrations/012_appointments_exclusion.sql (nuevo)
 
 ## T039 — agent_alerts: severidad low/medium/high/critical y resolved_at
 - **Agente:** dba
 - **Depende de:** T038
 - **Paralelo:** No
 - **Historia:** US-008
-- **Archivos:** backend-lang/migrations/012_agent_alerts.sql (nuevo), backend-lang/src/services/agent_service.py (solo lectura)
+- **Archivos:** backend-lang/migrations/013_agent_alerts.sql (nuevo), backend-lang/src/services/agent_service.py (solo lectura)
 - **Alcance:** añadir `resolved_at TIMESTAMPTZ`; `UPDATE` de datos (`info→low`, `warning→medium`, `error→high`; `resolved_at = created_at` donde `resolved = true`); `DROP CONSTRAINT` + `ADD CONSTRAINT … CHECK (severity IN ('low','medium','high','critical'))`; `DEFAULT 'medium'`; índice por `(workspace_id) WHERE resolved_at IS NULL`. Se despliega junto con T042 (plan R11).
 
 ## T040 — Filtro de tenant, precio desde services e identidad system_agent en create_appointment
@@ -333,14 +336,14 @@
 - **Paralelo:** No
 - **Historia:** US-008
 - **Archivos:** backend-lang/src/services/appointment_agent.py, backend-lang/src/services/agent_service.py, backend-lang/src/services/conversation_service.py, backend-lang/tests/test_appointment_agent.py, backend-lang/tests/test_booking_race.py (nuevo)
-- **Alcance (tests del gate alternativo)**: `test_booking_race.py` cubre (1) SC-004: N = 2 y 10 confirmaciones concurrentes (`asyncio.gather`) del mismo hueco → 1 cita y 0 eventos huérfanos en el doble de Google; y (2) SC-009 / FR-064: doble de Google con 5 s de latencia en `.execute()`; mientras una reserva espera a Google, `GET /` responde 200 en < 200 ms (prueba que Google corre en hilo, implementado en T026). T026 no crea este caso de latencia.
+- **Alcance (tests funcionales; son el gate alternativo de respaldo y complementan el arnés de T036, D-U2)**: `test_booking_race.py` cubre (1) SC-004: N = 2 y 10 confirmaciones concurrentes (`asyncio.gather`) del mismo hueco → 1 cita y 0 eventos huérfanos en el doble de Google; y (2) SC-009 / FR-064: doble de Google con 5 s de latencia en `.execute()`; mientras una reserva espera a Google, `GET /` responde 200 en < 200 ms (prueba que Google corre en hilo, implementado en T026). T026 no crea este caso de latencia.
 
-## T043 — Revisión US-008: carrera E3, agente E4 y Google degradado E5 (o gate alternativo)
+## T043 — Revisión US-008: carrera E3, agente E4 y Google degradado E5 con arnés (gate alternativo solo de respaldo)
 - **Agente:** reviewer
 - **Depende de:** T042, T037
 - **Paralelo:** No
 - **Historia:** US-008
-- **Archivos:** backend-lang/tests/test_appointment_agent.py (solo ejecución), backend-lang/tests/test_booking_race.py (solo ejecución), specs/003-producto-final-citas/pruebas-estres-resultados.md
+- **Archivos:** backend-lang/tests/test_appointment_agent.py (solo ejecución), backend-lang/tests/test_booking_race.py (solo ejecución), backend-lang/tests/stress/ (solo ejecución, autorizada D-U2), specs/003-producto-final-citas/pruebas-estres-resultados.md
 
 ## T044 — PATCH de citas: enum, cancelar con Google y reagendar con end_at y 409
 - **Agente:** backend
@@ -379,8 +382,8 @@
 - **Depende de:** T039
 - **Paralelo:** No
 - **Historia:** US-010
-- **Archivos:** backend-lang/migrations/013_reminders.sql (nuevo)
-- **Alcance:** columnas `reminder_24h_sent` y `reminder_2h_sent` (FR-076; `ADD COLUMN IF NOT EXISTS`, H12) y nueva `reminder_2h_skip_reason TEXT NULL` en `appointments` (motivo "omitido: ventana cerrada" de FR-107; no hay columna equivalente en plan ni esquema), más su índice.
+- **Archivos:** backend-lang/migrations/014_reminders.sql (nuevo)
+- **Alcance:** columnas `reminder_24h_sent` y `reminder_2h_sent` (FR-076; `ADD COLUMN IF NOT EXISTS`, H12; en la remota `reminder_24h_sent` ya existe como columna extra de Alembic, D-U1: se reutiliza si su tipo es `boolean NOT NULL DEFAULT false` y, si no, se alinea sin borrarla) y nueva `reminder_2h_skip_reason TEXT NULL` en `appointments` (motivo "omitido: ventana cerrada" de FR-107; no hay columna equivalente en plan ni esquema), más su índice.
 
 ## T049 — Ventana de 24 h, plantilla, worker de recordatorios exactamente una vez y tests
 - **Agente:** backend
@@ -390,12 +393,12 @@
 - **Archivos:** backend-lang/src/workers/reminder_worker.py, backend-lang/src/services/whatsapp_service.py, backend-lang/src/services/conversation_service.py, backend-lang/src/api/routes/appointments.py, backend-lang/tests/test_reminder_worker.py (nuevo)
 - **Alcance:** recordatorio de 24 h (FR-072) y de 2 h (FR-107). `test_reminder_worker.py` cubre para el de 2 h: cita `confirmed` a 2 h ± 15 min con ventana abierta → 1 texto libre por el proveedor del canal y `reminder_2h_sent=true`; con ventana de 24 h cerrada → no se envía, se marca `reminder_2h_sent=true` con `reminder_2h_skip_reason='omitido: ventana cerrada'` y no se reintenta; fallo 5xx del proveedor → no se marca y se reintenta en el ciclo siguiente; 2 instancias del worker → 1 solo envío. Ciclo ≤ 10 min y tolerancia ±15 min (plan D8; hoy 30 min y ±5 min en `reminder_worker.py:22`, `:142-143`): `test_reminder_worker.py` asserta que el intervalo configurado es ≤ 600 s y que una cita a 24 h + 14 min / 2 h − 14 min entra y a ± 16 min no. Casos borde de US-010 (ambos recordatorios, 24 h y 2 h): (a) workspace con suscripción `suspended` o canal `disconnected` → el worker no llama al proveedor, no marca `reminder_*_sent` y deja un log de advertencia con `appointment_id` y motivo (FR-075, FR-063); (b) cliente sin teléfono válido (vacío o no E.164) → no se envía, no se marca enviado y se crea una `agent_alerts` (SUPUESTO severidad `medium`) con la cita y el motivo, una sola vez por cita aunque el ciclo se repita. `test_reminder_worker.py` cubre los dos casos con el proveedor doble asertando 0 llamadas.
 
-## T050 — Revisión US-010: recordatorios masivos E7 y fallos de envío E6 (o gate alternativo)
+## T050 — Revisión US-010: recordatorios masivos E7 y fallos de envío E6 con arnés (gate alternativo solo de respaldo)
 - **Agente:** reviewer
 - **Depende de:** T049
 - **Paralelo:** No
 - **Historia:** US-010
-- **Archivos:** backend-lang/tests/test_reminder_worker.py (solo ejecución), specs/003-producto-final-citas/pruebas-estres-resultados.md
+- **Archivos:** backend-lang/tests/test_reminder_worker.py (solo ejecución), backend-lang/tests/stress/ (solo ejecución, autorizada D-U2), specs/003-producto-final-citas/pruebas-estres-resultados.md
 - **Alcance:** valida FR-072 y FR-107 (incluida la regla de omisión del recordatorio de 2 h con la ventana cerrada) además de SC-005.
 
 ## T051 — Agenda: nueva cita, detalle con cancelar/reagendar, bloqueos, vistas reales y test de frescura de agenda (SC-014)
@@ -445,7 +448,7 @@
 - **Depende de:** T009, T048
 - **Paralelo:** No
 - **Historia:** US-013
-- **Archivos:** backend-lang/migrations/014_billing.sql (nuevo), backend-lang/migrations/001_initial_schema.sql (solo lectura)
+- **Archivos:** backend-lang/migrations/015_billing.sql (nuevo), backend-lang/migrations/001_initial_schema.sql (solo lectura)
 - **Alcance:** solo la marca de mes pagado (qué mes quedó pagado y por quién). `pending_payment` y `suspended` ya están en el CHECK de `subscriptions.status` (`001_initial_schema.sql:270`) y `trial` lo añade T009: esta tarea no toca ese CHECK. Antes de crear columnas, comprobar si bastan las existentes `paid_this_month` y `payment_verified_by` (`001:272`, `:276`). La tabla o vista de consumo mensual no se crea hasta que se responda la pregunta abierta 10 (unidad de cobro).
 
 ## T057 — Suscripción vigente con trial, consumo, backoffice de pagos, fin de trial y suspensión automática
@@ -550,10 +553,10 @@
 | FR-032 | T023, T024, T026 | FR-067 | T038, T044 | FR-102 | T063 |
 | FR-033 | T023, T024 | FR-068 | T044 | FR-103 | T006 |
 | FR-034 | T026, T027, T061 | FR-069 | T045, T046 | FR-104 | T012 |
-| FR-035 | T027 | FR-070 | T038, T045 | FR-105 | T005, T008 |
+| FR-035 | T027 | FR-070 | T038, T045 | FR-105 | T005 (cumplida en `94f8e44`, D-U4), T008 |
 | | | | | FR-106 | T057, T058 (duración del trial pendiente, pregunta abierta 4) |
 | | | | | FR-107 | T049, T050 |
 | | | | | FR-108 | T003, T006, T013, T014 |
 | | | | | FR-109 | T019, T020, T021, T022 |
 
-**Cobertura**: 109/109 FR con al menos una tarea (FR-107, recordatorio de 2 h, en T049 y T050; FR-108, sesión conservada ante 5xx de BD, en T003, T006, T013 y T014; FR-109, Kapso 5xx → 502 con reintento, en T019, T020, T021 y T022). Casos borde sin FR propio con test nombrado: US-001(b) 404 de workspace inexistente (FR-004, `test_roles_matrix.py`, T006); US-007 escenarios 2 y 4 (`test_webhook_reliability.py`, T036); US-010(a) y (b) (`test_reminder_worker.py`, T049). SC-017 se mide en el piloto (T064). 64 tareas (T001–T064), sin huecos. Todas las dependencias apuntan a tareas de número menor (sin ciclos). Dependencias añadidas para que no corran a la vez tareas que editan el mismo archivo: T026→T020 (`schemas/channel.py`), T049→T045 (`conversation_service.py`), T053→T046 (`appointment_agent.py`), T058→T053 (`agent_service.py`), T061→T049 (`appointments.py`), T057→T034 (`api/main.py`), T061→T058 (`test_roles_matrix.py`), T010→T004 (`auth.py`), T011→T006 (`email_service.py`), T016→T006 (`workspaces.py`, `schemas/workspace.py`), T020→T006 (`test_channels_roles.py`) y T027→T013 (`front/src/lib/api/auth.ts`; ordena también T063 tras T013 vía T062→T027 por `signup.tsx`). SC-001 se mide contra la "Matriz objetivo rol × endpoint" de la spec (`test_roles_matrix.py`: T006, T058, T061; aprobada en T008 y T064). SC-013 lo mide `test_kapso_onboarding.py` (T020, ejecutado en T022). Las migraciones 006…014 siguen el orden de las tareas dba (T001 → T009 → T015 → T023 → T032 → T038 → T039 → T048 → T056). Revisores por historia (última tarea de cada una, sin crear código ni tests): T008, T014, T018, T022, T028, T031, T037, T043, T047, T050, T052, T055, T060, T064. SC-014 lo mide `test_panel_freshness.py` (T051, T054; ejecutado en T052 y T055).
+**Cobertura**: 109/109 FR con al menos una tarea (FR-107, recordatorio de 2 h, en T049 y T050; FR-108, sesión conservada ante 5xx de BD, en T003, T006, T013 y T014; FR-109, Kapso 5xx → 502 con reintento, en T019, T020, T021 y T022). Casos borde sin FR propio con test nombrado: US-001(b) 404 de workspace inexistente (FR-004, `test_roles_matrix.py`, T006); US-007 escenarios 2 y 4 (`test_webhook_reliability.py`, T036); US-010(a) y (b) (`test_reminder_worker.py`, T049). SC-017 se mide en el piloto (T064). 64 tareas (T001–T064), sin huecos. Todas las dependencias apuntan a tareas de número menor (sin ciclos). Dependencias añadidas para que no corran a la vez tareas que editan el mismo archivo: T026→T020 (`schemas/channel.py`), T049→T045 (`conversation_service.py`), T053→T046 (`appointment_agent.py`), T058→T053 (`agent_service.py`), T061→T049 (`appointments.py`), T057→T034 (`api/main.py`), T061→T058 (`test_roles_matrix.py`), T010→T004 (`auth.py`), T011→T006 (`email_service.py`), T016→T006 (`workspaces.py`, `schemas/workspace.py`), T020→T006 (`test_channels_roles.py`) y T027→T013 (`front/src/lib/api/auth.ts`; ordena también T063 tras T013 vía T062→T027 por `signup.tsx`). SC-001 se mide contra la "Matriz objetivo rol × endpoint" de la spec (`test_roles_matrix.py`: T006, T058, T061; aprobada en T008 y T064). SC-013 lo mide `test_kapso_onboarding.py` (T020, ejecutado en T022). Las migraciones 006…015 siguen el orden de las tareas dba (T001 [006 convergencia + 007 roles/rate_limits] → T009 → T015 → T023 → T032 → T038 → T039 → T048 → T056). Revisores por historia (última tarea de cada una, sin crear código ni tests): T008, T014, T018, T022, T028, T031, T037, T043, T047, T050, T052, T055, T060, T064. SC-014 lo mide `test_panel_freshness.py` (T051, T054; ejecutado en T052 y T055).
