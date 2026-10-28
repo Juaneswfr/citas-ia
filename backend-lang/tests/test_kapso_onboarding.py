@@ -18,7 +18,9 @@ from services.kapso_onboarding import KapsoError, KapsoOnboardingService, KapsoP
 pytestmark = pytest.mark.asyncio
 
 API_KEY = "kapso-api-key-value"
-WS1, WS2 = "ws-1", "ws-2"
+WS1, WS2 = "11111111-0000-0000-0000-000000000001", "11111111-0000-0000-0000-000000000002"
+WS9 = "11111111-0000-0000-0000-000000000009"  # sin fila en workspaces
+USER, ADMIN = "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"
 LINK_URL = "https://app.kapso.ai/whatsapp/setup/secrettoken123"
 
 
@@ -183,7 +185,34 @@ def _app(monkeypatch, enabled):
     return app, rec
 
 
-async def _post(app, path="/workspaces/ws-1/kapso/onboarding-link"):
+class GuardPool:
+    """Doble del pool para require_workspace_access: membresías activas {(user, ws): member_role} y workspaces existentes."""
+
+    def __init__(self, members):
+        self.members = members
+
+    def acquire(self, timeout=None):
+        members = self.members
+
+        class Conn:
+            async def fetchrow(s, sql, *a):
+                if "FROM workspace_members" in sql:
+                    role = members.get((a[0], a[1]))
+                    return {"member_role": role} if role else None
+                return {"?column?": 1} if a[0] in (WS1, WS2) else None
+
+        class Ctx:
+            async def __aenter__(s): return Conn()
+            async def __aexit__(s, *e): return False
+
+        return Ctx()
+
+
+def _claims(sub, role=None, member_role=None):
+    return lambda: {"sub": sub, "role": role, "member_role": member_role}
+
+
+async def _post(app, path=f"/workspaces/{WS1}/kapso/onboarding-link"):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
         return await c.post(path)
 
@@ -201,20 +230,27 @@ async def test_route_requires_auth_when_enabled(monkeypatch):
 
 
 async def test_route_enabled_with_auth_returns_link(monkeypatch):
+    from core import database
+    monkeypatch.setattr(database, "_pool", GuardPool({(USER, WS1): "workspace_owner"}))
     app, _ = _app(monkeypatch, enabled=True)
-    app.dependency_overrides[get_current_user] = lambda: {"role": "workspace_owner", "workspace_id": "ws-1"}
+    app.dependency_overrides[get_current_user] = _claims(USER, member_role="workspace_owner")
     r = await _post(app)
     assert r.status_code == 200 and r.json()["url"] == LINK_URL
 
 
 async def test_route_role_enforced(monkeypatch):
     """workspace_owner (y super_admin) pasan; roles menores o de otro workspace, no."""
+    from core import database
     app, _ = _app(monkeypatch, enabled=True)
     for role, ws, code in [
-        ("workspace_owner", "ws-1", 200), ("super_admin", "ws-9", 200),
-        ("manager", "ws-1", 403), ("viewer", "ws-1", 403), ("workspace_owner", "ws-2", 403),
+        ("workspace_owner", WS1, 200), ("super_admin", WS9, 200),
+        ("manager", WS1, 403), ("viewer", WS1, 403), ("workspace_owner", WS2, 403),
     ]:
-        app.dependency_overrides[get_current_user] = lambda role=role, ws=ws: {"role": role, "workspace_id": ws}
+        # la membresía vive en BD (ws); la ruta siempre apunta a WS1
+        monkeypatch.setattr(database, "_pool", GuardPool({(USER, ws): role}))
+        sa = role == "super_admin"
+        app.dependency_overrides[get_current_user] = _claims(
+            ADMIN if sa else USER, role="super_admin" if sa else None, member_role=None if sa else role)
         assert (await _post(app)).status_code == code, (role, ws)
 
 

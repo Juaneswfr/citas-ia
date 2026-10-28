@@ -49,3 +49,4 @@
   - JWT con member_role; login con membresía activa más antigua; 403 sin negocio asignado (sin token); refresh y require_workspace_access consultan la BD
   - BD caída → 503 (nunca 401); sin membresía → 403; super_admin con workspace inexistente → 404; refresh sin membresía → 401
   - Tests existentes con contrato JWT viejo fallan (8): test_channels_roles.py y test_kapso_onboarding.py, pendientes de T006
+  - Corrección T003: tests de test_channels_roles.py y test_kapso_onboarding.py adaptados al nuevo contrato (pool doble, member_role, UUID); suite 83 passed, 5 skipped, 0 failed

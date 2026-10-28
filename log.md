@@ -45,17 +45,29 @@
 
 # Cambios por agente
 
-### [AGENTE: security] [FECHA: 2026-10-28T18:57:00Z]
+### [AGENTE: security] [FECHA: 2026-10-28 18:57 UTC]
 **Cambios:**
 - T003 (kanban t_6bbc73a8). JWT con `sub`, `email`, `role` (users.role), `member_role` (rol de la membresía) y `workspace_id`; `require_role` usa `member_role` (super_admin por `role`), rol ausente/desconocido = sin permiso.
 - Login determinista: membresía activa más antigua (`ORDER BY COALESCE(joined_at, created_at), id LIMIT 1`). Sin membresía y `users.role` != super_admin → 403 "tu cuenta no tiene negocio asignado" sin token; se quita el respaldo "viewer".
 - `POST /auth/refresh` consulta la BD (no confía en el token viejo): BD caída → 503; inactivo o sin membresía → 401 "Sesión inválida".
 - `require_workspace_access` valida membresía activa en BD en cada request: BD caída/pool None/timeout 5 s → 503; sin membresía → 403; super_admin con workspace inexistente → 404.
 - Eventos de log: auth.login.success/failed, token.invalid, token.expired (sin password, token ni email).
-- Verificación: compileall exit 0; ad-hoc con dobles del pool 20/20; pytest con PYTHONPATH del worktree: 8 failed, 75 passed, 5 skipped (contrato JWT viejo en test_channels_roles.py y test_kapso_onboarding.py, pendientes de T006).
+- Verificación: compileall exit 0; ad-hoc con dobles del pool 20/20; pytest con PYTHONPATH del worktree: 83 passed, 5 skipped, 0 failed (ver corrección de tests abajo).
 
 **Archivos modificados:** backend-lang/src/core/security.py, backend-lang/src/api/routes/auth.py, log.md, claude.md, logs.md
 **Commit:** ver `git log` (feat(auth): T003 JWT con member_role, login determinista, 403 sin membresías, refresh/membresía contra BD fail-closed 503)
 
 **Actualizaciones a claude.md:**
 - Decisiones T003: member_role en JWT, 503 fail-closed, 401 en refresh sin membresía, 404/403 de workspace.
+
+### [AGENTE: security] [FECHA: 2026-10-28 18:58 UTC]
+**Cambios:**
+- T003 (kanban t_6bbc73a8), corrección: tests con el contrato de JWT viejo adaptados al nuevo (member_role, UUID válidos, doble del pool que devuelve la membresía activa). Aserciones 401/403/404 intactas, sin skip/xfail ni tests nuevos.
+- tests/test_channels_roles.py y tests/test_kapso_onboarding.py: 8 fallos → 0. Suite completa: 83 passed, 5 skipped, 0 failed (PYTHONPATH=backend-lang/src); compileall exit 0.
+- Sin cambios en código de producción.
+
+**Archivos modificados:** backend-lang/tests/test_channels_roles.py, backend-lang/tests/test_kapso_onboarding.py, log.md, claude.md, logs.md
+**Commit:** ver `git log` (test(auth): T003 adapta tests de roles/kapso al contrato JWT con member_role)
+
+**Actualizaciones a claude.md:**
+- Nota: los tests de guards deben inyectar el pool (core.database._pool) con la membresía; los claims usan member_role.
