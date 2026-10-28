@@ -45,3 +45,7 @@
   - 006_convergencia_remota.sql y 007_roles_rate_limits.sql sin RLS (D-U6); aplicadas en la remota en una transacción, gate PASS
   - member_role 'owner' → 'workspace_owner'; tabla rate_limits(key, window_start, hits)
   - Riesgo hasta T002: guards require_workspace_access("owner") ya no coinciden con el rol migrado
+## 2026-10-28 — T003 JWT con member_role y membresía contra BD (t_6bbc73a8, security)
+  - JWT con member_role; login con membresía activa más antigua; 403 sin negocio asignado (sin token); refresh y require_workspace_access consultan la BD
+  - BD caída → 503 (nunca 401); sin membresía → 403; super_admin con workspace inexistente → 404; refresh sin membresía → 401
+  - Tests existentes con contrato JWT viejo fallan (8): test_channels_roles.py y test_kapso_onboarding.py, pendientes de T006
