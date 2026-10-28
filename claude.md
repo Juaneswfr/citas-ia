@@ -42,14 +42,5 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
 - Copia fiel (pg_dump 17.11 de la remota restaurado sin stubs) + 006 + 007 en una transacción: PASS; solo diferencias permitidas.
 - **Remota (PG 17.11): aplicada** en una transacción (006 + 007, COMMIT) y verificada por catálogo en solo lectura: PASS, catálogo
   idéntico a la copia ensayada. Backup previo: `scratch/t001/remote_backup_20261028T183712Z.dump` (sha256 51368880…910b).
-- Pendiente inmediato: T002 (los guards `require_workspace_access("owner")` en workspaces.py, services.py y billing.py ya no
-  coinciden con el rol migrado `workspace_owner` hasta que T002 los cambie).
-
-## T003 — JWT con member_role y guard contra BD (t_6bbc73a8, security)
-- **JWT:** `role` = users.role (p.ej. super_admin o null); `member_role` = rol de la membresía del workspace emitido. La jerarquía de `require_role` usa `member_role`; super_admin va por `role`. Rol desconocido o ausente → sin permiso.
-- **503 fail-closed:** cualquier fallo de BD (pool None, timeout de acquire de 5 s, error asyncpg/OSError) en `require_workspace_access` y `/auth/refresh` responde 503, nunca 401 ni 2xx, para que el front distinga BD caída de sesión inválida.
-- **Refresh:** ignora rol/workspace del token viejo; usuario inactivo o sin membresía activa (y no super_admin) → 401 "Sesión inválida" (el front cierra sesión).
-- **Workspace:** sin membresía activa → 403 sin revelar si el workspace existe; super_admin con workspace inexistente → 404. `workspace_id` que no es UUID se trata como inexistente (403/404).
-- **Login:** membresía activa más antigua; sin membresía y no super_admin → 403 "tu cuenta no tiene negocio asignado", sin token.
-- **Pendiente (fuera de alcance):** guards `"owner"` en services.py:155,160 y billing.py:61 (T002); tests con contrato JWT viejo en test_channels_roles.py y test_kapso_onboarding.py (T006); `register` guarda users.role='workspace_owner'; no hay endpoint de logout.
-- **Tests (T003):** `require_workspace_access` consulta la BD, así que los tests de rutas con guard monkeypatchean `core.database._pool` con un doble cuyo `acquire()` devuelve la membresía activa y usan claims `sub`/`role`/`member_role` y UUID válidos en el path. T006 debe reutilizar ese patrón en `test_roles_matrix.py`.
+- T002 hecha (security): los guards de workspaces.py, services.py y billing.py usan `workspace_owner`; suite backend-lang 83 passed, 5 skipped.
+- Pendiente inmediato: T003/T004 (security.py / lógica de `require_workspace_access`).

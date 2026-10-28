@@ -122,7 +122,7 @@ async def list_members(
     response_model=MemberOut,
     status_code=status.HTTP_201_CREATED,
     summary="Invitar a un nuevo miembro",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def invite_member(
     workspace_id: str,
@@ -151,8 +151,8 @@ async def invite_member(
 @router.delete(
     "/{workspace_id}/members/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Remover miembro del workspace. Requiere rol owner.",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    summary="Remover miembro del workspace. Requiere rol workspace_owner.",
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def remove_member(
     workspace_id: str,
