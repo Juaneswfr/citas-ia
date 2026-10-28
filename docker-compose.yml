@@ -28,6 +28,7 @@ services:
       - ./backend-lang/.env
     volumes:
       - ./backend-lang/src:/app/src:ro
+      - ./backend-lang/.env:/app/.env:ro
     networks:
       - app
     healthcheck:
