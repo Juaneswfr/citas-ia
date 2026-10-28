@@ -232,26 +232,30 @@ Como **dueño o staff**, quiero ver las conversaciones casi en tiempo real y que
 
 ---
 
-### US-013 — Ver mi suscripción y cobro mensual (Priority: P3)
+### US-013 — Planes, suscripciones, registro de pagos y contabilidad (Priority: P3)
 
-Como **dueño**, quiero ver mi plan, precio y consumo de conversaciones del mes, y como **super_admin**, quiero marcar pagos y suspender morosos, para operar el cobro manual del MVP (B10.1, B10.2, S7, S8).
+Como **super_admin**, quiero administrar los planes de pago, ver las suscripciones por workspace, registrar cada pago manual y consultar la contabilidad, y como **dueño**, quiero ver mi plan, precio y consumo del mes en solo lectura, para operar el cobro manual del MVP (S8) con registro contable (B10.1, B10.2, S7, S8, D-U7).
 
 **Acceptance Scenarios**:
 
 1. **Dado** un owner, **Cuando** abre "Suscripción":
-   - 1a (verificable hoy): **Entonces** ve su plan, el precio en COP y el estado de la suscripción (`trial`, `active`, `pending_payment` o `suspended`).
+   - 1a: **Entonces** ve en solo lectura su plan, el precio en COP, el periodo, el estado de la suscripción (`trial`, `active`, `pending_payment` o `suspended`), la fecha de vencimiento y las citas del mes frente al límite del plan. No puede cambiar de plan ni registrar pagos (no hay controles para ello).
    - 1b (**BLOQUEADA por la pregunta abierta 10**): **Entonces** ve además las conversaciones usadas/incluidas del mes y el excedente estimado. Mientras no haya respuesta, esos datos no se muestran.
-2. **Dado** el cierre de mes, **Cuando** el super_admin abre el backoffice:
-   - 2a (verificable hoy): **Entonces** ve por workspace el plan, el precio y el estado, y puede marcar el mes como pagado (queda registrado quién y cuándo).
-   - 2b (**BLOQUEADA por la pregunta abierta 10**): **Entonces** ve además por workspace las conversaciones facturables y el excedente en COP.
+2. **Dado** el super_admin en el panel de administración, **Cuando** abre "Planes":
+   - 2a: **Entonces** puede crear, editar, activar y desactivar planes (nombre, precio en COP, periodo, límite de conversaciones y límite de citas). Un plan inactivo no aparece en `GET /billing/plans` ni se puede asignar a un workspace nuevo; las suscripciones que ya lo usan lo conservan.
+3. **Dado** el super_admin en el panel de administración, **Cuando** abre "Suscripciones":
+   - 3a: **Entonces** ve por workspace el plan, el precio, el estado (`trial`, `active`, `pending_payment`, `suspended`, `cancelled`, `expired`), las citas del mes y la fecha de vencimiento.
+   - 3b: **Cuando** marca un mes como pagado, **Entonces** se crea un registro de pago (monto, moneda, fecha, método, referencia, workspace, plan, periodo cubierto y super_admin que lo registró) y la suscripción pasa a `active` para ese periodo, en una sola transacción.
+   - 3c (**BLOQUEADA por la pregunta abierta 10**): **Entonces** ve además por workspace las conversaciones facturables del mes y el excedente en COP.
+4. **Dado** pagos registrados, **Cuando** el super_admin abre "Contabilidad", **Entonces** ve el listado de pagos filtrable por periodo, plan y workspace, los totales por periodo y por plan, y puede exportarlo (CSV) con los mismos filtros.
+5. **Dado** un workspace con más de 10 días en `pending_payment`, **Cuando** corre la verificación diaria, **Entonces** pasa a `suspended` y el agente deja de responder.
 
-   T060 cierra solo 1a y 2a; 1b y 2b quedan abiertas hasta que se responda la pregunta 10.
-3. **Dado** un workspace con más de 10 días en `pending_payment`, **Cuando** corre la verificación diaria, **Entonces** pasa a `suspended` y el agente deja de responder.
+   T060 cierra 1a, 2a, 3a, 3b, 4 y 5; 1b y 3c quedan abiertas hasta que se responda la pregunta 10.
 
 **Casos borde**:
-- (a) Sin permisos: `manager`/`staff`/`viewer` no ven "Suscripción"; un owner llama el endpoint de backoffice → 403.
-- (b) Dato vacío o inexistente: workspace sin fila en `subscriptions` (creado antes de esta feature) → la migración de T009 le crea un `trial` (único mecanismo; no se crea al primer acceso); si aun así falta la fila, se muestra "sin plan asignado"; mes sin conversaciones → consumo 0.
-- (c) Fallo de red o servidor: error al cargar la suscripción → estado de error con reintento, nunca un plan de demo.
+- (a) Sin permisos: `manager`/`staff`/`viewer` no ven "Suscripción"; un owner que llama cualquier endpoint de administración (planes, suscripciones, pagos, contabilidad, exportación) → 403.
+- (b) Dato vacío o inexistente: workspace sin fila en `subscriptions` (creado antes de esta feature) → la migración de T009 le crea un `trial` (único mecanismo; no se crea al primer acceso); si aun así falta la fila, se muestra "sin plan asignado"; mes sin citas → consumo 0; periodo sin pagos → listado vacío y totales en 0; marcar pagado un periodo que ya tiene pago del mismo workspace → 409 sin crear un segundo registro; monto ≤ 0, moneda distinta de `COP` o periodo sin fechas → 422 por campo.
+- (c) Fallo de red o servidor: error al cargar la suscripción, los planes o la contabilidad → estado de error con reintento, nunca un plan ni un pago de demo; si falla el registro del pago, la suscripción no cambia de estado.
 
 ---
 
@@ -395,12 +399,13 @@ Como **dueño**, quiero que el panel muestre solo datos reales de mi negocio y s
 - **FR-087**: `/messages` DEBE mostrar estado de error al fallar la carga de mensajes y botón "volver" en móvil.
 
 **Suscripción (US-013)**
-- **FR-088**: **BLOQUEADO por la pregunta abierta 10 (unidad de cobro).** El owner DEBE ver en "Suscripción" plan, precio COP, conversaciones usadas/incluidas del mes y excedente estimado. Sin respuesta solo se muestran plan y precio.
+- **FR-088**: El owner DEBE ver en "Suscripción", en solo lectura, plan, precio COP, periodo, estado, fecha de vencimiento y citas del mes frente al límite del plan (D-U7); no puede cambiar de plan ni registrar pagos. **Las conversaciones usadas/incluidas y el excedente estimado están BLOQUEADOS por la pregunta abierta 10 (unidad de cobro)**; sin respuesta no se muestran.
 - **FR-089**: **BLOQUEADO por la pregunta abierta 10.** El sistema DEBE contar por workspace y mes las conversaciones facturables, con la definición de "conversación facturable" que fije el negocio.
-- **FR-090**: **BLOQUEADO por la pregunta abierta 4 (S7).** Los planes de pago DEBEN cargarse en `billing_plans` según la decisión de negocio vigente. No se implementa ni se prueba hasta que el usuario responda; el plan `Trial` de FR-011 no depende de esta decisión.
-- **FR-091**: El super_admin DEBE tener un backoffice para marcar el mes como pagado y ver consumo y excedente por workspace. **La parte de consumo y excedente está BLOQUEADA por la pregunta abierta 10**; marcar como pagado no depende de ella.
+- **FR-090**: Los planes de pago DEBEN ser administrables desde el panel de administración, solo por `super_admin` (D-U7): crear, editar, activar y desactivar planes en `billing_plans` (nombre, precio entero en COP ≥ 0, periodo, límite de conversaciones y límite de citas). Un plan inactivo no se lista en `GET /billing/plans` ni se asigna a workspaces nuevos; las suscripciones existentes lo conservan. No hay semilla de planes de pago en migraciones: los crea el super_admin. El plan `Trial` de FR-011 (precio 0) también es editable y su periodo fija la duración del `trial` (FR-106).
+- **FR-091**: El super_admin DEBE tener en el panel de administración la vista de suscripciones por workspace con plan, precio, estado (`trial`, `active`, `pending_payment`, `suspended`, `cancelled`, `expired`), citas del mes y fecha de vencimiento, y la acción "marcar mes como pagado" (cobro manual, S8; sin pasarela). Marcar pagado crea el registro de pago de FR-110 y deja la suscripción en `active` con `current_period_start`/`current_period_end` del periodo cubierto, en una sola transacción. **La parte de conversaciones facturables y excedente está BLOQUEADA por la pregunta abierta 10**; el resto no depende de ella.
 - **FR-092**: Un workspace con > 10 días en `pending_payment` DEBE pasar a `suspended` automáticamente. La suscripción vigente de un workspace incluye los estados `trial`, `active`, `pending_payment` y `suspended`: `GET /billing/workspaces/{id}/subscription` DEBE responder 2xx para cualquiera de ellos (también `trial`, el estado que deja T009) y 404 solo si no hay fila vigente; `PATCH /billing/workspaces/{id}/subscription/status` DEBE admitir `trial` en su conjunto de estados permitidos.
-- **FR-106**: **Pendiente de la pregunta abierta 4 (duración del `trial`).** Una suscripción en `trial` DEBE pasar a `pending_payment` al vencer el periodo de prueba (SUPUESTO: 14 días desde `current_period_start`, o `created_at` si es nulo), en la misma verificación diaria de FR-092. Sin respuesta a la pregunta 4 se aplica el SUPUESTO de 14 días.
+- **FR-106**: Una suscripción en `trial` DEBE pasar a `pending_payment` al vencer el periodo de prueba, en la misma verificación diaria de FR-092. La duración es el periodo del plan `Trial`, administrable por el super_admin (FR-090, D-U7); valor inicial 14 días desde `current_period_start` (o `created_at` si es nulo).
+- **FR-110**: Todo pago DEBE quedar registrado (D-U7) en una tabla de pagos con: monto, moneda (`COP`), fecha de pago, método (p. ej. transferencia, Nequi, efectivo), referencia, workspace, plan, periodo cubierto (inicio y fin), super_admin que lo registró y fecha de registro. La API no expone borrado de pagos. Con ellos el super_admin DEBE ver la contabilidad: listado de pagos filtrable por periodo, plan y workspace, totales por periodo y por plan, y exportación CSV con los mismos filtros. Solo `super_admin`; el owner no ve ni registra pagos.
 
 **Panel honesto y navegación (US-014)**
 - **FR-093**: Topbar, dashboard y `/messages` DEBEN mostrar el estado real del canal y del calendario (sin `HILO.channel` ni textos fijos).
@@ -429,7 +434,8 @@ Esquema canónico: `backend-lang/migrations/` (plan D14). `front/drizzle/` y `fr
 - **messages**: índice único sobre el id de mensaje del proveedor.
 - **appointments**: exclusión de solape por calendario, `cancelled_at`, origen de cancelación, `confirmed_by_customer_at`, `reminder_24h_sent`, `reminder_2h_sent`, `reminder_2h_skip_reason` (TEXT NULL; motivo de omisión del recordatorio de 2 h, p. ej. "omitido: ventana cerrada", FR-107; T048).
 - **agent_alerts**: severidad `low|medium|high|critical`, `resolved_at`. Hoy (`001:239-242`) admite `info|warning|error|critical` y usa `resolved BOOLEAN`; T039 migra (`info→low`, `warning→medium`, `error→high`, `resolved=true → resolved_at=created_at`) y altera el CHECK.
-- **subscriptions / billing_plans**: `trial` (CHECK de `subscriptions.status` alterado en T009; hoy `001:270` no lo admite), `pending_payment`, `suspended`, consumo mensual; plan semilla `Trial` (precio 0) creado en T009.
+- **subscriptions / billing_plans**: `trial` (CHECK de `subscriptions.status` alterado en T009; hoy `001:270` no lo admite), `pending_payment`, `suspended`, consumo mensual; plan semilla `Trial` (precio 0) creado en T009; `billing_plans` con estado activo/inactivo, periodo y límites de conversaciones y citas, administrables por el super_admin (FR-090).
+- **billing_payments** (nueva, T056): registro de cada pago manual (FR-110): monto, moneda, fecha, método, referencia, workspace, plan, periodo cubierto, super_admin que lo registró; base de la contabilidad.
 
 ### Matriz objetivo rol × endpoint
 
@@ -472,9 +478,11 @@ Leyenda: SA `super_admin` · OW `workspace_owner` · MG `manager` · ST `staff` 
 | 31 | Historial de cliente (nuevo, T061) | ✅ | ✅ | ✅ | ✅ | 403 | FR-095 |
 | 32 | `GET /billing/workspaces/{id}/subscription` | ✅ | ✅ (también en `trial`) | 403 | 403 | 403 | FR-001, FR-092, US-013(a) |
 | 33 | `PATCH /billing/workspaces/{id}/subscription/status` | ✅ | 403 | 403 | 403 | 403 | FR-092 |
-| 34 | Backoffice de cobro: listar workspaces y marcar mes pagado (nuevo, T057) | ✅ | 403 | 403 | 403 | 403 | FR-091, US-013(a) |
+| 34 | Administración de suscripciones: listar workspaces y marcar mes pagado (crea el pago) (nuevo, T057) | ✅ | 403 | 403 | 403 | 403 | FR-091, FR-110, US-013(a) |
+| 35 | Administración de planes: listar todos, crear, editar, activar/desactivar (nuevo, T057) | ✅ | 403 | 403 | 403 | 403 | FR-090, US-013(a) |
+| 36 | Contabilidad: listar pagos, totales por periodo y plan, exportar CSV (nuevo, T057) | ✅ | 403 | 403 | 403 | 403 | FR-110, US-013(a) |
 
-Fuera de la matriz (no dependen del rol): `POST /auth/register`, `POST /auth/login` y los endpoints de verificación y reset (públicos, con rate limit: FR-008, FR-104, FR-013, FR-015); `GET /auth/google/callback` (valida `state` firmado, FR-032); `GET /billing/plans` (público); webhooks (firma o token: FR-036, FR-049).
+Fuera de la matriz (no dependen del rol): `POST /auth/register`, `POST /auth/login` y los endpoints de verificación y reset (públicos, con rate limit: FR-008, FR-104, FR-013, FR-015); `GET /auth/google/callback` (valida `state` firmado, FR-032); `GET /billing/plans` (público, solo planes activos, FR-090); webhooks (firma o token: FR-036, FR-049).
 
 ---
 
@@ -500,6 +508,7 @@ Fuera de la matriz (no dependen del rol): `POST /auth/register`, `POST /auth/log
 - **SC-016**: `grep` de `HILO.` en `front/src/routes/_authenticated/` devuelve 0 usos de datos de negocio (solo utilidades de formato).
 - **SC-017**: Un dueño de prueba completa registro → verificación → WhatsApp → Calendar → servicios → horario en ≤ 15 min sin ayuda (SUPUESTO; se mide en el piloto). **Se verifica en el piloto, no en CI**, con este criterio: cada dueño de prueba del piloto parte de una cuenta nueva y un observador cronometra, sin intervenir, desde abrir `/signup` hasta guardar el horario laboral (los 6 pasos); pasa si el 100 % de los dueños observados termina en ≤ 15 min sin pedir ayuda. Se registra por dueño: tiempo total, paso en que se atascó (si aplica) y si pidió ayuda. **Pendiente de definición de métrica**: el número mínimo de dueños de prueba (la spec no fija el tamaño del piloto) y si los tiempos de espera externos (correo de verificación, aprobación de Kapso/Meta) cuentan dentro de los 15 min; hasta que el negocio lo fije se usa SUPUESTO: ≥ 1 dueño y esperas externas incluidas. La mide T064; si el piloto aún no se hizo, T064 la registra como "no medida (piloto pendiente)", no como fallo.
 - **SC-018**: 0 respuestas de `GET /channels` contienen claves con `token` o `secret` en `metadata`.
+- **SC-019**: Cobro y contabilidad (D-U7), medido en `backend-lang/tests/test_billing.py`: el 100 % de las marcas de mes pagado crean exactamente 1 registro de pago con todos los campos de FR-110 y dejan la suscripción `active` en ese periodo (0 suscripciones activadas sin pago; un segundo intento sobre el mismo periodo → 409); un plan desactivado no aparece en `GET /billing/plans`; los totales por periodo y por plan, y el CSV exportado, coinciden al 100 % con la suma de los registros de pago de los mismos filtros.
 
 ### Gate alternativo sin arnés
 
@@ -520,7 +529,7 @@ SC-007 y SC-008 (latencias p95/p99) no tienen sustituto funcional: si se usa est
 
 ## Fuera de alcance
 
-- Pasarela de pago (Wompi u otra); el cobro del MVP es manual (S8).
+- Pasarela de pago (Wompi u otra): no entra en el MVP. El cobro del MVP es manual (S8) y cada pago se registra para la contabilidad (FR-110, D-U7).
 - Toma de control humana desde el panel y pausa del bot por 12 h en coexistencia (S9, post-MVP).
 - Envío de mensajes salientes manuales desde el panel ("Escribir" se oculta).
 - Login social con Google o Facebook.
@@ -545,6 +554,7 @@ Vigentes; prevalecen sobre cualquier texto anterior de esta spec, del plan o de 
 - **D-U4 — Commit `94f8e44`** (quita la credencial por defecto de `front/drizzle.config.ts`): aceptado. FR-105 queda **cumplido** (T005); T008 lo revisa.
 - **D-U5 — Clave primaria de `kapso_customers`**: se acepta la clave primaria surrogate que ya tiene la remota (`kapso_customers.id`) como equivalente a la canónica de 004. No se migra a `PK(workspace_id)` ni se tocan datos. Esa diferencia sale del gate de catálogo de T001 y queda como **deuda conocida** (junto a las columnas extra de Alembic de D-U1).
 - **D-U6 — Políticas RLS fuera de alcance**: no se crean políticas RLS (con `auth.uid()` ni de otro tipo) ni se habilita RLS en ninguna migración ni tarea (T001, T009, T023 y las demás), y no se abre tarea nueva de RLS. Motivo: la remota es PostgreSQL 17 sin el esquema `auth` de Supabase y el sistema usa JWT propio. El gate de catálogo de T001 ya no exige políticas RLS, RLS habilitado en `rate_limits`, `auth_tokens` u `oauth_states`, ni la clave surrogate de `kapso_customers` (D-U5); sigue exigiendo `kapso_webhook_events`, `kapso_customers_setup_status_check`, `channels_phone_number_id_uq`, `channels_webhook_token_uq`, el CHECK de `member_role` con `workspace_owner` (orden DROP → UPDATE → ADD) y la tabla `rate_limits`, sin borrar columnas de Alembic. **Riesgo aceptado**: el aislamiento entre workspaces depende solo de la autorización de la aplicación (JWT, `require_workspace_access`, FR-004 y la matriz rol × endpoint); no hay defensa en profundidad en la BD, así que un bug de autorización o una consulta sin filtro `workspace_id` expone datos de otro workspace. Cualquier proceso con `DATABASE_URL` ve todas las filas (plan R12).
+- **D-U7 — Planes, suscripciones y pagos (resuelve la pregunta abierta 4)**. (1) Los planes de pago son **administrables** desde el panel de administración por el `super_admin`: crear, editar, activar y desactivar (nombre, precio en COP, periodo, límites de conversaciones y de citas); un plan inactivo no se ofrece a workspaces nuevos. Los precios y límites dejan de ser una decisión de la spec: los fija el super_admin en el panel (FR-090). La duración del `trial` es el periodo del plan `Trial`, también editable (FR-106). (2) El super_admin ve las suscripciones por workspace con estado (`trial`, `active`, `pending_payment`, `suspended`, `cancelled`, `expired`), consumo del mes y fecha de vencimiento (FR-091). (3) **Cobro manual en el MVP, sin pasarela** (Wompi fuera del MVP), pero **todo pago se registra**: monto, moneda, fecha, método, referencia, workspace, plan, periodo cubierto y super_admin que lo registró; con esos registros se arma la contabilidad (listado de pagos, totales por periodo y por plan, exportable) (FR-110, SC-019). (4) Marcar un mes como pagado (T056, T057) crea ese registro de pago y activa la suscripción del periodo. (5) El dueño ve su plan, precio y consumo en solo lectura; no cambia su plan ni registra pagos (FR-088). El consumo de conversaciones y el excedente siguen bloqueados por la pregunta abierta 10; el consumo de citas no depende de ella.
 
 ---
 
@@ -555,7 +565,7 @@ Etiquetas: `[NEGOCIO]` = decisión comercial o de producto; `[USUARIO]` = decisi
 1. **[NEGOCIO] Proveedor de WhatsApp (S1)**: ¿se confirma Kapso `partner_managed` + coexistence como único camino y Meta directo solo como legado?
 2. **[NEGOCIO] Verificación de correo (S2)**: ¿es obligatoria antes de conectar WhatsApp?
 3. **[NEGOCIO] Reglas de reserva (S4)**: ¿anticipación mínima de 60 min y corte de 2 h para cancelar/reagendar por WhatsApp?
-4. **[NEGOCIO] Planes y precios (S7)**: ¿Esencial 50.000 / Profesional 90.000 / Profesional+ 100.000 COP con 300/800/1.500 conversaciones y excedente = costo Meta + 30 %? ¿Duración del `trial` (SUPUESTO 14 días; la usa FR-106)?
+4. ~~**[NEGOCIO] Planes y precios (S7)**~~ — **RESUELTA (D-U7, 2026-10-28)**: planes administrables por el super_admin desde el panel (precios, periodos y límites, incluida la duración del `trial`), cobro manual con registro de cada pago y contabilidad exportable (FR-090, FR-091, FR-106, FR-110).
 5. **[NEGOCIO] Cobro y suspensión (S8)**: ¿cobro manual por transferencia/Nequi y suspensión tras 10 días en `pending_payment`?
 6. **[NEGOCIO] Perfil de carga del lanzamiento**: ¿200 workspaces, 20 msg/s de pico y 2 000 citas/día? Todos los SLO de SC-005…SC-012 dependen de este número.
 7. **[USUARIO] Arquitectura del agente**: ¿se mantiene `services/appointment_agent.py` (master) o se prefiere el diseño LangGraph de `167cc22`? (auditoria-git, decisión 3a).

@@ -444,21 +444,21 @@
 
 ## Fase 6 — Comercial y pulido
 
-## T056 — Marca de mes pagado (planes de pago bloqueados por pregunta abierta 4; consumo por pregunta abierta 10)
+## T056 — Esquema de planes administrables y registro de pagos (consumo de conversaciones bloqueado por pregunta abierta 10)
 - **Agente:** dba
 - **Depende de:** T009, T048
 - **Paralelo:** No
 - **Historia:** US-013
 - **Archivos:** backend-lang/migrations/015_billing.sql (nuevo), backend-lang/migrations/001_initial_schema.sql (solo lectura)
-- **Alcance:** solo la marca de mes pagado (qué mes quedó pagado y por quién). `pending_payment` y `suspended` ya están en el CHECK de `subscriptions.status` (`001_initial_schema.sql:270`) y `trial` lo añade T009: esta tarea no toca ese CHECK. Antes de crear columnas, comprobar si bastan las existentes `paid_this_month` y `payment_verified_by` (`001:272`, `:276`). La tabla o vista de consumo mensual no se crea hasta que se responda la pregunta abierta 10 (unidad de cobro).
+- **Alcance (D-U7, D18):** (1) `billing_plans`: comprobar en 001 las columnas existentes y añadir con `ADD COLUMN IF NOT EXISTS` solo las que falten para FR-090: estado activo/inactivo, periodo, límite de conversaciones y límite de citas (precio entero COP ≥ 0). Sin semilla de planes de pago (los crea el super_admin); el plan `Trial` de T009 queda con periodo de 14 días como valor inicial (FR-106). (2) Tabla nueva `billing_payments` (FR-110): monto (> 0), moneda (`COP`), fecha de pago, método, referencia, `workspace_id`, `plan_id`, inicio y fin del periodo cubierto, `registered_by` (usuario super_admin), `created_at`; `UNIQUE (workspace_id, period_start)` e índices por `period_start` y `plan_id` para los totales. Sin RLS (D-U6). (3) La marca de mes pagado es la fila de `billing_payments`: comprobar si las columnas existentes `paid_this_month` y `payment_verified_by` (`001:272`, `:276`) quedan como espejo o sin uso, y documentarlo; no se borran. `pending_payment` y `suspended` ya están en el CHECK de `subscriptions.status` (`001_initial_schema.sql:270`) y `trial` lo añade T009: esta tarea no toca ese CHECK. La tabla o vista de consumo de conversaciones no se crea hasta que se responda la pregunta abierta 10 (unidad de cobro); el conteo de citas del mes sale de `appointments` sin tabla nueva.
 
-## T057 — Suscripción vigente con trial, consumo, backoffice de pagos, fin de trial y suspensión automática
+## T057 — Suscripción vigente con trial, panel admin de planes y suscripciones, registro de pagos, contabilidad, fin de trial y suspensión automática
 - **Agente:** backend
 - **Depende de:** T056, T002, T034
 - **Paralelo:** No
 - **Historia:** US-013
 - **Archivos:** backend-lang/src/api/routes/billing.py, backend-lang/src/workers/billing_worker.py (nuevo), backend-lang/src/api/main.py
-- **Alcance:** (1) `billing.py`: la consulta de `GET /billing/workspaces/{id}/subscription` (hoy `status = 'active'`, `billing.py:68`) pasa a `status IN ('trial','active','pending_payment','suspended')` y responde 2xx también en `trial`; el conjunto `allowed` de `PATCH …/subscription/status` (`billing.py:89`) incluye `trial` (FR-092, H1). (2) `billing_worker.py`, verificación diaria: `trial` → `pending_payment` al vencer el periodo de prueba (FR-106; SUPUESTO 14 días, pendiente de la pregunta abierta 4) y `pending_payment` > 10 días → `suspended` (FR-092). (3) Plan, precio y marcar pagado no están bloqueados. Conteo de conversaciones facturables, consumo y excedente (FR-088, FR-089, FR-091) quedan bloqueados por la pregunta abierta 10.
+- **Alcance:** (1) `billing.py`: la consulta de `GET /billing/workspaces/{id}/subscription` (hoy `status = 'active'`, `billing.py:68`) pasa a `status IN ('trial','active','pending_payment','suspended')` y responde 2xx también en `trial`; el conjunto `allowed` de `PATCH …/subscription/status` (`billing.py:89`) incluye `trial` (FR-092, H1). (2) `billing_worker.py`, verificación diaria: `trial` → `pending_payment` al vencer el periodo del plan `Trial` (FR-106; 14 días como valor inicial, editable por el super_admin) y `pending_payment` > 10 días → `suspended` (FR-092). (3) Endpoints de administración, solo `super_admin` (filas 34–36 de la matriz, D-U7): planes (listar todos, crear, editar, activar/desactivar; FR-090), con `GET /billing/plans` filtrado a planes activos; suscripciones por workspace con plan, precio, estado, citas del mes y vencimiento (FR-091); "marcar mes pagado" que inserta el pago en `billing_payments` y pone la suscripción en `active` con el periodo cubierto en una sola transacción, 409 si el periodo ya tiene pago y 422 por campo inválido (FR-110); contabilidad: listado de pagos filtrable por periodo, plan y workspace, totales por periodo y por plan, y exportación CSV (FR-110). (4) La respuesta de `GET …/subscription` para el owner incluye plan, precio, periodo, estado, vencimiento y citas del mes, en solo lectura (FR-088). Conteo de conversaciones facturables y excedente (FR-088, FR-089, FR-091) quedan bloqueados por la pregunta abierta 10.
 
 ## T058 — Backoffice solo super_admin, agente bloqueado si suspended y tests de billing
 - **Agente:** security
@@ -466,23 +466,23 @@
 - **Paralelo:** No
 - **Historia:** US-013
 - **Archivos:** backend-lang/src/api/routes/billing.py, backend-lang/src/core/security.py, backend-lang/src/services/agent_service.py, backend-lang/tests/test_billing.py (nuevo), backend-lang/tests/test_roles_matrix.py
-- **Alcance:** `test_billing.py` cubre: `GET …/subscription` → 2xx con el workspace en `trial`, `active`, `pending_payment` y `suspended`, y 404 sin fila vigente (FR-092, H1); `PATCH …/subscription/status` acepta `trial`; transición `trial` → `pending_payment` al vencer el periodo (FR-106, con reloj simulado) sin tocar workspaces en prueba vigente; `pending_payment` > 10 días → `suspended`; agente sin respuesta con `suspended` (FR-063). Quita la marca `xfail` del caso `trial` de `test_roles_matrix.py` creado en T006.
+- **Alcance:** `test_billing.py` cubre: `GET …/subscription` → 2xx con el workspace en `trial`, `active`, `pending_payment` y `suspended`, y 404 sin fila vigente (FR-092, H1); `PATCH …/subscription/status` acepta `trial`; transición `trial` → `pending_payment` al vencer el periodo (FR-106, con reloj simulado) sin tocar workspaces en prueba vigente; `pending_payment` > 10 días → `suspended`; agente sin respuesta con `suspended` (FR-063); SC-019 (marcar pagado crea 1 pago con todos los campos y activa la suscripción, 409 en el segundo intento, plan inactivo fuera de `GET /billing/plans`, totales y CSV iguales a la suma de pagos) y 403 del owner y demás roles en las filas 34–36 de `test_roles_matrix.py`. Quita la marca `xfail` del caso `trial` de `test_roles_matrix.py` creado en T006.
 
-## T059 — Pantallas Suscripción y backoffice de cobro
+## T059 — Pantallas Suscripción (dueño, solo lectura) y panel admin de planes, suscripciones, pagos y contabilidad
 - **Agente:** frontend
 - **Depende de:** T058, T054
 - **Paralelo:** No
 - **Historia:** US-013
 - **Archivos:** front/src/routes/_authenticated/subscription.tsx (nuevo), front/src/routes/_authenticated/admin-billing.tsx (nuevo), front/src/lib/api/billing.ts, front/src/routes/_authenticated.tsx
-- **Alcance:** mientras la pregunta abierta 10 no tenga respuesta, consumo y excedente no se muestran (sin valores inventados).
+- **Alcance (D-U7, diseño HILO):** (1) `subscription.tsx`, solo owner: plan, precio COP, periodo, estado, vencimiento y citas del mes frente al límite, en solo lectura; sin controles para cambiar de plan ni registrar pagos (FR-088). (2) `admin-billing.tsx`, solo `super_admin`, con tres secciones: "Planes" (crear, editar, activar/desactivar; FR-090), "Suscripciones" (por workspace: plan, precio, estado, citas del mes, vencimiento; acción "marcar mes pagado" con formulario de monto, fecha, método, referencia y periodo; FR-091, FR-110) y "Contabilidad" (listado de pagos con filtros por periodo, plan y workspace, totales por periodo y por plan, botón de exportar CSV; FR-110). Estados vacío, error con reintento y 409/422 por campo (US-013 casos borde). Mientras la pregunta abierta 10 no tenga respuesta, conversaciones facturables y excedente no se muestran (sin valores inventados).
 
 ## T060 — Revisión US-013
 - **Agente:** reviewer
 - **Depende de:** T059
 - **Paralelo:** No
 - **Historia:** US-013
-- **Archivos:** backend-lang/tests/test_billing.py (solo ejecución), backend-lang/tests/test_roles_matrix.py (solo ejecución), front/src/routes/_authenticated/subscription.tsx (solo lectura)
-- **Alcance:** cierra solo las partes verificables de US-013: escenarios 1a y 2a (plan, precio, estado y marcar mes pagado) y el 3. Las partes 1b y 2b (consumo y excedente) quedan abiertas, BLOQUEADAS por la pregunta abierta 10, y se registran como pendientes, no como fallo.
+- **Archivos:** backend-lang/tests/test_billing.py (solo ejecución), backend-lang/tests/test_roles_matrix.py (solo ejecución), front/src/routes/_authenticated/subscription.tsx (solo lectura), front/src/routes/_authenticated/admin-billing.tsx (solo lectura)
+- **Alcance:** cierra las partes de US-013 decididas por D-U7: escenarios 1a (vista del dueño en solo lectura, sin controles de cambio de plan ni de pago), 2a (planes administrables; inactivo no se ofrece), 3a y 3b (suscripciones y marcar mes pagado con registro de pago y activación), 4 (contabilidad: listado, totales por periodo y plan, exportación) y 5 (suspensión), con SC-019 y las filas 34–36 de la matriz. Las partes 1b y 3c (conversaciones facturables y excedente) quedan abiertas, BLOQUEADAS por la pregunta abierta 10, y se registran como pendientes, no como fallo.
 
 ## T061 — Endpoints de resumen del dashboard e historial de cliente, con tests
 - **Agente:** backend
@@ -537,10 +537,10 @@
 | FR-015 | T009, T011, T012, T013 | FR-050 | T019, T035 | FR-085 | T039, T053 |
 | FR-016 | T013 | FR-051 | T036 (montaje bloqueado, pregunta abierta 9) | FR-086 | T039, T053, T054, T061 |
 | FR-017 | T013 | FR-052 | T036, T037 | FR-087 | T054 |
-| FR-018 | T009, T010 | FR-053 | T041 | FR-088 | T057, T059 (bloqueado, pregunta abierta 10) |
+| FR-018 | T009, T010 | FR-053 | T041 | FR-088 | T057, T059 (conversaciones y excedente bloqueados, pregunta abierta 10) |
 | FR-019 | T016, T017 | FR-054 | T040 | FR-089 | T056, T057 (bloqueado, pregunta abierta 10) |
-| FR-020 | T016 | FR-055 | T040 | FR-090 | T056 (bloqueado, pregunta abierta 4) |
-| FR-021 | T015, T017 | FR-056 | T038, T041, T042 | FR-091 | T057, T058, T059 (consumo bloqueado, pregunta abierta 10) |
+| FR-020 | T016 | FR-055 | T040 | FR-090 | T056, T057, T058, T059 (D-U7) |
+| FR-021 | T015, T017 | FR-056 | T038, T041, T042 | FR-091 | T056, T057, T058, T059 (conversaciones y excedente bloqueados, pregunta abierta 10) |
 | FR-022 | T015, T016 | FR-057 | T041 | FR-092 | T006, T057, T058 |
 | FR-023 | T015, T016, T017 | FR-058 | T032, T042 | FR-093 | T062 |
 | FR-024 | T015, T016, T017 | FR-059 | T039, T042 | FR-094 | T061, T062 |
@@ -555,9 +555,10 @@
 | FR-033 | T023, T024 | FR-068 | T044 | FR-103 | T006 |
 | FR-034 | T026, T027, T061 | FR-069 | T045, T046 | FR-104 | T012 |
 | FR-035 | T027 | FR-070 | T038, T045 | FR-105 | T005 (cumplida en `94f8e44`, D-U4), T008 |
-| | | | | FR-106 | T057, T058 (duración del trial pendiente, pregunta abierta 4) |
+| | | | | FR-106 | T056, T057, T058 (duración = periodo del plan `Trial`, D-U7) |
 | | | | | FR-107 | T049, T050 |
 | | | | | FR-108 | T003, T006, T013, T014 |
 | | | | | FR-109 | T019, T020, T021, T022 |
+| | | | | FR-110 | T056, T057, T058, T059, T060 (D-U7) |
 
-**Cobertura**: 109/109 FR con al menos una tarea (FR-107, recordatorio de 2 h, en T049 y T050; FR-108, sesión conservada ante 5xx de BD, en T003, T006, T013 y T014; FR-109, Kapso 5xx → 502 con reintento, en T019, T020, T021 y T022). Casos borde sin FR propio con test nombrado: US-001(b) 404 de workspace inexistente (FR-004, `test_roles_matrix.py`, T006); US-007 escenarios 2 y 4 (`test_webhook_reliability.py`, T036); US-010(a) y (b) (`test_reminder_worker.py`, T049). SC-017 se mide en el piloto (T064). 64 tareas (T001–T064), sin huecos. Todas las dependencias apuntan a tareas de número menor (sin ciclos). Dependencias añadidas para que no corran a la vez tareas que editan el mismo archivo: T026→T020 (`schemas/channel.py`), T049→T045 (`conversation_service.py`), T053→T046 (`appointment_agent.py`), T058→T053 (`agent_service.py`), T061→T049 (`appointments.py`), T057→T034 (`api/main.py`), T061→T058 (`test_roles_matrix.py`), T010→T004 (`auth.py`), T011→T006 (`email_service.py`), T016→T006 (`workspaces.py`, `schemas/workspace.py`), T020→T006 (`test_channels_roles.py`) y T027→T013 (`front/src/lib/api/auth.ts`; ordena también T063 tras T013 vía T062→T027 por `signup.tsx`). SC-001 se mide contra la "Matriz objetivo rol × endpoint" de la spec (`test_roles_matrix.py`: T006, T058, T061; aprobada en T008 y T064). SC-013 lo mide `test_kapso_onboarding.py` (T020, ejecutado en T022). Las migraciones 006…015 siguen el orden de las tareas dba (T001 [006 convergencia + 007 roles/rate_limits] → T009 → T015 → T023 → T032 → T038 → T039 → T048 → T056). Revisores por historia (última tarea de cada una, sin crear código ni tests): T008, T014, T018, T022, T028, T031, T037, T043, T047, T050, T052, T055, T060, T064. SC-014 lo mide `test_panel_freshness.py` (T051, T054; ejecutado en T052 y T055).
+**Cobertura**: 110/110 FR con al menos una tarea (FR-110, registro de pagos y contabilidad de D-U7, en T056…T060; FR-107, recordatorio de 2 h, en T049 y T050; FR-108, sesión conservada ante 5xx de BD, en T003, T006, T013 y T014; FR-109, Kapso 5xx → 502 con reintento, en T019, T020, T021 y T022). Casos borde sin FR propio con test nombrado: US-001(b) 404 de workspace inexistente (FR-004, `test_roles_matrix.py`, T006); US-007 escenarios 2 y 4 (`test_webhook_reliability.py`, T036); US-010(a) y (b) (`test_reminder_worker.py`, T049). SC-017 se mide en el piloto (T064). 64 tareas (T001–T064), sin huecos. Todas las dependencias apuntan a tareas de número menor (sin ciclos). Dependencias añadidas para que no corran a la vez tareas que editan el mismo archivo: T026→T020 (`schemas/channel.py`), T049→T045 (`conversation_service.py`), T053→T046 (`appointment_agent.py`), T058→T053 (`agent_service.py`), T061→T049 (`appointments.py`), T057→T034 (`api/main.py`), T061→T058 (`test_roles_matrix.py`), T010→T004 (`auth.py`), T011→T006 (`email_service.py`), T016→T006 (`workspaces.py`, `schemas/workspace.py`), T020→T006 (`test_channels_roles.py`) y T027→T013 (`front/src/lib/api/auth.ts`; ordena también T063 tras T013 vía T062→T027 por `signup.tsx`). SC-001 se mide contra la "Matriz objetivo rol × endpoint" de la spec (`test_roles_matrix.py`: T006, T058, T061; aprobada en T008 y T064). SC-013 lo mide `test_kapso_onboarding.py` (T020, ejecutado en T022). Las migraciones 006…015 siguen el orden de las tareas dba (T001 [006 convergencia + 007 roles/rate_limits] → T009 → T015 → T023 → T032 → T038 → T039 → T048 → T056). Revisores por historia (última tarea de cada una, sin crear código ni tests): T008, T014, T018, T022, T028, T031, T037, T043, T047, T050, T052, T055, T060, T064. SC-014 lo mide `test_panel_freshness.py` (T051, T054; ejecutado en T052 y T055).
