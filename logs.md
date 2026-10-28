@@ -45,3 +45,6 @@
   - 006_convergencia_remota.sql y 007_roles_rate_limits.sql sin RLS (D-U6); aplicadas en la remota en una transacción, gate PASS
   - member_role 'owner' → 'workspace_owner'; tabla rate_limits(key, window_start, hits)
   - Riesgo hasta T002: guards require_workspace_access("owner") ya no coinciden con el rol migrado
+## 2026-10-28 — T002 guards owner → workspace_owner (t_36af8fc3, security)
+  - workspaces.py, services.py y billing.py: require_workspace_access("workspace_owner"); riesgo anterior resuelto
+  - pytest backend-lang: 83 passed, 5 skipped

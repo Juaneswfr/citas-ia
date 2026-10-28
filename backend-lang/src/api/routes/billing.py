@@ -58,7 +58,7 @@ async def list_plans(db: asyncpg.Connection = Depends(get_db)):
     "/workspaces/{workspace_id}/subscription",
     response_model=SubscriptionOut,
     summary="Ver suscripción activa del workspace",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def get_subscription(
     workspace_id: str,

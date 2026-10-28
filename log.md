@@ -42,3 +42,15 @@
 
 **Actualizaciones a claude.md:**
 - Sin RLS (D-U6), PK surrogate aceptada (D-U5), estado del gate con la remota aplicada, riesgo de guards "owner" hasta T002.
+
+### [AGENTE: security] [FECHA: 2026-10-28 UTC]
+**Cambios:**
+- T002 (t_36af8fc3): `require_workspace_access("owner")` → `("workspace_owner")` en workspaces.py (invite_member, remove_member), services.py (deactivate_service, 2 usos) y billing.py (get_subscription). Textos: "Requiere rol workspace_owner." y cabecera de services.py.
+- Motivo: ROLE_HIERARCHY no contiene "owner"; el guard era inalcanzable salvo super_admin. security.py/auth.py sin tocar (T003/T004).
+- Verificación: grep sin literales "owner" sueltos en los 3 archivos; `PYTHONPATH=src .venv/bin/pytest -q` en backend-lang: 83 passed, 5 skipped, 0 failed.
+
+**Archivos modificados:** backend-lang/src/api/routes/workspaces.py, services.py, billing.py, log.md, claude.md, logs.md
+**Commit:** ver `git log` (feat(auth): T002 reemplazar rol owner por workspace_owner ...)
+
+**Actualizaciones a claude.md:**
+- Riesgo de guards "owner" resuelto; pendiente T003/T004.

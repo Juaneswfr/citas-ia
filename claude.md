@@ -42,5 +42,5 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
 - Copia fiel (pg_dump 17.11 de la remota restaurado sin stubs) + 006 + 007 en una transacción: PASS; solo diferencias permitidas.
 - **Remota (PG 17.11): aplicada** en una transacción (006 + 007, COMMIT) y verificada por catálogo en solo lectura: PASS, catálogo
   idéntico a la copia ensayada. Backup previo: `scratch/t001/remote_backup_20261028T183712Z.dump` (sha256 51368880…910b).
-- Pendiente inmediato: T002 (los guards `require_workspace_access("owner")` en workspaces.py, services.py y billing.py ya no
-  coinciden con el rol migrado `workspace_owner` hasta que T002 los cambie).
+- T002 hecha (security): los guards de workspaces.py, services.py y billing.py usan `workspace_owner`; suite backend-lang 83 passed, 5 skipped.
+- Pendiente inmediato: T003/T004 (security.py / lógica de `require_workspace_access`).
