@@ -7,33 +7,32 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
 
 ### Decisiones
 - **Convergencia (D-U1 opción a):** la BD remota (creada por Alembic) no se reconstruye ni se borran datos. `006` agrega lo que falta
-  frente a 001..005 y es idempotente (se puede aplicar dos veces; en una BD creada desde 001..005 no cambia nada).
-- **idx_channels_phone_number_id** (parcial, no único, de Alembic): 006 lo borra después de crear `channels_phone_number_id_uq`, que lo
-  sustituye (el canónico no lo tiene). El índice único es además requisito de `ON CONFLICT (phone_number_id)` en `kapso_onboarding.py`.
+  frente a 001..005 y es idempotente (aplicada dos veces en efímero: exit 0; en una BD creada desde 001..005 no cambia nada).
+  Contenido: `kapso_webhook_events` (003 exacta), CHECK `kapso_customers_setup_status_check`, UNIQUE(kapso_customer_id) solo si no
+  existe (DO block), índices únicos `channels_phone_number_id_uq` y `channels_webhook_token_uq`, defaults como 004.
+- **Sin RLS (D-U6):** 006 y 007 no crean ni borran políticas ni habilitan RLS (`grep POLICY|ROW LEVEL` = 0). `rate_limits` sin RLS.
+  Riesgo aceptado: el aislamiento entre workspaces depende solo de la aplicación (JWT, require_workspace_access).
+- **PK surrogate de kapso_customers (D-U5):** se conserva PK(id) + UNIQUE(workspace_id) en la remota; no se migra a PK(workspace_id).
+- **idx_channels_phone_number_id** (parcial, no único, de Alembic): se conserva; la unicidad la cubre `channels_phone_number_id_uq`.
 - **Defaults:** `channels.connection_type` sin default (antes 'coexistence' en remota) y `kapso_customers.setup_status` 'none'
-  (antes 'pending'). Los INSERT de `api/routes/channels.py` no fijan connection_type: en la remota pasarán a guardar NULL, como el canónico.
+  (antes 'pending'). Los INSERT de `api/routes/channels.py` no fijan connection_type: en la remota guardarán NULL, como el canónico.
 - **member_role (007):** orden obligatorio DROP del CHECK (buscado por catálogo) → UPDATE owner→workspace_owner → ADD del CHECK nuevo.
-  El DOWN (comentado al final de 007) hace lo inverso y borra rate_limits; probado en efímero.
-- **rate_limits (D15):** PK (key, window_start), índice por window_start, RLS habilitado sin políticas: denegado a roles no
-  privilegiados (probado). El backend usa el rol propietario de las tablas (en la remota `hilo_user`: no superusuario, sin BYPASSRLS,
-  propietario de todas las tablas de public, sin FORCE RLS), por eso RLS no le aplica.
+  El DOWN (comentado al final de 007) hace lo inverso y borra rate_limits; probado en efímero (DOWN + re-UP exit 0).
+- **rate_limits (D15):** PK (key, window_start), índice por window_start. `hits` DEFAULT 0: el upsert
+  `INSERT (key, window_start) ... ON CONFLICT DO UPDATE SET hits = hits + 1` devuelve 0 y luego 1; para contar desde 1 hay que
+  insertar `hits = 1` en VALUES (lo debe tener en cuenta T004).
 
 ### Deudas aceptadas (no se tocan en T001)
 - Columnas extra de Alembic: appointments.reminder_sent, reminder_1h_sent, reminder_24h_sent, users.password_hash, kapso_customers.id.
-- `gen_random_uuid()` en la remota vs `uuid_generate_v4()` en el canónico: equivalentes.
+- `gen_random_uuid()` en la remota vs `uuid_generate_v4()` en el canónico: equivalentes (la remota no tiene uuid-ossp).
 - Tabla `alembic_version` (b1a2c3d4e5f6): no se actualiza; las migraciones SQL directas no la usan.
+- PK surrogate de kapso_customers (D-U5).
+- Las 11 políticas `*_select` de 001 no existen en la remota (sin esquema `auth`); fuera del gate por D-U6.
 
-### Pendiente de PM (bloquea la aplicación en la remota)
-1. **PK de kapso_customers:** remota PK(id) + UNIQUE(workspace_id); canónico PK(workspace_id). Opciones: (i) migrar la PK a
-   workspace_id; (ii) aceptar la PK surrogate como equivalente funcional y excluirla del gate con autorización explícita.
-2. **auth.uid() no existe en la remota** (PostgreSQL 17.11 Debian, no Supabase): las políticas de 001/006 no se pueden crear.
-   Opciones: (a) crear `auth.uid()` stub en la remota; (b) políticas propias sin auth.uid(); (c) aceptar RLS sin políticas
-   (denegado por defecto) y excluirlas del gate.
-3. **Aviso:** la política canónica `wm_select` (001) se consulta a sí misma → "infinite recursion detected in policy" para roles no
-   propietarios. Sin efecto en el backend (propietario); a corregir si algún cliente usa un rol limitado.
-
-### Estado del gate (2026-10-28)
-- Efímero limpio 001..007: PASS (diff 0 frente a la referencia, también tras DOWN + re-UP).
-- Copia restaurada de la remota + stub auth.uid() + 006 + 007 en una transacción: criterios 10/10, queda solo la PK de kapso_customers
-  → PASS con PK pendiente. Sin stub: 006 falla en CREATE POLICY y hace ROLLBACK limpio.
-- Remota: **no aplicada**. T002–T004/T009 siguen bloqueadas hasta la decisión de PM.
+### Estado del gate (2026-10-28 18:38 UTC)
+- Efímero limpio PG 17.10, 001..005 + 006 + 006 + 007: criterios 12/12, PASS. Tests de migraciones: 5 passed.
+- Copia fiel (pg_dump 17.11 de la remota restaurado sin stubs) + 006 + 007 en una transacción: PASS; solo diferencias permitidas.
+- **Remota (PG 17.11): aplicada** en una transacción (006 + 007, COMMIT) y verificada por catálogo en solo lectura: PASS, catálogo
+  idéntico a la copia ensayada. Backup previo: `scratch/t001/remote_backup_20261028T183712Z.dump` (sha256 51368880…910b).
+- Pendiente inmediato: T002 (los guards `require_workspace_access("owner")` en workspaces.py, services.py y billing.py ya no
+  coinciden con el rol migrado `workspace_owner` hasta que T002 los cambie).

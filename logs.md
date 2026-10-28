@@ -41,3 +41,7 @@
   - agent_service.py: reemplaza el TODO; envío por WhatsAppService sin cambios
   - tests/test_appointment_agent.py nuevo
   - No migré: sin reglas de horario laboral (solo free/busy), sin cancelar/reprogramar
+## 2026-10-28 — T001 convergencia remota y roles (t_f215abc3, dba)
+  - 006_convergencia_remota.sql y 007_roles_rate_limits.sql sin RLS (D-U6); aplicadas en la remota en una transacción, gate PASS
+  - member_role 'owner' → 'workspace_owner'; tabla rate_limits(key, window_start, hits)
+  - Riesgo hasta T002: guards require_workspace_access("owner") ya no coinciden con el rol migrado
