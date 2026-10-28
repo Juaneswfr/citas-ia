@@ -53,3 +53,4 @@
   - TRUST_PROXY_HEADERS (default false) para leer X-Real-IP; purga de rate_limits en el reminder worker
   - pytest backend-lang: 96 passed, 5 skipped
   - No migré: rate limit de register (T010/T012) ni de webhooks (T034)
+  - Corrección: bloqueo de login rolling de 900 s desde el disparo (fila login:block con window_start = now()), no ventana alineada; pytest 97 passed, 5 skipped

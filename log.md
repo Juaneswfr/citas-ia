@@ -69,3 +69,14 @@
 
 **Actualizaciones a claude.md:**
 - Sección T004: decisiones (CORS, rate limit, trust_proxy_headers), sin adaptaciones de fixtures y pendientes (T010/T012, T034, T006).
+
+### [AGENTE: security] [FECHA: 2026-10-28 UTC]
+**Cambios:**
+- T004 corrección (revisión de seguridad): el bloqueo de login de 15 min era de ventana fija alineada al reloj (podía durar ~1 s). Ahora `enforce_login_rate_limit` inserta una fila `login:block:{ip}` con `window_start = now()` (ON CONFLICT DO NOTHING) al exceder 10/min, y antes de contar comprueba si existe una con `window_start > now() - 900 s` → 429 con `Retry-After = max(1, 900 - edad)`. Los intentos bloqueados no cuentan ni extienden el bloqueo. Límite por minuto sin cambios.
+- Tests: reescrito el de bloqueo y añadido `test_login_block_is_rolling_900s_from_trigger` (899 s → 429, 901 s → no bloqueado). Suite: 97 passed, 5 skipped.
+
+**Archivos modificados:** backend-lang/src/core/security.py, backend-lang/tests/test_t004_rate_limit_cors_is_active.py, log.md, logs.md, claude.md
+**Commit:** ver `git log` (fix(auth): T004 bloqueo de login de 15 min ...)
+
+**Actualizaciones a claude.md:**
+- Decisión de bloqueo rolling de 900 s desde el último disparo.
