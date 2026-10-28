@@ -6,7 +6,7 @@
 **Prioridad**: MVP-bloqueante (sin esto no se puede hacer el piloto con un barbero) · MVP (necesario antes de vender) · post-MVP.
 **Origen de las líneas**: salen de una lectura estática del código. `BE/core/security.py` y `BE/api/routes/auth.py` se revisaron línea a línea; el resto viene de búsquedas dirigidas. No se ejecutó ningún test ni servidor. Lo que se marca "no verificado" depende de ejecución o del esquema real de BD.
 
-> **Esquema de BD ambiguo (no verificado)**: hay dos fuentes. `backend-lang/migrations/001_initial_schema.sql` (17 tablas, con RLS basado en `auth.uid()` de Supabase) y `front/drizzle/0000_fuzzy_rage.sql` (15 tablas, con `users.password_hash`). Según logs.md (2026-10-27), las tablas todavía no existen en el nuevo Postgres. Algunas columnas que el código usa (`reminder_24h_sent`, `reminder_2h_sent`, `google_notification_channel_id`, `next_sync_token`) no aparecen en 001. **SUPUESTO**: el esquema canónico es drizzle, y 001 se reescribe o se elimina.
+> **Esquema de BD ambiguo (no verificado)**: hay dos fuentes. `backend-lang/migrations/001_initial_schema.sql` (17 tablas, con RLS basado en `auth.uid()` de Supabase; estado del archivo, RLS retirado por D-U6: no se aplica ni se exige) y `front/drizzle/0000_fuzzy_rage.sql` (15 tablas, con `users.password_hash`). Según logs.md (2026-10-27), las tablas todavía no existen en el nuevo Postgres. Algunas columnas que el código usa (`reminder_24h_sent`, `reminder_2h_sent`, `google_notification_channel_id`, `next_sync_token`) no aparecen en 001. **SUPUESTO**: el esquema canónico es drizzle, y 001 se reescribe o se elimina.
 
 ---
 

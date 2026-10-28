@@ -212,7 +212,7 @@ No se recomienda Toxiproxy ni chaos tooling: los fallos de los dependientes se i
   ```
   `--tmpfs` + `--rm` hacen que al parar no quede nada. El puerto solo escucha en loopback.
 - **Levantar (opción B, sin Docker ni root):** `micromamba create -p ~/.local/pg15 -c conda-forge postgresql=15`, luego `initdb -D /tmp/citas-stress-pg` y `pg_ctl -D /tmp/citas-stress-pg -o "-p 55432 -k /tmp" start`. Destruir con `pg_ctl ... stop` y `rm -rf /tmp/citas-stress-pg`.
-- **Esquema:** igual que `tests/test_migrations_integration.py:21-27`: se recrean `public` y `auth`, se simula `auth.uid()` y se aplican `migrations/001..005`. **Gap:** las columnas de recordatorio no están en las migraciones (H12). E7 necesita una migración de prueba o la confirmación del esquema real.
+- **Esquema:** igual que `tests/test_migrations_integration.py:21-27`: se recrean `public` y `auth`, se simula `auth.uid()` (estado actual del test; RLS retirado por D-U6, el arnés no verifica RLS) y se aplican `migrations/001..005`. **Gap:** las columnas de recordatorio no están en las migraciones (H12). E7 necesita una migración de prueba o la confirmación del esquema real.
 - **Destruir:** `docker stop citas-stress-pg` (con `--rm` se borra el contenedor y el tmpfs).
 - **Guardia de seguridad:** el arnés debe abortar si `TEST_DATABASE_URL` no apunta a `127.0.0.1`/`localhost` o si el nombre de BD no contiene `stress` o `test`. Así nunca se recrean schemas en Supabase.
 
