@@ -48,3 +48,8 @@
 ## 2026-10-28 — T002 guards owner → workspace_owner (t_36af8fc3, security)
   - workspaces.py, services.py y billing.py: require_workspace_access("workspace_owner"); riesgo anterior resuelto
   - pytest backend-lang: 83 passed, 5 skipped
+## 2026-10-28 — T004 is_active, CORS y rate limit de login (t_e4ed4773, security)
+  - PATCH /workspaces: is_active solo workspace_owner/super_admin; CORS por CORS_ALLOWED_ORIGINS (sin "*"); rate limit de login 10/min + bloqueo 15 min sobre rate_limits (503 si la BD falla)
+  - TRUST_PROXY_HEADERS (default false) para leer X-Real-IP; purga de rate_limits en el reminder worker
+  - pytest backend-lang: 96 passed, 5 skipped
+  - No migré: rate limit de register (T010/T012) ni de webhooks (T034)
