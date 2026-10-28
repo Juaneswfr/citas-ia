@@ -57,3 +57,18 @@
 
 **Actualizaciones a claude.md:**
 - Sección T009 con decisiones (008, slug ya UNIQUE, plan Trial one_time, backfill, auth_tokens solo hash, sin RLS) y deudas.
+
+### [AGENTE: dba] [FECHA: 2026-10-28 20:00 UTC]
+**Cambios:**
+- T015 (kanban t_e8af0109): `009_workspace_settings.sql` — workspaces.settings JSONB NOT NULL DEFAULT '{}' con CHECK `workspaces_settings_is_object`
+  (jsonb_typeof = 'object'); índice único `services_workspace_name_uq` sobre (workspace_id, lower(btrim(name))) en TODAS las filas;
+  pre-check DO que aborta con EXCEPTION si hay duplicados (no modifica datos). DOWN comentado y probado.
+- 2 tests nuevos `test_migration_009_*` en tests/test_migrations_integration.py.
+- Ensayo PG 16.4 efímero: 001..008 + 009 + 009 PASS, DOWN == esquema 008 PASS, re-UP PASS, pre-check con duplicados PASS (datos intactos);
+  suite 91 passed (con TEST_DATABASE_URL) / 83 passed, 8 skipped (sin). **No se aplicó nada en la remota.**
+
+**Archivos modificados:** backend-lang/migrations/009_workspace_settings.sql, backend-lang/tests/test_migrations_integration.py, log.md, claude.md, logs.md
+**Commit:** ver `git log` (feat(db): T015 workspaces.settings y unicidad de servicios)
+
+**Actualizaciones a claude.md:**
+- Sección T015 con decisiones (009, sin BEGIN/COMMIT, unicidad sobre todas las filas, pre-check sin borrado, settings objeto) y notas para T016.

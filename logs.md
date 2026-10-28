@@ -48,3 +48,6 @@
 ## 2026-10-28 — T009 cuenta (t_37460f88, dba)
   - 008_auth_tokens_trial.sql: users.email_verified_at, auth_tokens (solo hash), subscriptions.status con 'trial', plan Trial, backfill trial, slug único si falta
   - Validada solo en Postgres efímero (no aplicada en remota); DOWN probado
+## 2026-10-28 — T015 workspace settings (t_e8af0109, dba)
+  - 009_workspace_settings.sql: workspaces.settings JSONB (CHECK objeto) y índice único de servicios por (workspace, lower(btrim(name))) con pre-check de duplicados
+  - Validada solo en Postgres efímero (no aplicada en remota); DOWN probado

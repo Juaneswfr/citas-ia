@@ -66,3 +66,15 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
 ### Deudas / abiertas
 - La duración del trial (14 días) no tiene columna en billing_plans; la administra super_admin (FR-106) — falta decidir dónde vive.
 - 008 **no aplicada en la remota**: solo validada en PG 17.10 efímero; la aplicación remota la autoriza el usuario.
+
+## T015 — workspaces.settings y unicidad de servicios (009, dba, 2026-10-28)
+- **Número 009** (008 ya es auth_tokens_trial).
+- **Sin BEGIN/COMMIT** en el archivo (la tarea pedía envolverlo): se sigue la convención real de 006/007/008, cuya cabecera dice que la
+  transacción la pone el runner; un BEGIN/COMMIT propio rompería esa transacción externa. El fixture de tests ejecuta el archivo en un solo `execute` (atómico).
+- **settings:** JSONB NOT NULL DEFAULT '{}'; CHECK `workspaces_settings_is_object` solo garantiza objeto JSON. IANA, start<end, tono, etc. → backend (T016).
+- **Unicidad de servicios:** `services_workspace_name_uq` sobre (workspace_id, lower(btrim(name))), TODAS las filas (inactivas incluidas; soft delete conserva histórico).
+- **Pre-check:** DO que lanza EXCEPTION con el número de grupos duplicados; nunca borra ni modifica datos (dedupe = decisión humana).
+- **DOWN** (comentado, probado): DROP INDEX, DROP CONSTRAINT, DROP COLUMN; deja el esquema idéntico a 008.
+- **Notas T016:** el preset de servicios debe ser idempotente (`ON CONFLICT (workspace_id, lower(btrim(name))) DO NOTHING`/UPDATE, o reactivar el
+  servicio inactivo existente); crear/renombrar un servicio con nombre ya usado (aunque inactivo) devuelve 23505 → mapear a 409/mensaje claro.
+- **Deuda:** 009 no aplicada en la remota; antes de aplicarla, consultar duplicados existentes (el pre-check abortará si los hay).

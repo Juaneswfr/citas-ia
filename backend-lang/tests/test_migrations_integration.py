@@ -113,3 +113,42 @@ async def test_migration_008_trial_and_auth_tokens(conn):
             await conn.execute(ins, uid, "email_verification", "h1")
     finally:
         await tr.rollback()
+
+
+async def test_migration_009_settings_default_and_check(conn):
+    col = await conn.fetchrow(
+        "SELECT is_nullable, column_default FROM information_schema.columns "
+        "WHERE table_name='workspaces' AND column_name='settings'")
+    assert col["is_nullable"] == "NO"
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        ws = await conn.fetchval(
+            "INSERT INTO public.workspaces (name, slug) VALUES ('w', $1) RETURNING id", "w-" + os.urandom(3).hex())
+        assert await conn.fetchval("SELECT settings = '{}'::jsonb FROM public.workspaces WHERE id=$1", ws)
+        with pytest.raises(asyncpg.CheckViolationError) as e:
+            await conn.execute("UPDATE public.workspaces SET settings='[]'::jsonb WHERE id=$1", ws)
+        assert e.value.sqlstate == "23514"
+    finally:
+        await tr.rollback()
+
+
+async def test_migration_009_service_name_unique_per_workspace(conn):
+    ins = ("INSERT INTO public.services (workspace_id, name, duration_minutes, price_cop, is_active) "
+           "VALUES ($1,$2,30,1000,$3)")
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        ws = [await conn.fetchval(
+            "INSERT INTO public.workspaces (name, slug) VALUES ($1,$2) RETURNING id",
+            f"w{i}", f"w{i}-{os.urandom(3).hex()}") for i in range(2)]
+        await conn.execute(ins, ws[0], "Corte", False)  # inactivo: cuenta igual
+        sp = conn.transaction()
+        await sp.start()
+        with pytest.raises(asyncpg.UniqueViolationError) as e:
+            await conn.execute(ins, ws[0], "  cORTE ", True)
+        assert e.value.sqlstate == "23505"
+        await sp.rollback()
+        await conn.execute(ins, ws[1], "Corte", True)  # otro workspace: permitido
+    finally:
+        await tr.rollback()
