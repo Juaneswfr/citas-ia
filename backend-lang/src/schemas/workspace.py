@@ -1,6 +1,6 @@
 """Schemas Pydantic para Workspace y WorkspaceMember."""
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field, EmailStr
 
 
@@ -46,9 +46,9 @@ class WorkspaceOut(BaseModel):
 
 
 class MemberInvite(BaseModel):
-    email: EmailStr = Field(..., description="Email del usuario a invitar")
-    member_role: str = Field(
-        ..., description="Rol en el workspace: workspace_owner | manager | staff | viewer"
+    email: EmailStr = Field(..., description="Email de un usuario ya registrado")
+    member_role: Literal["workspace_owner", "manager", "staff", "viewer"] = Field(
+        ..., description="Rol en el workspace"
     )
 
 
@@ -58,5 +58,11 @@ class MemberOut(BaseModel):
     user_id: str
     member_role: str
     status: str
-    joined_at: Optional[datetime]
+    joined_at: Optional[datetime] = None
     created_at: datetime
+    email: Optional[str] = None
+    name: Optional[str] = None
+
+
+class MemberInviteOut(MemberOut):
+    email_sent: bool = Field(..., description="false si el aviso por correo falló (la membresía se conserva)")

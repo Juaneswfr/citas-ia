@@ -80,3 +80,18 @@
 
 **Actualizaciones a claude.md:**
 - Decisión de bloqueo rolling de 900 s desde el último disparo.
+
+### [AGENTE: backend] [FECHA: 2026-10-28 19:19 UTC]
+**Cambios:**
+- T006 (kanban t_ab686178). Se fusionó localmente `feat/003-t004` (incluye T002 y T003) porque la rama partía de T001 y T006 depende de T004.
+- workspaces.py: `POST /workspaces/` crea workspace + membresía `workspace_owner` del creador en una transacción (FR-103); `GET members` con email/nombre (sin campos internos); `POST members` (404 no registrado, 409 ya miembro, `email_sent` best-effort con EmailService inyectable); `DELETE members/{uid}` con `FOR UPDATE` y 409 si es el último owner (FR-010), 404 si no es miembro.
+- schemas/workspace.py: `member_role` como Literal de los 4 roles; `MemberOut` (+email, name) y `MemberInviteOut` (+email_sent). email_service.py: `send_member_invitation`.
+- Tests nuevos: test_roles_matrix.py (filas existentes de la matriz × 5 roles, 401, workspace ajeno, miembro removido, FR-007, FR-004/108, FR-010), test_auth_rate_limit.py; test_channels_roles.py ampliado (PATCH status, embedded-signup, 401).
+- pytest backend-lang: 431 passed, 5 skipped, 6 xfailed (base T004: 97 passed, 5 skipped). xfail strict: fila 32 `trial` (T009/T057) y fila 3 (5 casos, T024/T026: `/auth/google/calendar/url` hoy no exige JWT ni rol).
+- Sin tablas ni índices nuevos. Los errores siguen con `detail` (FR-007 lo exige y los tests de T003/T004 lo asumen); el formato `{error:{code,message}}` no se introdujo.
+
+**Archivos modificados:** backend-lang/src/api/routes/workspaces.py, backend-lang/src/schemas/workspace.py, backend-lang/src/services/email_service.py, backend-lang/tests/test_roles_matrix.py, backend-lang/tests/test_auth_rate_limit.py, backend-lang/tests/test_channels_roles.py, log.md, logs.md, claude.md
+**Commit:** ver `git log` (feat(workspaces): T006 equipo, matriz de roles y rate limit de login (rol: backend))
+
+**Actualizaciones a claude.md:**
+- Reglas de equipo (último owner, invitación), elección de membresía, xfails y notas para Security/DBA.

@@ -54,3 +54,11 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
 - **trust_proxy_headers:** `nginx/nginx.conf` setea `X-Real-IP $remote_addr` y es el único ingress en docker-compose (backend sin puerto publicado), así que `TRUST_PROXY_HEADERS=true` es seguro en ese despliegue. Default False: sin proxy confiable un cliente podría falsificar X-Real-IP y evadir el límite. Nunca se lee X-Forwarded-For.
 - **Fixtures:** ningún test existente hacía login por la ruta, así que no se adaptó ninguna fixture ni se tocó ninguna aserción. Único cambio de infraestructura de tests: `pythonpath = ["src"]` en pyproject (pytest del venv principal importaba el `src` del repo principal).
 - **Pendientes:** rate limit de `/auth/register` (T010/T012, reutiliza `rate_limit_hit`); rate limit de webhooks (T034); tests de matriz y rate limit end-to-end (T006); aplicar `TRUST_PROXY_HEADERS=true` y `CORS_ALLOWED_ORIGINS` en el .env de producción.
+
+### T006 — Equipo y matriz de roles (backend, 2026-10-28)
+- **Último owner (FR-010):** `DELETE /workspaces/{id}/members/{uid}` bloquea con `SELECT … FOR UPDATE` los owners activos; si el objetivo es el único → 409 sin borrar. Cubre también el auto-removerse. Miembro inexistente → 404. El borrado es físico (como antes).
+- **Invitar:** solo usuarios registrados (404 si no), 409 si ya es miembro (UniqueViolation), `email_sent=false` si el aviso falla; la membresía se conserva. `EmailService` entra por `get_email_service` (los tests lo sustituyen).
+- **Membresía determinista (FR-007):** la activa más antigua, `ORDER BY COALESCE(joined_at, created_at), id` en `_USER_SQL` (auth.py, de T003). Sin BD en CI, el test verifica el SQL, no el orden real.
+- **Matriz:** `tests/test_roles_matrix.py` cubre las filas existentes (1-23, 26, 27, 32, 33). Casos xfail(strict): fila 32 `trial` (T009/T057; T058 quita la marca) y fila 3 (T024/T026: `GET /auth/google/calendar/url` no exige JWT ni rol hoy).
+- **Pendiente fuera de T006:** fila 23 exige correo verificado (FR-014) y no está implementado; no hay caso. Errores siguen con `detail`, no `{error:{…}}`.
+- **Para Security:** validar auth/sesión (guard con BD, 503 fail-closed) y el endpoint `/auth/google/calendar/url` sin protección. **Para DBA:** `workspace_members` debe tener UNIQUE(workspace_id, user_id) (existe en 001); el FOR UPDATE asume índice por workspace_id.

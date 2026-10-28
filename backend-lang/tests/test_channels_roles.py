@@ -85,6 +85,8 @@ async def _call(app, method, path, body):
     ("POST", f"/workspaces/{WS1}/channels", CHANNEL),
     ("POST", f"/workspaces/{WS1}/calendars", CALENDAR),
     ("DELETE", f"/workspaces/{WS1}/calendars/cal-1", None),
+    ("PATCH", f"/workspaces/{WS1}/channels/ch-1/status", {"status": "active"}),
+    ("POST", f"/workspaces/{WS1}/channels/embedded-signup", {}),
 ])
 async def test_owner_routes_role_matrix(role, ws, allowed, method, path, body):
     app = _app()
@@ -100,3 +102,11 @@ async def test_get_routes_viewer_access(role, ws, allowed):
     app.dependency_overrides[get_current_user] = _as(role, ws)
     for path in (f"/workspaces/{WS1}/channels", f"/workspaces/{WS1}/calendars"):
         assert ((await _call(app, "GET", path, None)).status_code == 200) == allowed, (role, ws, path)
+
+
+@pytest.mark.parametrize("method,path", [
+    ("GET", f"/workspaces/{WS1}/channels"), ("GET", f"/workspaces/{WS1}/calendars"),
+    ("POST", f"/workspaces/{WS1}/channels"), ("DELETE", f"/workspaces/{WS1}/calendars/cal-1"),
+])
+async def test_channels_routes_require_jwt(method, path):
+    assert (await _call(_app(), method, path, None)).status_code == 401

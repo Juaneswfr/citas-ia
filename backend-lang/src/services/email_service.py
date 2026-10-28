@@ -8,6 +8,7 @@ Uso:
     from services.email_service import EmailService
     await EmailService.send_appointment_confirmation(...)
 """
+import html as _html
 import logging
 from typing import Optional
 
@@ -80,6 +81,21 @@ class EmailService:
             return False
 
     # ── Templates ─────────────────────────────────────────────────────────────
+
+    @classmethod
+    async def send_member_invitation(cls, to: str, workspace_name: str, member_role: str) -> bool:
+        """Aviso a un usuario ya registrado de que se le añadió a un workspace (FR-010)."""
+        name = _html.escape(workspace_name)
+        content = f"""
+        <h2 style="margin:0 0 8px;font-size:22px;font-weight:500;color:{_WINE}">Te añadieron a un equipo</h2>
+        <p>Ahora formas parte de <strong>{name}</strong> con el rol <strong>{_html.escape(member_role)}</strong>.</p>
+        <p>Inicia sesión en Hilo para acceder.</p>
+        """
+        return await cls._send(
+            to=to,
+            subject=f"Te añadieron a {workspace_name} en Hilo",
+            html=_base_template(content, "Este correo fue generado automáticamente por Hilo."),
+        )
 
     @classmethod
     async def send_appointment_confirmation(

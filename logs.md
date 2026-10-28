@@ -54,3 +54,7 @@
   - pytest backend-lang: 96 passed, 5 skipped
   - No migré: rate limit de register (T010/T012) ni de webhooks (T034)
   - Corrección: bloqueo de login rolling de 900 s desde el disparo (fila login:block con window_start = now()), no ventana alineada; pytest 97 passed, 5 skipped
+## 2026-10-28 — T006 equipo, matriz de roles y rate limit de login (t_ab686178, backend)
+  - workspaces.py: POST crea membresía workspace_owner en la misma transacción; miembros listar/invitar/remover (último owner → 409)
+  - test_roles_matrix.py (filas existentes × 5 roles), test_auth_rate_limit.py; pytest: 431 passed, 5 skipped, 6 xfailed
+  - xfail strict: fila 32 trial (T009/T057) y fila 3 (T024/T026)
