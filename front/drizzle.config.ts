@@ -1,10 +1,11 @@
 import type { Config } from 'drizzle-kit'
 
+const url = process.env.DATABASE_URL
+if (!url) throw new Error('DATABASE_URL no está definida. No hay credencial por defecto (FR-105).')
+
 export default {
   schema: './src/db/schema.ts',
   out: './drizzle',
   dialect: 'postgresql',
-  dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgresql://hilo_user:Hilo-58@31.97.99.31:32769/hilo',
-  },
+  dbCredentials: { url },
 } satisfies Config
