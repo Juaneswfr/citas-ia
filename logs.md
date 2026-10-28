@@ -51,3 +51,6 @@
 ## 2026-10-28 — T015 workspace settings (t_e8af0109, dba)
   - 009_workspace_settings.sql: workspaces.settings JSONB (CHECK objeto) y índice único de servicios por (workspace, lower(btrim(name))) con pre-check de duplicados
   - Validada solo en Postgres efímero (no aplicada en remota); DOWN probado
+## 2026-10-28 — T023 calendars OAuth (t_03e1441b, dba)
+  - 010_calendar_oauth.sql: calendars con canal push (id + hash SHA-256 del token, caducidad), next_sync_token, FK connected_by_user_id ON DELETE SET NULL; tabla oauth_states (nonce de un solo uso, sin RLS)
+  - Validada solo en Postgres 17.10 efímero (no aplicada en remota); DOWN probado

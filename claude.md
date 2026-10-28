@@ -78,3 +78,19 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
 - **Notas T016:** el preset de servicios debe ser idempotente (`ON CONFLICT (workspace_id, lower(btrim(name))) DO NOTHING`/UPDATE, o reactivar el
   servicio inactivo existente); crear/renombrar un servicio con nombre ya usado (aunque inactivo) devuelve 23505 → mapear a 409/mensaje claro.
 - **Deuda:** 009 no aplicada en la remota; antes de aplicarla, consultar duplicados existentes (el pre-check abortará si los hay).
+
+## T023 — calendars push/sync y oauth_states (010, dba, 2026-10-28)
+- **Número 010** (009 es workspace_settings de T015). Sin BEGIN/COMMIT, idempotente.
+- **calendars.connected_by_user_id:** sigue NULLABLE; FK `calendars_connected_by_user_id_fkey` ON DELETE SET NULL (el calendario sobrevive
+  a la salida del usuario). Se borra por catálogo cualquier FK sobre esa columna antes del ADD (el nombre podría diferir en la remota).
+- **Canal push:** `google_notification_channel_id` (único parcial `calendars_google_channel_id_uq`, búsqueda por X-Goog-Channel-ID),
+  `google_channel_token_hash` = SHA-256 hex minúsculas del X-Goog-Channel-Token; **el token en claro nunca se guarda**. CHECK de formato y
+  CHECK `calendars_google_channel_pair` (canal y hash existen juntos). `google_channel_expires_at` para renovar; `next_sync_token` para sync incremental.
+- Sin columna nueva de token OAuth: el refresh token sigue en `oauth_refresh_token_encrypted` (cifrado en servicio).
+- **oauth_states** (FR-032, D2): `nonce` UUID PK generado por backend, FKs CASCADE a workspaces y users, `expires_at`, `used_at`, CHECKs
+  expires_at > created_at y used_at >= created_at. **Sin RLS** (D-U6). La caducidad (10 min) la fija el backend.
+- **DOWN** (comentado, probado): borra datos de canal/sync y todos los oauth_states; restaura FK sin ON DELETE.
+- **Notas T024–T026:** consumo atómico `UPDATE oauth_states SET used_at=now() WHERE nonce=$1 AND used_at IS NULL AND expires_at > now() RETURNING ...`
+  (0 filas → 400); comparar `hashlib.sha256(token).hexdigest()` con `hmac.compare_digest`; escribir el hash en minúsculas (el CHECK rechaza mayúsculas);
+  al parar/rotar un canal poner a NULL id y hash a la vez; purgar oauth_states caducados (no hay job aún).
+- **Deuda:** 010 no aplicada en la remota. calendars ya tiene RLS activo desde 001 (no se toca aquí).

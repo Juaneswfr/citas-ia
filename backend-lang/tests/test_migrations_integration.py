@@ -1,5 +1,6 @@
-"""Integración de migraciones 001-004 contra Postgres real. Solo corre con TEST_DATABASE_URL
+"""Integración de migraciones 001-010 contra Postgres real. Solo corre con TEST_DATABASE_URL
 (BD DESECHABLE: cada test recrea los schemas public y auth)."""
+import datetime as dt
 import os
 import pathlib
 
@@ -150,5 +151,89 @@ async def test_migration_009_service_name_unique_per_workspace(conn):
         assert e.value.sqlstate == "23505"
         await sp.rollback()
         await conn.execute(ins, ws[1], "Corte", True)  # otro workspace: permitido
+    finally:
+        await tr.rollback()
+
+
+async def _ws_user_cal(conn, *, with_user=True):
+    ws = await conn.fetchval(
+        "INSERT INTO public.workspaces (name, slug) VALUES ('w', $1) RETURNING id", "w-" + os.urandom(3).hex())
+    uid = await conn.fetchval(
+        "INSERT INTO public.users (email) VALUES ($1) RETURNING id", f"{os.urandom(3).hex()}@x.co")
+    cal = await conn.fetchval(
+        "INSERT INTO public.calendars (workspace_id, name, google_calendar_id, connected_by_user_id, "
+        "oauth_refresh_token_encrypted) VALUES ($1,'c',$2,$3,'enc') RETURNING id",
+        ws, "g-" + os.urandom(3).hex(), uid if with_user else None)
+    return ws, uid, cal
+
+
+async def _expect(conn, exc, sqlstate, sql, *args):
+    sp = conn.transaction()
+    await sp.start()
+    with pytest.raises(exc) as e:
+        await conn.execute(sql, *args)
+    assert e.value.sqlstate == sqlstate
+    await sp.rollback()
+
+
+async def test_migration_010_calendar_channel_constraints(conn):
+    fk = await conn.fetchval(
+        "SELECT confdeltype::text FROM pg_constraint WHERE conname='calendars_connected_by_user_id_fkey'")
+    assert fk == "n"
+    upd = ("UPDATE public.calendars SET google_notification_channel_id=$2, google_channel_token_hash=$3 "
+           "WHERE id=$1")
+    good = "a" * 64
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        _, _, c1 = await _ws_user_cal(conn)
+        _, _, c2 = await _ws_user_cal(conn)
+        _, _, c3 = await _ws_user_cal(conn, with_user=False)  # dos NULL en el índice parcial: permitido
+        await _expect(conn, asyncpg.CheckViolationError, "23514", upd, c1, "ch", "A" * 64)
+        await _expect(conn, asyncpg.CheckViolationError, "23514", upd, c1, "ch", "a" * 63)
+        await _expect(conn, asyncpg.CheckViolationError, "23514", upd, c1, "ch", None)
+        await _expect(conn, asyncpg.CheckViolationError, "23514", upd, c1, None, good)
+        await conn.execute(upd, c1, "ch", good)
+        await _expect(conn, asyncpg.UniqueViolationError, "23505", upd, c2, "ch", good)
+        assert await conn.fetchval(
+            "SELECT count(*) FROM public.calendars WHERE id IN ($1,$2) AND google_notification_channel_id IS NULL",
+            c2, c3) == 2
+    finally:
+        await tr.rollback()
+
+
+async def test_migration_010_user_delete_keeps_calendar(conn):
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        _, uid, cal = await _ws_user_cal(conn)
+        await conn.execute("DELETE FROM public.users WHERE id=$1", uid)
+        assert await conn.fetchval(
+            "SELECT connected_by_user_id IS NULL FROM public.calendars WHERE id=$1", cal) is True
+    finally:
+        await tr.rollback()
+
+
+async def test_migration_010_oauth_states(conn):
+    ins = ("INSERT INTO public.oauth_states (nonce, workspace_id, user_id, expires_at) "
+           "VALUES ($1,$2,$3, now() + $4)")
+    consume = ("UPDATE public.oauth_states SET used_at=now() WHERE nonce=$1 AND used_at IS NULL "
+               "AND expires_at > now() RETURNING workspace_id")
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        ws, uid, _ = await _ws_user_cal(conn)
+        n = await conn.fetchval("SELECT gen_random_uuid()")
+        await conn.execute(ins, n, ws, uid, dt.timedelta(minutes=10))
+        await _expect(conn, asyncpg.UniqueViolationError, "23505", ins, n, ws, uid, dt.timedelta(minutes=10))
+        new = await conn.fetchval("SELECT gen_random_uuid()")
+        await _expect(conn, asyncpg.CheckViolationError, "23514", ins, new, ws, uid, dt.timedelta(0))
+        await _expect(conn, asyncpg.CheckViolationError, "23514", ins, new, ws, uid, dt.timedelta(minutes=-1))
+        await _expect(conn, asyncpg.ForeignKeyViolationError, "23503", ins, new, new, uid, dt.timedelta(minutes=10))
+        await _expect(conn, asyncpg.ForeignKeyViolationError, "23503", ins, new, ws, new, dt.timedelta(minutes=10))
+        assert await conn.fetchval(consume, n) == ws
+        assert await conn.fetchval(consume, n) is None  # un solo uso
+        await conn.execute("DELETE FROM public.workspaces WHERE id=$1", ws)
+        assert await conn.fetchval("SELECT count(*) FROM public.oauth_states WHERE nonce=$1", n) == 0
     finally:
         await tr.rollback()
