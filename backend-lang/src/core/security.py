@@ -10,7 +10,6 @@ El JWT lleva `role` (users.role, p.ej. 'super_admin' o null) y `member_role`
 """
 import asyncio
 import logging
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -174,8 +173,7 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _too_many(window_seconds: int) -> HTTPException:
-    retry = window_seconds - int(time.time()) % window_seconds
+def _too_many(retry: int) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         detail="Demasiados intentos. Intenta de nuevo en unos minutos.",
@@ -185,16 +183,25 @@ def _too_many(window_seconds: int) -> HTTPException:
 
 async def enforce_login_rate_limit(ip: str) -> None:
     """10 intentos/min por IP; al exceder, bloqueo de 15 min. Cada intento cuenta. 503 si la BD falla."""
+    block_key = f"login:block:{ip}"
+    # Bloqueo rolling: fila con window_start = now() (sin alinear al reloj); vigente 900 s desde el disparo.
     blocked = await _db_run(
         "fetchrow",
-        f"SELECT hits FROM rate_limits WHERE key = $1 AND window_start = {_WINDOW_START}",
-        f"login:block:{ip}", LOGIN_BLOCK_SECONDS,
+        "SELECT window_start, floor(extract(epoch from now() - window_start))::int AS age "
+        "FROM rate_limits WHERE key = $1 AND window_start > now() - make_interval(secs => $2::int) "
+        "ORDER BY window_start DESC LIMIT 1",
+        block_key, LOGIN_BLOCK_SECONDS,
     )
-    if blocked and blocked["hits"] > 0:
+    if blocked:  # se rechaza antes de contar: no extiende el bloqueo
         log.warning("[auth] auth.login.rate_limited | ip=%s | motivo=bloqueo", ip)
-        raise _too_many(LOGIN_BLOCK_SECONDS)
+        raise _too_many(max(1, LOGIN_BLOCK_SECONDS - blocked["age"]))
     if await rate_limit_hit(f"login:min:{ip}", 60) > LOGIN_MAX_PER_MINUTE:
-        await rate_limit_hit(f"login:block:{ip}", LOGIN_BLOCK_SECONDS)
+        await _db_run(
+            "execute",
+            "INSERT INTO rate_limits (key, window_start, hits) VALUES ($1, now(), 1) "
+            "ON CONFLICT (key, window_start) DO NOTHING",
+            block_key,
+        )
         log.warning("[auth] auth.login.rate_limited | ip=%s | motivo=exceso", ip)
         raise _too_many(LOGIN_BLOCK_SECONDS)
 

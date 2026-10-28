@@ -28,6 +28,7 @@ class FakePool:
 
     def __init__(self, role=None, fail=False):
         self.role, self.fail, self.hits, self.sql = role, fail, {}, []
+        self.block_age = {}  # key de bloqueo → segundos desde el disparo
 
     def acquire(self, timeout=None):
         pool = self
@@ -38,9 +39,14 @@ class FakePool:
                 if "FROM workspace_members" in sql:
                     return {"member_role": pool.role} if pool.role else None
                 if "FROM rate_limits" in sql:
-                    n = pool.hits.get((a[0], a[1]))
-                    return {"hits": n} if n else None
+                    # emula `window_start > now() - 900 s`: solo filas de bloqueo con age < 900
+                    age = pool.block_age.get(a[0])
+                    return {"window_start": None, "age": age} if age is not None and age < a[1] else None
                 return {"?column?": 1}
+
+            async def execute(s, sql, key):
+                pool.sql.append(sql)
+                pool.block_age.setdefault(key, 0)  # ON CONFLICT DO NOTHING; window_start = now()
 
             async def fetchval(s, sql, key, win):
                 pool.sql.append(sql)
@@ -169,13 +175,29 @@ async def test_login_limit_block_and_15min_lockout():
         assert (await _call(app, "POST", "/auth/login", json=LOGIN)).status_code == 401
     r = await _call(app, "POST", "/auth/login", json=LOGIN)
     assert r.status_code == 429
-    assert int(r.headers["retry-after"]) > 0
+    assert int(r.headers["retry-after"]) == 900  # bloqueo rolling de 900 s desde el disparo
     assert r.json()["detail"] == "Demasiados intentos. Intenta de nuevo en unos minutos."
+    assert pool.block_age == {"login:block:9.9.9.9": 0}
+    assert "DO NOTHING" in pool.sql[-1] and "now()" in pool.sql[-1]
     # el contador de minuto se reinicia, pero el bloqueo de 15 min sigue
     del pool.hits[("login:min:9.9.9.9", 60)]
     r = await _call(app, "POST", "/auth/login", json=LOGIN)
     assert r.status_code == 429
-    assert ("login:min:9.9.9.9", 60) not in pool.hits  # bloqueado antes de contar
+    assert ("login:min:9.9.9.9", 60) not in pool.hits  # bloqueado antes de contar (b)
+
+
+async def test_login_block_is_rolling_900s_from_trigger():
+    pool = FakePool()
+    app = _login_app(pool)
+    key = "login:block:9.9.9.9"
+    pool.block_age[key] = 899
+    r = await _call(app, "POST", "/auth/login", json=LOGIN)
+    assert r.status_code == 429 and int(r.headers["retry-after"]) == 1
+    assert pool.hits == {}  # el intento bloqueado no cuenta ni extiende el bloqueo
+    assert pool.block_age[key] == 899
+    pool.block_age[key] = 901  # bloqueo vencido: manda el contador por minuto
+    assert (await _call(app, "POST", "/auth/login", json=LOGIN)).status_code == 401
+    assert pool.hits[("login:min:9.9.9.9", 60)] == 1
 
 
 async def test_login_pool_down_is_503():
