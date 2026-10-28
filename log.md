@@ -42,3 +42,18 @@
 
 **Actualizaciones a claude.md:**
 - Sin RLS (D-U6), PK surrogate aceptada (D-U5), estado del gate con la remota aplicada, riesgo de guards "owner" hasta T002.
+
+### [AGENTE: dba] [FECHA: 2026-10-28 18:54 UTC]
+**Cambios:**
+- T009 (kanban t_37460f88): `008_auth_tokens_trial.sql` — users.email_verified_at, tabla auth_tokens (solo hash, sin RLS),
+  CHECK de subscriptions.status con 'trial' (DROP por catálogo → ADD), plan semilla Trial (0 COP, one_time), backfill trial
+  para workspaces sin suscripción, índice único de slug solo si falta (no-op: 001 ya lo tiene). DOWN comentado y probado.
+- Test nuevo `test_migration_008_trial_and_auth_tokens` en tests/test_migrations_integration.py.
+- Ensayo PG 17.10 efímero: 001..007 + 008 + 008, verificaciones 3a–3h PASS, DOWN + re-UP PASS; tests de migraciones 6 passed;
+  suite backend 89 passed. **No se aplicó nada en la remota.**
+
+**Archivos modificados:** backend-lang/migrations/008_auth_tokens_trial.sql, backend-lang/tests/test_migrations_integration.py, log.md, claude.md, logs.md
+**Commit:** ver `git log` (feat(db): T009 cuenta — email_verified_at, auth_tokens, ...)
+
+**Actualizaciones a claude.md:**
+- Sección T009 con decisiones (008, slug ya UNIQUE, plan Trial one_time, backfill, auth_tokens solo hash, sin RLS) y deudas.

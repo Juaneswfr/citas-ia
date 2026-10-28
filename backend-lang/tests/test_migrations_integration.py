@@ -86,3 +86,30 @@ async def test_migration_005_webhook_columns_and_unique_token(conn):
             await conn.execute(ins, ws, "+572", "P2", "tok")
     finally:
         await tr.rollback()
+
+
+async def test_migration_008_trial_and_auth_tokens(conn):
+    plan = await conn.fetchrow("SELECT id, price_cop, billing_interval FROM public.billing_plans WHERE name='Trial'")
+    assert plan and plan["price_cop"] == 0 and plan["billing_interval"] == "one_time"
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        ws = await conn.fetchval(
+            "INSERT INTO public.workspaces (name, slug) VALUES ('w', $1) RETURNING id", "w-" + os.urandom(3).hex())
+        ins = "INSERT INTO public.subscriptions (workspace_id, billing_plan_id, status) VALUES ($1,$2,$3)"
+        await conn.execute(ins, ws, plan["id"], "trial")
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(ins, ws, plan["id"], "bogus")
+    finally:
+        await tr.rollback()
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        uid = await conn.fetchval("INSERT INTO public.users (email) VALUES ('t@x.co') RETURNING id")
+        ins = ("INSERT INTO public.auth_tokens (user_id, purpose, token_hash, expires_at) "
+               "VALUES ($1,$2,$3, now() + interval '1 hour')")
+        await conn.execute(ins, uid, "password_reset", "h1")
+        with pytest.raises(asyncpg.UniqueViolationError):
+            await conn.execute(ins, uid, "email_verification", "h1")
+    finally:
+        await tr.rollback()

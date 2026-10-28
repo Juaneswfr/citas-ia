@@ -44,3 +44,25 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
   idéntico a la copia ensayada. Backup previo: `scratch/t001/remote_backup_20261028T183712Z.dump` (sha256 51368880…910b).
 - Pendiente inmediato: T002 (los guards `require_workspace_access("owner")` en workspaces.py, services.py y billing.py ya no
   coinciden con el rol migrado `workspace_owner` hasta que T002 los cambie).
+
+## T009 — Cuenta: 008_auth_tokens_trial.sql (dba, 2026-10-28)
+
+### Decisiones
+- **Nombre 008** (no 007: 007 ya es `007_roles_rate_limits.sql` de T001). Sin BEGIN/COMMIT, idempotente.
+- **Sin RLS** en auth_tokens ni en ningún cambio (D-U6).
+- **workspaces.slug ya es UNIQUE desde 001** (`workspaces_slug_key`): 008 solo comprueba por catálogo (pg_index, `indnatts=1`
+  e `indkey[0]` = attnum de slug; `indkey` es int2vector base 0, comparar como array no funciona) y crea `workspaces_slug_uq`
+  solo si falta. En la BD canónica es no-op. `idx_workspaces_slug` (no único) se conserva.
+- **Plan Trial:** name='Trial', price_cop=0, billing_interval='one_time', is_active=TRUE; INSERT ... WHERE NOT EXISTS.
+- **Backfill (único mecanismo, US-013(b)):** subscriptions 'trial' con el plan Trial para cada workspace sin fila;
+  current_period_start NULL (FR-106: fallback a workspaces.created_at). Filas existentes intactas.
+- **subscriptions.status:** DROP por catálogo de los CHECK que mencionan status → ADD `subscriptions_status_check` con 'trial'.
+- **users.email_verified_at** TIMESTAMPTZ NULL. CHECK de users.role sin cambios.
+- **auth_tokens:** solo `token_hash` (SHA-256 hex, UNIQUE), nunca el token en claro; un solo uso vía `used_at`;
+  ON DELETE CASCADE desde users; índice (user_id, purpose).
+- **DOWN** (comentado al final de 008, probado): cambia datos a propósito trial→pending_payment; el plan Trial se borra
+  solo si no está referenciado, si no queda is_active=FALSE.
+
+### Deudas / abiertas
+- La duración del trial (14 días) no tiene columna en billing_plans; la administra super_admin (FR-106) — falta decidir dónde vive.
+- 008 **no aplicada en la remota**: solo validada en PG 17.10 efímero; la aplicación remota la autoriza el usuario.
