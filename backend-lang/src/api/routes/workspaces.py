@@ -74,13 +74,21 @@ async def get_workspace(
     "/{workspace_id}",
     response_model=WorkspaceOut,
     summary="Actualizar configuración del workspace",
-    dependencies=[Depends(require_workspace_access("manager"))],
 )
 async def update_workspace(
     workspace_id: str,
     body: WorkspaceUpdate,
+    current_user: dict = Depends(require_workspace_access("manager")),
     db: asyncpg.Connection = Depends(get_db),
 ):
+    # FR-005: is_active solo para workspace_owner y super_admin
+    if body.is_active is not None and not (
+        current_user.get("role") == "super_admin"
+        or current_user.get("member_role") == "workspace_owner"
+    ):
+        raise HTTPException(
+            status_code=403, detail="Permisos insuficientes para esta operación."
+        )
     data = body.model_dump(exclude_none=True)
     if not data:
         raise HTTPException(status_code=422, detail="Sin campos para actualizar.")

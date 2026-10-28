@@ -10,12 +10,13 @@ El JWT lleva `role` (users.role, p.ej. 'super_admin' o null) y `member_role`
 """
 import asyncio
 import logging
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import asyncpg
 import jwt
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core import database
@@ -112,9 +113,9 @@ def require_role(minimum_role: str):
     return _check
 
 
-async def db_fetchrow(sql: str, *args):
+async def _db_run(op: str, sql: str, *args):
     """
-    Consulta una fila del pool global. Cualquier fallo de BD (pool sin
+    Ejecuta `conn.<op>` en el pool global. Cualquier fallo de BD (pool sin
     inicializar, timeout de acquire, error de consulta) → 503, nunca 401/2xx.
     """
     unavailable = HTTPException(
@@ -127,10 +128,75 @@ async def db_fetchrow(sql: str, *args):
         raise unavailable
     try:
         async with pool.acquire(timeout=DB_ACQUIRE_TIMEOUT) as conn:
-            return await conn.fetchrow(sql, *args)
+            return await getattr(conn, op)(sql, *args)
     except (asyncpg.PostgresError, asyncpg.InterfaceError, OSError, asyncio.TimeoutError) as e:
         log.error("[auth] db.unavailable | err=%s", type(e).__name__)
         raise unavailable from e
+
+
+async def db_fetchrow(sql: str, *args):
+    return await _db_run("fetchrow", sql, *args)
+
+
+# ── Rate limit sobre la tabla rate_limits (FR-008, plan D15): ventana fija ────
+_WINDOW_START = "to_timestamp(floor(extract(epoch from now())/$2::int)*$2::int)"
+
+LOGIN_MAX_PER_MINUTE = 10
+LOGIN_BLOCK_SECONDS = 900  # bloqueo de 15 min tras exceder (OWASP)
+
+
+async def rate_limit_hit(key: str, window_seconds: int) -> int:
+    """Cuenta un intento en la ventana actual y devuelve los hits acumulados."""
+    return await _db_run(
+        "fetchval",
+        f"INSERT INTO rate_limits (key, window_start, hits) VALUES ($1, {_WINDOW_START}, 1) "
+        "ON CONFLICT (key, window_start) DO UPDATE SET hits = rate_limits.hits + 1 "
+        "RETURNING hits",
+        key, window_seconds,
+    )
+
+
+async def rate_limit_purge(older_than_seconds: int) -> None:
+    """Borra ventanas viejas; la llama el reminder worker, nunca un request."""
+    await _db_run(
+        "execute",
+        "DELETE FROM rate_limits WHERE window_start < now() - make_interval(secs => $1::int)",
+        older_than_seconds,
+    )
+
+
+def client_ip(request: Request) -> str:
+    """IP del cliente. X-Real-IP solo con TRUST_PROXY_HEADERS (nginx es el único ingress); jamás X-Forwarded-For."""
+    if get_settings().trust_proxy_headers:
+        real = request.headers.get("x-real-ip")
+        if real:
+            return real.strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _too_many(window_seconds: int) -> HTTPException:
+    retry = window_seconds - int(time.time()) % window_seconds
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Demasiados intentos. Intenta de nuevo en unos minutos.",
+        headers={"Retry-After": str(retry)},
+    )
+
+
+async def enforce_login_rate_limit(ip: str) -> None:
+    """10 intentos/min por IP; al exceder, bloqueo de 15 min. Cada intento cuenta. 503 si la BD falla."""
+    blocked = await _db_run(
+        "fetchrow",
+        f"SELECT hits FROM rate_limits WHERE key = $1 AND window_start = {_WINDOW_START}",
+        f"login:block:{ip}", LOGIN_BLOCK_SECONDS,
+    )
+    if blocked and blocked["hits"] > 0:
+        log.warning("[auth] auth.login.rate_limited | ip=%s | motivo=bloqueo", ip)
+        raise _too_many(LOGIN_BLOCK_SECONDS)
+    if await rate_limit_hit(f"login:min:{ip}", 60) > LOGIN_MAX_PER_MINUTE:
+        await rate_limit_hit(f"login:block:{ip}", LOGIN_BLOCK_SECONDS)
+        log.warning("[auth] auth.login.rate_limited | ip=%s | motivo=exceso", ip)
+        raise _too_many(LOGIN_BLOCK_SECONDS)
 
 
 def _is_uuid(value) -> bool:

@@ -4,8 +4,10 @@ Carga variables de entorno y expone settings tipados.
 """
 import os
 from functools import lru_cache
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings
+from typing import Annotated
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode
 
 
 class Settings(BaseSettings):
@@ -43,6 +45,33 @@ class Settings(BaseSettings):
 
     # ── Frontend URL (para redirects OAuth) ───────────────────────────────
     frontend_url: str = Field(default="https://hilo.esjuanez.com", alias="FRONTEND_URL")
+
+    # ── CORS (FR-009): lista explícita separada por comas; nunca "*" ──────
+    # None = solo el origen de frontend_url (se resuelve en _check_cors).
+    cors_allowed_origins: Annotated[list[str] | None, NoDecode] = Field(
+        default=None, alias="CORS_ALLOWED_ORIGINS"
+    )
+
+    # ── Proxy: solo True si el backend es alcanzable ÚNICAMENTE vía nginx (X-Real-IP) ──
+    trust_proxy_headers: bool = Field(default=False, alias="TRUST_PROXY_HEADERS")
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, v):
+        return [o.strip() for o in v.split(",")] if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def _check_cors(self):
+        if self.cors_allowed_origins is None:
+            self.cors_allowed_origins = [self.frontend_url.strip().rstrip("/")]
+        if not self.cors_allowed_origins or any(
+            o in ("", "*") for o in self.cors_allowed_origins
+        ):
+            raise ValueError(
+                "CORS_ALLOWED_ORIGINS no admite '*' ni entradas vacías: "
+                "usa orígenes explícitos separados por comas"
+            )
+        return self
 
     # ── Resend (emails transaccionales) ───────────────────────────────────
     resend_api_key: str = Field(default="", alias="RESEND_API_KEY")

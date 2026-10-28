@@ -48,7 +48,7 @@ class WorkspaceOut(BaseModel):
 class MemberInvite(BaseModel):
     email: EmailStr = Field(..., description="Email del usuario a invitar")
     member_role: str = Field(
-        ..., description="Rol en el workspace: owner | manager | staff | viewer"
+        ..., description="Rol en el workspace: workspace_owner | manager | staff | viewer"
     )
 
 

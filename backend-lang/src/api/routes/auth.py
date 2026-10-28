@@ -8,10 +8,13 @@ Seguridad (Principio XI):
 """
 import logging
 import urllib.parse
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from core.database import get_db
-from core.security import create_access_token, db_fetchrow, decode_token, get_current_user
+from core.security import (
+    client_ip, create_access_token, db_fetchrow, decode_token, enforce_login_rate_limit,
+    get_current_user,
+)
 from schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
 import asyncpg
@@ -118,7 +121,10 @@ async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_d
     response_model=TokenResponse,
     summary="Iniciar sesión con email y contraseña",
 )
-async def login(body: LoginRequest, db: asyncpg.Connection = Depends(get_db)):
+async def login(
+    body: LoginRequest, request: Request, db: asyncpg.Connection = Depends(get_db)
+):
+    await enforce_login_rate_limit(client_ip(request))  # antes de consultar usuario / bcrypt (FR-008)
     row = await db.fetchrow(_USER_SQL + "WHERE u.email = $1", body.email)
 
     # No exponer si el email existe o no (Principio XI)
