@@ -65,14 +65,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_kapso_secrets(self):
-        # Solo nombres de variables en el mensaje; nunca valores.
-        if self.kapso_enabled and not (
-            self.kapso_api_key and self.kapso_webhook_secret_project and self.kapso_secrets_key
-        ):
-            raise ValueError(
-                "KAPSO_ENABLED=true requiere KAPSO_API_KEY, KAPSO_WEBHOOK_SECRET_PROJECT "
-                "y KAPSO_SECRETS_KEY"
-            )
+        if self.kapso_enabled:
+            missing = [
+                name for name, val in [
+                    ("KAPSO_API_KEY", self.kapso_api_key),
+                    ("KAPSO_WEBHOOK_SECRET_PROJECT", self.kapso_webhook_secret_project),
+                    ("KAPSO_SECRETS_KEY", self.kapso_secrets_key),
+                ]
+                if not val
+            ]
+            if missing:
+                raise ValueError(
+                    f"KAPSO_ENABLED=true pero faltan: {', '.join(missing)}"
+                )
         if self.kapso_enabled:
             from cryptography.fernet import Fernet
             try:

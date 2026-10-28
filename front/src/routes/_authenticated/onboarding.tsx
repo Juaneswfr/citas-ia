@@ -12,7 +12,7 @@ import {
 } from "@/lib/hilo-data";
 import { getGoogleCalendarUrl } from "@/lib/api/auth";
 import { patchWorkspace } from "@/lib/api/workspaces";
-import { listChannels, listCalendars } from "@/lib/api/channels";
+import { listChannels, listCalendars, createKapsoOnboardingLink } from "@/lib/api/channels";
 import { listServices, createService } from "@/lib/api/services";
 import { apiFetch } from "@/lib/api/client";
 import type { WorkspaceOut, ChannelOut, CalendarOut, ServiceOut } from "@/lib/types/api";
@@ -165,101 +165,27 @@ function StepBusiness({
 
 // ── Step 1: WhatsApp ──────────────────────────────────────────────────────────
 
-function useFacebookSDK() {
-  const ready = useRef(false);
-  useEffect(() => {
-    if (ready.current || typeof window === 'undefined') return;
-    ready.current = true;
-    if (document.getElementById('facebook-jssdk')) return;
-    if (!document.getElementById('fb-root')) {
-      const fbRoot = document.createElement('div');
-      fbRoot.id = 'fb-root';
-      document.body.prepend(fbRoot);
-    }
-    const script = document.createElement('script');
-    script.id = 'facebook-jssdk';
-    script.src = 'https://connect.facebook.net/es_LA/sdk.js';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      (window as any).FB?.init({
-        appId: import.meta.env.VITE_META_APP_ID ?? '',
-        autoLogAppEvents: true,
-        xfbml: true,
-        version: 'v19.0',
-      });
-    };
-    document.head.appendChild(script);
-  }, []);
-}
-
 function StepWhatsApp({ channels, onConnected }: { channels: ChannelOut[]; onConnected: () => void }) {
-  useFacebookSDK();
-  const { workspaceId, backendJwt } = useAuth();
+  const { workspaceId } = useAuth();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const connected = channels.some(c => c.status === 'active');
   const activeChannel = channels.find(c => c.status === 'active');
 
-  const launchEmbeddedSignup = () => {
-    const FB = (window as any).FB;
-    if (!FB) {
-      setErrorMsg('SDK de Facebook no cargado. Recarga la página e intenta de nuevo.');
-      return;
-    }
+  const connectViaKapso = async () => {
+    if (!workspaceId) return;
     setLoading(true);
     setErrorMsg('');
-
-    let signupInfo: { phone_number_id?: string; waba_id?: string } = {};
-
-    const listener = (event: MessageEvent) => {
-      if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
-      try {
-        const p = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (p?.type === 'WA_EMBEDDED_SIGNUP' && p?.event === 'FINISH')
-          signupInfo = { phone_number_id: p.data?.phone_number_id, waba_id: p.data?.waba_id };
-        if (p?.type === 'WA_EMBEDDED_SIGNUP' && p?.event === 'CANCEL') setLoading(false);
-      } catch { /* ignore */ }
-    };
-
-    window.addEventListener('message', listener);
-
-    FB.login(async (response: any) => {
-      await new Promise(r => setTimeout(r, 300));
-      window.removeEventListener('message', listener);
-      if (!response?.authResponse?.code) { setLoading(false); return; }
-
-      const { phone_number_id, waba_id } = signupInfo;
-      if (!phone_number_id || !waba_id) {
-        setErrorMsg('No se recibió el número de WhatsApp de Meta. Intenta de nuevo.');
-        setLoading(false);
-        return;
-      }
-
-      const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-      fetch(`${apiUrl}/workspaces/${workspaceId}/channels/embedded-signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(backendJwt ? { Authorization: `Bearer ${backendJwt}` } : {}),
-        },
-        body: JSON.stringify({ code: response.authResponse.code, phone_number_id, waba_id }),
-      })
-        .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e?.detail ?? `HTTP ${r.status}`); }))
-        .then((ch: ChannelOut) => {
-          toast.success(`WhatsApp conectado: ${ch.phone_number}`);
-          onConnected();
-        })
-        .catch((err: any) => setErrorMsg(err?.message ?? 'Error conectando. Intenta de nuevo.'))
-        .finally(() => setLoading(false));
-    }, {
-      config_id: import.meta.env.VITE_META_EMBEDDED_SIGNUP_CONFIG_ID,
-      response_type: 'code',
-      override_default_response_type: true,
-      extras: { sessionInfoVersion: '3', setup: {}, featureType: 'coexistence' },
-      scope: 'whatsapp_business_management,whatsapp_business_messaging',
-    });
+    try {
+      const { url } = await createKapsoOnboardingLink(workspaceId);
+      window.open(url, '_blank');
+      onConnected();
+    } catch (err: any) {
+      setErrorMsg(err?.detail ?? err?.message ?? 'Error generando enlace de conexión.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -267,7 +193,7 @@ function StepWhatsApp({ channels, onConnected }: { channels: ChannelOut[]; onCon
       icon="whatsapp" color="var(--wa-ink)" bg="var(--wa-bg)"
       title="WhatsApp Business · Coexistencia"
       sub={connected && activeChannel ? (activeChannel.display_name ?? activeChannel.phone_number) : 'Vincula tu número actual'}
-      connected={connected} onConnect={launchEmbeddedSignup} loading={loading}
+      connected={connected} onConnect={connectViaKapso} loading={loading}
       foot={
         <span>
           <strong style={{ fontWeight: 500, color: 'var(--ink-1)' }}>Coexistencia</strong>{' '}

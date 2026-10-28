@@ -7,6 +7,7 @@ Principio IX: Cancelación y bloqueos requieren confirmación explícita del due
 Principio XI: Análisis de seguridad aplicado a cada endpoint.
 """
 import logging
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import asyncpg
@@ -32,8 +33,8 @@ router = APIRouter(tags=["appointments"])
 async def list_appointments(
     workspace_id: str,
     status: str = Query(None),
-    from_date: str = Query(None),
-    to_date: str = Query(None),
+    from_date: date | None = Query(None),
+    to_date: date | None = Query(None),
     db: asyncpg.Connection = Depends(get_db),
 ):
     params = [workspace_id]

@@ -15,7 +15,20 @@ from core.security import create_access_token, decode_token, get_current_user
 from schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
 import asyncpg
-from passlib.hash import bcrypt as bcrypt_ctx
+import bcrypt as _bcrypt
+
+
+class _BcryptCtx:
+    @staticmethod
+    def hash(password: str) -> str:
+        return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
+
+    @staticmethod
+    def verify(password: str, hashed: str) -> bool:
+        return _bcrypt.checkpw(password.encode(), hashed.encode())
+
+
+bcrypt_ctx = _BcryptCtx()
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -70,7 +83,7 @@ async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_d
         await db.execute(
             """
             INSERT INTO workspace_members (workspace_id, user_id, member_role, status)
-            VALUES ($1, $2, 'workspace_owner', 'active')
+            VALUES ($1, $2, 'owner', 'active')
             """,
             workspace_id,
             user_id,

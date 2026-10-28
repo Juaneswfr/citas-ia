@@ -2,11 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { useTypography } from "@/lib/typography-context";
 import { toast } from "sonner";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
 import { Button } from "@/components/hilo/primitives";
-import { listChannels, updateChannelStatus, listCalendars } from "@/lib/api/channels";
+import { listChannels, updateChannelStatus, listCalendars, createKapsoOnboardingLink } from "@/lib/api/channels";
 import { getGoogleCalendarUrl } from "@/lib/api/auth";
 import { apiFetch } from "@/lib/api/client";
 import type { ChannelOut, CalendarOut, WorkspaceOut } from "@/lib/types/api";
@@ -15,32 +15,6 @@ export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Ajustes · Hilo" }] }),
   component: SettingsPage,
 });
-
-// ── SDK Facebook ──────────────────────────────────────────────────────────────
-
-function useFacebookSDK() {
-  const ready = useRef(false);
-  useEffect(() => {
-    if (ready.current || typeof window === 'undefined') return;
-    ready.current = true;
-    if (document.getElementById('facebook-jssdk')) return;
-    if (!document.getElementById('fb-root')) {
-      const d = document.createElement('div'); d.id = 'fb-root';
-      document.body.prepend(d);
-    }
-    const s = document.createElement('script');
-    s.id = 'facebook-jssdk';
-    s.src = 'https://connect.facebook.net/es_LA/sdk.js';
-    s.async = true; s.defer = true;
-    s.onload = () => {
-      (window as any).FB?.init({
-        appId: import.meta.env.VITE_META_APP_ID ?? '',
-        autoLogAppEvents: true, xfbml: true, version: 'v19.0',
-      });
-    };
-    document.head.appendChild(s);
-  }, []);
-}
 
 // ── Estilos reutilizables ─────────────────────────────────────────────────────
 
@@ -57,7 +31,6 @@ const labelStyle: React.CSSProperties = {
 // ── Sección WhatsApp ──────────────────────────────────────────────────────────
 
 function WhatsAppSection({ workspaceId }: { workspaceId: string }) {
-  useFacebookSDK();
   const qc = useQueryClient();
   const [connecting, setConnecting] = useState(false);
 
@@ -67,61 +40,16 @@ function WhatsAppSection({ workspaceId }: { workspaceId: string }) {
     staleTime: 30_000,
   });
 
-  const runEmbeddedSignup = () => {
-    const FB = (window as any).FB;
-    if (!FB) { toast.error('SDK de Facebook no cargó. Recarga la página.'); return; }
+  const connectViaKapso = async () => {
     setConnecting(true);
-
-    let signupInfo: { phone_number_id?: string; waba_id?: string } = {};
-    const listener = (event: MessageEvent) => {
-      if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
-      try {
-        const p = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (p?.type === 'WA_EMBEDDED_SIGNUP' && p?.event === 'FINISH')
-          signupInfo = { phone_number_id: p.data?.phone_number_id, waba_id: p.data?.waba_id };
-        if (p?.type === 'WA_EMBEDDED_SIGNUP' && p?.event === 'CANCEL') setConnecting(false);
-      } catch {}
-    };
-    window.addEventListener('message', listener);
-
-    FB.login(async (response: any) => {
-      await new Promise(r => setTimeout(r, 300));
-      window.removeEventListener('message', listener);
-      if (!response?.authResponse?.code) { setConnecting(false); return; }
-
-      const { phone_number_id, waba_id } = signupInfo;
-      if (!phone_number_id || !waba_id) {
-        toast.error('No se recibió el número de WhatsApp de Meta. Intenta de nuevo.');
-        setConnecting(false);
-        return;
-      }
-
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-        const resp = await fetch(`${apiUrl}/workspaces/${workspaceId}/channels/embedded-signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: response.authResponse.code, phone_number_id, waba_id }),
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error(err?.detail ?? `HTTP ${resp.status}`);
-        }
-        const channel: ChannelOut = await resp.json();
-        toast.success(`WhatsApp conectado: ${channel.phone_number}`);
-        qc.invalidateQueries({ queryKey: ['channels', workspaceId] });
-      } catch (err: any) {
-        toast.error(err?.message ?? 'Error conectando con el servidor.');
-      } finally {
-        setConnecting(false);
-      }
-    }, {
-      config_id: import.meta.env.VITE_META_EMBEDDED_SIGNUP_CONFIG_ID,
-      response_type: 'code',
-      override_default_response_type: true,
-      extras: { sessionInfoVersion: '3', setup: {}, featureType: 'coexistence' },
-      scope: 'whatsapp_business_management,whatsapp_business_messaging',
-    });
+    try {
+      const { url } = await createKapsoOnboardingLink(workspaceId);
+      window.open(url, '_blank');
+    } catch (err: any) {
+      toast.error(err?.detail ?? err?.message ?? 'Error generando enlace de conexión.');
+    } finally {
+      setConnecting(false);
+    }
   };
 
   const handleDisconnect = async (ch: ChannelOut) => {
@@ -158,7 +86,7 @@ function WhatsAppSection({ workspaceId }: { workspaceId: string }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <Button variant="ghost" size="sm" icon="sync" onClick={runEmbeddedSignup} disabled={connecting} style={{ padding: 7 }} />
+            <Button variant="ghost" size="sm" icon="sync" onClick={connectViaKapso} disabled={connecting} style={{ padding: 7 }} />
             {ch.status === 'active' && (
               <Button variant="ghost" size="sm" onClick={() => handleDisconnect(ch)}>Desconectar</Button>
             )}
@@ -179,14 +107,14 @@ function WhatsAppSection({ workspaceId }: { workspaceId: string }) {
               Conecta tu WhatsApp Business para activar el agente
             </div>
           </div>
-          <Button variant="primary" size="sm" onClick={runEmbeddedSignup} disabled={connecting}>
+          <Button variant="primary" size="sm" onClick={connectViaKapso} disabled={connecting}>
             {connecting ? 'Conectando…' : 'Conectar'}
           </Button>
         </div>
       )}
 
       {channels.length > 0 && (
-        <Button variant="ghost" size="sm" icon="plus" onClick={runEmbeddedSignup} disabled={connecting} style={{ alignSelf: 'flex-start' }}>
+        <Button variant="ghost" size="sm" icon="plus" onClick={connectViaKapso} disabled={connecting} style={{ alignSelf: 'flex-start' }}>
           Agregar número
         </Button>
       )}

@@ -24,3 +24,8 @@ export function listCalendars(workspaceId: string): Promise<CalendarOut[]> {
 export function disconnectCalendar(workspaceId: string, calendarId: string): Promise<void> {
   return apiFetch(`/workspaces/${workspaceId}/calendars/${calendarId}`, { method: 'DELETE' });
 }
+
+/** Genera un link de onboarding de Kapso para conectar WhatsApp */
+export function createKapsoOnboardingLink(workspaceId: string): Promise<{ url: string; expires_at: string }> {
+  return apiFetch(`/workspaces/${workspaceId}/kapso/onboarding-link`, { method: 'POST' });
+}
