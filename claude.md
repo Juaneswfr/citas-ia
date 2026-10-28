@@ -66,3 +66,19 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
 ### Deudas / abiertas
 - La duración del trial (14 días) no tiene columna en billing_plans; la administra super_admin (FR-106) — falta decidir dónde vive.
 - 008 **no aplicada en la remota**: solo validada en PG 17.10 efímero; la aplicación remota la autoriza el usuario.
+
+## T010 — Registro transaccional (backend, 2026-10-28)
+
+### Decisiones
+- **Capas:** `auth.py:register` valida/delega; `services/registration_service.py:register_owner(db, NewAccount, hash_password)` tiene el SQL y la lógica; errores tipados `EmailTaken`, `SlugExhausted`, `RegistrationUnavailable`.
+- **Transacción por intento** (user + workspace + `workspace_members` workspace_owner + `subscriptions` status `trial` con el plan semilla `Trial`). Si falta el plan Trial → rollback y 503. `current_period_*` quedan NULL como en T009.
+- **Email repetido (D16):** 400 genérico "No se pudo crear la cuenta. El email puede estar en uso."; enumeración aceptada. El precheck es solo un atajo; la garantía es la violación 23505 de `users.email` en el INSERT (carrera → 400, nunca 500). Una 23505 de constraint desconocida también da 400 con log (nunca 500).
+- **Slug:** 23505 sobre constraint con "slug" → rollback del intento y reintento `base`, `base-2` … hasta 5 intentos; agotado → mismo 400 genérico. Sin validación de patrón nueva (no cambia el contrato).
+- **503 + rollback:** `get_db` usa `acquire(timeout=5)` (D10); pool None, timeout o error de conexión → 503 genérico. Fallos de BD dentro del registro → 503; el rollback deshace toda la transacción. `database.py` se tocó solo para esto.
+- Logs: errores 5xx con stack trace; sin password, hash ni email en logs (solo constraint y tipo de error).
+
+### Pendientes
+- **FR-104** (rate limit de registro, 5/hora/IP): no implementado; lo asigna T012.
+- Duración del trial (14 días, FR-106): sin columna en `billing_plans`; decisión abierta.
+- Carrera real con dos conexiones y PostgreSQL: solo probada con dobles; real en T012/T058.
+- Seguridad debe validar: enumeración D16, mensajes genéricos, ausencia de SQL en respuestas, hash bcrypt, carrera por constraint.

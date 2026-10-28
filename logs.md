@@ -48,3 +48,7 @@
 ## 2026-10-28 — T009 cuenta (t_37460f88, dba)
   - 008_auth_tokens_trial.sql: users.email_verified_at, auth_tokens (solo hash), subscriptions.status con 'trial', plan Trial, backfill trial, slug único si falta
   - Validada solo en Postgres efímero (no aplicada en remota); DOWN probado
+## 2026-10-28 — T010 registro transaccional (t_4082481c, backend)
+  - services/registration_service.py: user+workspace+membresía+suscripción trial en una transacción por intento; reintento de slug base-2..5; email repetido/carrera → 400 genérico; BD caída → 503 con rollback
+  - core/database.py: get_db con acquire(timeout=5) y 503 (necesario para T010)
+  - Probado con dobles (9 tests); carrera real pendiente en T012/T058. FR-104 (rate limit de registro) pendiente

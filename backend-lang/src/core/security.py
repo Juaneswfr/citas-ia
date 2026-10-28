@@ -24,7 +24,7 @@ from core.config import get_settings
 log = logging.getLogger(__name__)
 _bearer = HTTPBearer()
 
-DB_ACQUIRE_TIMEOUT = 5  # segundos (plan D10)
+DB_ACQUIRE_TIMEOUT = database.ACQUIRE_TIMEOUT  # segundos (plan D10)
 
 ROLE_HIERARCHY = {
     "super_admin": 5,

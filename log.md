@@ -57,3 +57,16 @@
 
 **Actualizaciones a claude.md:**
 - Sección T009 con decisiones (008, slug ya UNIQUE, plan Trial one_time, backfill, auth_tokens solo hash, sin RLS) y deudas.
+
+### [AGENTE: backend] [FECHA: 2026-10-28 19:15 UTC]
+**Cambios:**
+- T010 (kanban t_4082481c): registro transaccional. Nuevo `services/registration_service.py` (`register_owner`, errores tipados `EmailTaken`/`SlugExhausted`/`RegistrationUnavailable`); `auth.py:register` solo delega y traduce a HTTP.
+- Una transacción por intento (user + workspace + membresía workspace_owner + suscripción `trial` con el plan semilla Trial de T009). Violación 23505 de workspaces slug → reintento `base`, `base-2`…`base-5`; agotado → 400 genérico. Violación de users.email (carrera) → 400 genérico. Fallo de BD/pool → 503 con rollback.
+- `core/database.py` tocado POR NECESIDAD DE T010 (fuera de la lista de archivos): `get_db` usa `acquire(timeout=5)` (D10) y pool None/timeout/error de conexión → 503. `core/security.py` solo reusa la constante (`DB_ACQUIRE_TIMEOUT = database.ACQUIRE_TIMEOUT`).
+- Tests `tests/test_t010_register.py` (9, con dobles). Suite backend: 106 passed, 6 skipped (antes 97/6). compileall exit 0. Sin PostgreSQL real disponible: la carrera real queda para T012/T058.
+
+**Archivos modificados:** backend-lang/src/api/routes/auth.py, backend-lang/src/services/registration_service.py, backend-lang/src/core/database.py, backend-lang/src/core/security.py, backend-lang/tests/test_t010_register.py, log.md, claude.md, logs.md
+**Commit:** ver `git log` (feat(auth): T010 registro transaccional ...)
+
+**Actualizaciones a claude.md:**
+- Sección T010 con decisiones y pendientes (FR-104, duración del trial, validación de slug).

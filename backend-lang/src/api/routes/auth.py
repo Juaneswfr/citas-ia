@@ -15,6 +15,9 @@ from core.security import (
     client_ip, create_access_token, db_fetchrow, decode_token, enforce_login_rate_limit,
     get_current_user,
 )
+from services.registration_service import (
+    EmailTaken, NewAccount, RegistrationUnavailable, SlugExhausted, register_owner,
+)
 from schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
 import asyncpg
@@ -56,52 +59,23 @@ def _issue_token(row) -> tuple[str, str]:
     summary="Registrar nuevo dueño de negocio",
 )
 async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_db)):
-    """
-    Onboarding en un paso: crea usuario + workspace + membership atómicamente.
-    """
-    # Verificar email disponible
-    existing = await db.fetchrow("SELECT id FROM users WHERE email = $1", body.email)
-    if existing:
+    """Onboarding en un paso; la lógica transaccional vive en services.registration_service."""
+    try:
+        user_id, workspace_id = await register_owner(
+            db,
+            NewAccount(body.email, body.password, body.workspace_name, body.workspace_slug, body.timezone),
+            bcrypt_ctx.hash,
+        )
+    except (EmailTaken, SlugExhausted):
+        # D16: enumeración aceptada; mismo mensaje para email repetido y slug agotado (FR-012, FR-018)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No se pudo crear la cuenta. El email puede estar en uso.",
         )
-
-    password_hash = bcrypt_ctx.hash(body.password)
-
-    async with db.transaction():
-        # 1. Crear usuario
-        user_id = await db.fetchval(
-            """
-            INSERT INTO users (email, password_hash, name, role, is_active)
-            VALUES ($1, $2, $3, 'workspace_owner', TRUE)
-            RETURNING id
-            """,
-            body.email,
-            password_hash,
-            body.email.split("@")[0],
-        )
-
-        # 2. Crear workspace
-        workspace_id = await db.fetchval(
-            """
-            INSERT INTO workspaces (name, slug, timezone, country, is_active)
-            VALUES ($1, $2, $3, 'CO', TRUE)
-            RETURNING id
-            """,
-            body.workspace_name,
-            body.workspace_slug,
-            body.timezone,
-        )
-
-        # 3. Vincular usuario al workspace
-        await db.execute(
-            """
-            INSERT INTO workspace_members (workspace_id, user_id, member_role, status)
-            VALUES ($1, $2, 'workspace_owner', 'active')
-            """,
-            workspace_id,
-            user_id,
+    except RegistrationUnavailable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio no disponible. Intenta de nuevo en unos minutos.",
         )
 
     token = create_access_token({
