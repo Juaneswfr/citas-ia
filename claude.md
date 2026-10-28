@@ -1,3 +1,15 @@
+
+No tocar el dockerfile que esa es la configuracion actual del modelo de producción si se necesitan pruebas locales se hace por medio de los comandos
+
+Activar aplicacion local y test locales y todo en BACKEND
+# RUN FASTAPI
+En carpeta backend-lang
+uv run fastapi dev ./src/api/main.py
+
+Activar frontend 
+En carpeta front
+npm run dev
+
 # Implementación y decisiones de diseño
 
 Citas-IA: backend FastAPI + LangGraph en backend-lang, front TanStack Start en front, datos en Supabase/PostgreSQL.
