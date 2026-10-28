@@ -1,4 +1,4 @@
-"""Integración de migraciones 001-010 contra Postgres real. Solo corre con TEST_DATABASE_URL
+"""Integración de migraciones 001-011 contra Postgres real. Solo corre con TEST_DATABASE_URL
 (BD DESECHABLE: cada test recrea los schemas public y auth)."""
 import datetime as dt
 import os
@@ -237,3 +237,129 @@ async def test_migration_010_oauth_states(conn):
         assert await conn.fetchval("SELECT count(*) FROM public.oauth_states WHERE nonce=$1", n) == 0
     finally:
         await tr.rollback()
+
+
+M011 = next(m for m in MIGRATIONS if m.name.startswith("011_"))
+
+
+async def _conv(conn):
+    ws = await conn.fetchval(
+        "INSERT INTO public.workspaces (name, slug) VALUES ('w', $1) RETURNING id", "w-" + os.urandom(3).hex())
+    ch = await conn.fetchval(
+        "INSERT INTO public.channels (workspace_id, channel_type, provider, phone_number, phone_number_id) "
+        "VALUES ($1,'whatsapp','meta','+571',$2) RETURNING id", ws, "P-" + os.urandom(3).hex())
+    cv = await conn.fetchval(
+        "INSERT INTO public.conversations (workspace_id, channel_id) VALUES ($1,$2) RETURNING id", ws, ch)
+    return ws, ch, cv
+
+
+_MSG = ("INSERT INTO public.messages (workspace_id, conversation_id, channel_id, direction, sender_type, "
+        "provider_message_id, received_at) VALUES ($1,$2,$3,$4,$5,$6,$7)")
+
+
+async def _schema(conn):
+    cols = await conn.fetch(
+        "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns "
+        "WHERE table_schema='public' AND table_name IN ('conversations','messages') ORDER BY 1,2")
+    idx = await conn.fetch(
+        "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' "
+        "AND tablename IN ('conversations','messages') ORDER BY 1")
+    cons = await conn.fetch(
+        "SELECT conname, pg_get_constraintdef(oid) AS d FROM pg_constraint "
+        "WHERE conrelid IN ('public.conversations'::regclass, 'public.messages'::regclass) ORDER BY 1")
+    return [tuple(r) for r in cols], [tuple(r) for r in idx], [tuple(r) for r in cons]
+
+
+async def test_migration_011_columns(conn):
+    cols = {r["column_name"]: r for r in await conn.fetch(
+        "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns "
+        "WHERE table_name='conversations' AND column_name IN ('last_inbound_at','pending_booking')")}
+    assert cols["last_inbound_at"]["data_type"] == "timestamp with time zone"
+    assert cols["pending_booking"]["data_type"] == "jsonb"
+    assert all(c["is_nullable"] == "YES" and c["column_default"] is None for c in cols.values())
+
+
+async def test_migration_011_pending_booking_check(conn):
+    upd = "UPDATE public.conversations SET pending_booking=$2::jsonb WHERE id=$1"
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        _, _, cv = await _conv(conn)
+        await conn.execute(upd, cv, None)
+        await conn.execute(upd, cv, '{"service_id": "s", "start": "2026-11-01T10:00:00Z"}')
+        await _expect(conn, asyncpg.CheckViolationError, "23514", upd, cv, "[]")
+        await _expect(conn, asyncpg.CheckViolationError, "23514", upd, cv, '"x"')
+    finally:
+        await tr.rollback()
+
+
+async def test_migration_011_provider_message_id_unique_partial(conn):
+    idx = await conn.fetchval(
+        "SELECT indexdef FROM pg_indexes WHERE indexname='messages_provider_message_id_uq'")
+    assert idx and "UNIQUE" in idx and "WHERE (provider_message_id IS NOT NULL)" in idx
+    upsert = ("INSERT INTO public.messages (workspace_id, conversation_id, channel_id, direction, sender_type, "
+              "provider_message_id) VALUES ($1,$2,$3,'inbound','customer',$4) "
+              "ON CONFLICT (provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING RETURNING id")
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        ws, ch, cv = await _conv(conn)
+        await conn.execute(_MSG, ws, cv, ch, "inbound", "customer", "wamid.1", None)
+        await _expect(conn, asyncpg.UniqueViolationError, "23505", _MSG, ws, cv, ch, "inbound", "customer",
+                      "wamid.1", None)
+        await conn.execute(_MSG, ws, cv, ch, "outbound", "agent", None, None)
+        await conn.execute(_MSG, ws, cv, ch, "outbound", "agent", None, None)  # NULL coexiste
+        assert await conn.fetchval(upsert, ws, cv, ch, "wamid.2") is not None
+        assert await conn.fetchval(upsert, ws, cv, ch, "wamid.2") is None
+        assert await conn.fetchval("SELECT count(*) FROM public.messages WHERE conversation_id=$1", cv) == 4
+    finally:
+        await tr.rollback()
+
+
+async def test_migration_011_backfill_and_idempotent(conn):
+    t0 = dt.datetime(2026, 10, 1, 12, tzinfo=dt.UTC)
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        ws, ch, cv = await _conv(conn)
+        _, _, empty = await _conv(conn)
+        await conn.execute(_MSG, ws, cv, ch, "inbound", "customer", "w1", t0)
+        await conn.execute(_MSG, ws, cv, ch, "inbound", "customer", "w2", t0 + dt.timedelta(hours=1))
+        await conn.execute(_MSG, ws, cv, ch, "outbound", "agent", "w3", t0 + dt.timedelta(hours=2))
+        await conn.execute(M011.read_text())  # reaplicar 011 sobre datos: backfill
+        get = "SELECT last_inbound_at FROM public.conversations WHERE id=$1"
+        assert await conn.fetchval(get, cv) == t0 + dt.timedelta(hours=1)
+        assert await conn.fetchval(get, empty) is None
+        backfill = M011.read_text().split("-- Backfill")[1].split(";")[0].split("\n", 1)[1]
+        assert await conn.execute(backfill) == "UPDATE 0"  # segunda ejecución no cambia filas
+    finally:
+        await tr.rollback()
+
+
+async def test_migration_011_precheck_aborts_on_duplicates(conn):
+    tr = conn.transaction()
+    await tr.start()
+    try:
+        ws, ch, cv = await _conv(conn)
+        await conn.execute("DROP INDEX public.messages_provider_message_id_uq")
+        await conn.execute(_MSG, ws, cv, ch, "inbound", "customer", "dup", None)
+        await conn.execute(_MSG, ws, cv, ch, "inbound", "customer", "dup", None)
+        with pytest.raises(asyncpg.RaiseError, match="1 grupos"):
+            await conn.execute(M011.read_text())
+    finally:
+        await tr.rollback()
+
+
+async def test_migration_011_down_restores_010_schema(conn):
+    down = "\n".join(line[3:] for line in M011.read_text().split("-- ── DOWN")[1].splitlines()[1:]
+                     if line.startswith("-- ") and "ATENCIÓN" not in line)
+    await conn.execute(down)
+    after_down = await _schema(conn)
+    await conn.execute(M011.read_text())  # re-UP
+    assert await conn.fetchval(
+        "SELECT count(*) FROM pg_indexes WHERE indexname='messages_provider_message_id_uq'") == 1
+    await conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+    for m in MIGRATIONS:
+        if m.name < "011_":
+            await conn.execute(m.read_text())
+    assert after_down == await _schema(conn)

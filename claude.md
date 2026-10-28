@@ -94,3 +94,20 @@ CitasIA / Hilo: SaaS multi-tenant de citas por WhatsApp. Backend FastAPI + LangG
   (0 filas → 400); comparar `hashlib.sha256(token).hexdigest()` con `hmac.compare_digest`; escribir el hash en minúsculas (el CHECK rechaza mayúsculas);
   al parar/rotar un canal poner a NULL id y hash a la vez; purgar oauth_states caducados (no hay job aún).
 - **Deuda:** 010 no aplicada en la remota. calendars ya tiene RLS activo desde 001 (no se toca aquí).
+
+## T032 — dedup de mensajes, last_inbound_at y pending_booking (011, dba, 2026-10-28)
+- **Número 011** (010 es calendar_oauth de T023; la tarjeta decía 010 por error). Sin BEGIN/COMMIT, idempotente.
+- **conversations.last_inbound_at** TIMESTAMPTZ NULL, sin DEFAULT: base de `can_send_freeform` (24 h, FR-071, D7). Backfill con
+  `MAX(COALESCE(received_at, created_at))` de los inbound, solo filas NULL. Sin índice (no está en la spec).
+- **conversations.pending_booking** JSONB NULL, CHECK `conversations_pending_booking_is_object` (NULL u objeto JSON; FR-058). La forma
+  interna del objeto la valida backend.
+- **messages_provider_message_id_uq**: único PARCIAL (`WHERE provider_message_id IS NOT NULL`); los outbound sin id coexisten con NULL.
+- **Pre-check:** DO que aborta con el número de grupos duplicados; nunca borra ni deduplica (decisión humana).
+- **DOWN** (comentado, probado): deja conversations/messages idénticos a 010; borra pending_booking y last_inbound_at (recalculable con el backfill).
+- **Sin cambios de RLS** (D-U6).
+- **Notas T033:** usar `INSERT ... ON CONFLICT (provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING RETURNING id`
+  (el predicado es obligatorio para que Postgres infiera el índice parcial; sin él da error 42P10). `RETURNING` NULL → duplicado, no
+  crear agent_run. Actualizar `last_inbound_at` en cada inbound.
+- **Estado:** 011 aplicada solo en Postgres efímero local. **Pendiente antes de aplicar en la remota:** auditar duplicados
+  (`SELECT provider_message_id, count(*) FROM messages WHERE provider_message_id IS NOT NULL GROUP BY 1 HAVING count(*) > 1`);
+  si hay, el pre-check abortará y el dedupe lo autoriza el usuario.

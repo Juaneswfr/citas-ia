@@ -89,3 +89,19 @@
 
 **Actualizaciones a claude.md:**
 - Sección T023 con decisiones (010, token de canal solo como hash, oauth_states sin RLS, FK SET NULL) y notas para T024–T026.
+
+### [AGENTE: dba] [FECHA: 2026-10-28 19:15 UTC]
+**Cambios:**
+- T032 (kanban t_ac7ee21a): `011_conversations_dedup.sql` — conversations.last_inbound_at TIMESTAMPTZ NULL y pending_booking JSONB NULL
+  (CHECK `conversations_pending_booking_is_object`), ambas sin DEFAULT; backfill idempotente de last_inbound_at desde el último inbound;
+  pre-check DO que aborta (EXCEPTION con el conteo) si hay provider_message_id duplicados, sin borrar datos; índice único parcial
+  `messages_provider_message_id_uq` (WHERE provider_message_id IS NOT NULL). DOWN comentado y probado.
+- 6 tests nuevos `test_migration_011_*` (columnas, CHECK, índice/ON CONFLICT, backfill + idempotencia, pre-check con duplicados, DOWN == esquema 010 + re-UP).
+- Ensayo PG 17.10 efímero: 001..011 + 011 PASS, DOWN + re-UP PASS; suite 100 passed (con TEST_DATABASE_URL) / 83 passed, 17 skipped (sin); ruff exit 0.
+  **No se aplicó nada en la remota.**
+
+**Archivos modificados:** backend-lang/migrations/011_conversations_dedup.sql, backend-lang/tests/test_migrations_integration.py, log.md, claude.md, logs.md
+**Commit:** ver `git log` (feat(db): T032 índice único de provider_message_id, last_inbound_at y pending_booking)
+
+**Actualizaciones a claude.md:**
+- Sección T032 con decisiones (011, índice parcial, pre-check sin borrado, backfill) y notas para T033.

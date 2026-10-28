@@ -54,3 +54,6 @@
 ## 2026-10-28 — T023 calendars OAuth (t_03e1441b, dba)
   - 010_calendar_oauth.sql: calendars con canal push (id + hash SHA-256 del token, caducidad), next_sync_token, FK connected_by_user_id ON DELETE SET NULL; tabla oauth_states (nonce de un solo uso, sin RLS)
   - Validada solo en Postgres 17.10 efímero (no aplicada en remota); DOWN probado
+## 2026-10-28 — T032 dedup de mensajes (t_ac7ee21a, dba)
+  - 011_conversations_dedup.sql: índice único parcial messages.provider_message_id (pre-check de duplicados sin borrado), conversations.last_inbound_at (con backfill) y pending_booking (CHECK objeto)
+  - Validada solo en Postgres 17.10 efímero (no aplicada en remota); DOWN probado
