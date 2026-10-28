@@ -45,3 +45,15 @@
   - 006_convergencia_remota.sql y 007_roles_rate_limits.sql sin RLS (D-U6); aplicadas en la remota en una transacción, gate PASS
   - member_role 'owner' → 'workspace_owner'; tabla rate_limits(key, window_start, hits)
   - Riesgo hasta T002: guards require_workspace_access("owner") ya no coinciden con el rol migrado
+## 2026-10-28 — T009 cuenta (t_37460f88, dba)
+  - 008_auth_tokens_trial.sql: users.email_verified_at, auth_tokens (solo hash), subscriptions.status con 'trial', plan Trial, backfill trial, slug único si falta
+  - Validada solo en Postgres efímero (no aplicada en remota); DOWN probado
+## 2026-10-28 — T015 workspace settings (t_e8af0109, dba)
+  - 009_workspace_settings.sql: workspaces.settings JSONB (CHECK objeto) y índice único de servicios por (workspace, lower(btrim(name))) con pre-check de duplicados
+  - Validada solo en Postgres efímero (no aplicada en remota); DOWN probado
+## 2026-10-28 — T023 calendars OAuth (t_03e1441b, dba)
+  - 010_calendar_oauth.sql: calendars con canal push (id + hash SHA-256 del token, caducidad), next_sync_token, FK connected_by_user_id ON DELETE SET NULL; tabla oauth_states (nonce de un solo uso, sin RLS)
+  - Validada solo en Postgres 17.10 efímero (no aplicada en remota); DOWN probado
+## 2026-10-28 — T032 dedup de mensajes (t_ac7ee21a, dba)
+  - 011_conversations_dedup.sql: índice único parcial messages.provider_message_id (pre-check de duplicados sin borrado), conversations.last_inbound_at (con backfill) y pending_booking (CHECK objeto)
+  - Validada solo en Postgres 17.10 efímero (no aplicada en remota); DOWN probado
