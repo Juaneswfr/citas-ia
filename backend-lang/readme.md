@@ -41,7 +41,7 @@ src/
 │   ├── conversation_service.py
 │   ├── kapso_onboarding.py   # KapsoPlatformClient + KapsoSandboxClient
 │   └── whatsapp_service.py   # Envío de mensajes (Kapso/Meta)
-├── agents/atenea/            # Agente multi-módulo (supply chain, no usado en barbería)
+├── agents/hilo/            # Agente multi-módulo (supply chain, no usado en barbería)
 └── schemas/                  # Pydantic schemas
 ```
 

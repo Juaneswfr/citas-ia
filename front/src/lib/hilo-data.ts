@@ -104,6 +104,8 @@ export interface HiloAppointment {
   id: string; time: string; end: string; client: string;
   svc: string; pro: string; status: AppointmentStatus;
   via: 'wa' | 'manual'; phone: string; home?: boolean;
+  customerId?: string;
+  startAt?: string; // ISO — para historial en CRM
 }
 
 export interface HiloClient {

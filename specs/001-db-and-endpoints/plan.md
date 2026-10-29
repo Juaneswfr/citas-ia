@@ -107,11 +107,11 @@ backend-lang/
     │       ├── billing.py      ✅ Planes + suscripciones
     │       └── webhooks.py     ✅ Meta WABA + Google Calendar
     └── agents/
-        └── atenea/            (existente — coexiste con nuevos módulos)
+        └── hilo/            (existente — coexiste con nuevos módulos)
 ```
 
 **Structure Decision**: Web application (backend only) extendiendo proyecto existente.
-La capa LangGraph (Atenea) coexiste en `agents/`. Los nuevos módulos de citas se integran
+La capa LangGraph (hilo) coexiste en `agents/`. Los nuevos módulos de citas se integran
 en `api/routes/`, `services/`, `schemas/`, `integrations/` y `core/`.
 
 ## Complexity Tracking

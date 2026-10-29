@@ -11,7 +11,8 @@ import asyncpg
 from core.database import get_db
 from core.security import require_role, require_workspace_access
 from schemas.workspace import (
-    MemberInvite, MemberOut, WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
+    MemberInvite, MemberOut, WorkspaceCreate, WorkspaceOut, WorkspaceUpdate,
+    BusinessHoursOut, BusinessHoursUpdate,
 )
 
 log = logging.getLogger(__name__)
@@ -105,14 +106,21 @@ async def update_workspace(
     "/{workspace_id}/members",
     response_model=list[MemberOut],
     summary="Listar miembros del workspace",
-    dependencies=[Depends(require_workspace_access("manager"))],
+    dependencies=[Depends(require_workspace_access("viewer"))],
 )
 async def list_members(
     workspace_id: str,
     db: asyncpg.Connection = Depends(get_db),
 ):
     rows = await db.fetch(
-        "SELECT * FROM workspace_members WHERE workspace_id = $1", workspace_id
+        """
+        SELECT wm.*, u.name, u.email
+        FROM workspace_members wm
+        JOIN users u ON u.id = wm.user_id
+        WHERE wm.workspace_id = $1
+        ORDER BY wm.created_at
+        """,
+        workspace_id,
     )
     return [dict(r) for r in rows]
 
@@ -164,3 +172,81 @@ async def remove_member(
         workspace_id, user_id,
     )
     log.info("[members] removed | workspace=%s | user=%s", workspace_id, user_id)
+
+
+# ── Horario de atención ────────────────────────────────────────────────────────
+
+_DEFAULT_HOURS = [
+    (0, '09:00', '19:00', True),   # Lunes
+    (1, '09:00', '19:00', True),   # Martes
+    (2, '09:00', '19:00', True),   # Miércoles
+    (3, '09:00', '19:00', True),   # Jueves
+    (4, '09:00', '19:00', True),   # Viernes
+    (5, '09:00', '19:00', True),   # Sábado
+    (6, '09:00', '19:00', False),  # Domingo
+]
+
+
+@router.get(
+    "/{workspace_id}/business-hours",
+    response_model=list[BusinessHoursOut],
+    summary="Obtener horario de atención del negocio",
+    dependencies=[Depends(require_workspace_access("viewer"))],
+)
+async def get_business_hours(
+    workspace_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    rows = await db.fetch(
+        "SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = $1 ORDER BY day_of_week",
+        workspace_id,
+    )
+    if len(rows) == 7:
+        return [dict(r) for r in rows]
+
+    # Auto-insertar defaults si no existen
+    existing_days = {r["day_of_week"] for r in rows}
+    for day, open_t, close_t, is_open in _DEFAULT_HOURS:
+        if day not in existing_days:
+            await db.execute(
+                "INSERT INTO business_hours (workspace_id, day_of_week, open_time, close_time, is_open) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+                workspace_id, day, open_t, close_t, is_open,
+            )
+
+    rows = await db.fetch(
+        "SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = $1 ORDER BY day_of_week",
+        workspace_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.put(
+    "/{workspace_id}/business-hours",
+    response_model=list[BusinessHoursOut],
+    summary="Actualizar horario de atención (upsert completo de 7 días)",
+    dependencies=[Depends(require_workspace_access("manager"))],
+)
+async def update_business_hours(
+    workspace_id: str,
+    body: BusinessHoursUpdate,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    async with db.transaction():
+        for h in body.hours:
+            await db.execute(
+                """
+                INSERT INTO business_hours (workspace_id, day_of_week, open_time, close_time, is_open)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (workspace_id, day_of_week)
+                DO UPDATE SET open_time = EXCLUDED.open_time,
+                              close_time = EXCLUDED.close_time,
+                              is_open = EXCLUDED.is_open
+                """,
+                workspace_id, h.day_of_week, h.open_time, h.close_time, h.is_open,
+            )
+    log.info("[business-hours] updated | workspace=%s", workspace_id)
+    rows = await db.fetch(
+        "SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = $1 ORDER BY day_of_week",
+        workspace_id,
+    )
+    return [dict(r) for r in rows]

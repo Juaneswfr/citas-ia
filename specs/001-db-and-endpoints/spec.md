@@ -152,7 +152,7 @@ del agente y revisión del dueño.
 
 ## Assumptions
 
-- El backend existente (`backend-lang`) se extiende con nuevos módulos; la capa LangGraph existente (Atenea) coexiste con los nuevos endpoints de citas.
+- El backend existente (`backend-lang`) se extiende con nuevos módulos; la capa LangGraph existente (hilo) coexiste con los nuevos endpoints de citas.
 - Supabase es el proveedor de BD y auth; se usará `supabase-py` para operaciones directas y RLS para seguridad a nivel de fila.
 - Los tokens OAuth de Google Calendar se almacenan cifrados en la BD; el cifrado se implementa en la capa de servicio.
 - El MVP no incluye handoff humano operativo; el agente solo marca alertas internas.

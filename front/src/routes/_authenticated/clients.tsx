@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { format, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
 import { Icon } from "@/components/hilo/icons";
 import { Button, Avatar, Tag } from "@/components/hilo/primitives";
 import HILO from "@/lib/hilo-data";
 import type { HiloClient } from "@/lib/hilo-data";
 import { useCustomers, useUpdateCustomer } from "@/hooks/use-customers";
+import { useAppointments } from "@/hooks/use-appointments";
+import { useConversations, useMessages } from "@/hooks/use-conversations";
 
 export const Route = createFileRoute("/_authenticated/clients")({
   head: () => ({ meta: [{ title: "Clientes · Hilo" }] }),
@@ -54,32 +58,56 @@ function StatBox({ k, v, hue }: { k: string; v: string; hue?: string }) {
 function ClientDetail({ c, isMobile, onBack }: { c: HiloClient; isMobile: boolean; onBack: () => void }) {
   const [note, setNote] = useState(c.note);
   const [noteSaved, setNoteSaved] = useState(true);
+  const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState(c.name);
   const updateCustomer = useUpdateCustomer(c.id);
 
   const handleNoteSave = () => {
-    updateCustomer.mutate({ notes: note }, {
-      onSuccess: () => setNoteSaved(true),
-    });
+    updateCustomer.mutate({ notes: note }, { onSuccess: () => setNoteSaved(true) });
+  };
+  const handleNameSave = () => {
+    if (!name.trim()) return;
+    updateCustomer.mutate({ name: name.trim() }, { onSuccess: () => setEditingName(false) });
   };
 
-  const history = [
-    { d:'Hoy · 09:00', s:c.fav, pro:'Andrés', via:'wa' },
-    { d:'12 may · 10:30', s:'Corte clásico', pro:'Julián', via:'wa' },
-    { d:'28 abr · 16:00', s:c.fav, pro:'Andrés', via:'manual' },
-    { d:'14 abr · 11:15', s:'Arreglo de barba', pro:'Samuel', via:'wa' },
-  ];
-  const msgs = [
-    { from:'client', t:'Hoy 09:58', text:'Listo, gracias!' },
-    { from:'agent',  t:'Hoy 09:58', text:'¡De nada! Te esperamos. 💈' },
-  ];
+  const { data: allApts = [] } = useAppointments();
+  const history = allApts
+    .filter(a => a.customerId === c.id)
+    .sort((a, b) => (b.startAt ?? '').localeCompare(a.startAt ?? ''))
+    .slice(0, 8);
+
+  const { data: convs = [] } = useConversations();
+  const conv = convs.find(cv => cv.customer_id === c.id);
+  const { data: messages = [] } = useMessages(conv?.id ?? '');
+  const lastMsgs = [...messages]
+    .sort((a, b) => (a.sent_at ?? a.received_at ?? a.created_at).localeCompare(b.sent_at ?? b.received_at ?? b.created_at))
+    .slice(-5);
+
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', overflowY:'auto' }}>
       <div style={{ padding:'20px 22px', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:14 }}>
         {isMobile && <Button variant="ghost" size="sm" icon="chevL" onClick={onBack} style={{ padding:'7px' }}/>}
-        <Avatar name={c.name} hue={STATUS_HUE[c.status] as any} size={52}/>
+        <Avatar name={name} hue={STATUS_HUE[c.status] as any} size={52}/>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:9 }}>
-            <h2 style={{ margin:0, font:'500 21px/1.1 var(--font-sans)', color:'var(--ink-1)' }}>{c.name}</h2>
+            {editingName ? (
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  autoFocus
+                  onKeyDown={e => { if (e.key==='Enter') handleNameSave(); if (e.key==='Escape') setEditingName(false); }}
+                  style={{ font:'500 18px/1.1 var(--font-sans)', color:'var(--ink-1)', border:'1px solid var(--wine)', borderRadius:'var(--r-sm)', padding:'3px 8px', outline:'none', background:'var(--surface)' }}
+                />
+                <Button variant="primary" size="sm" onClick={handleNameSave} disabled={updateCustomer.isPending}>Ok</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setEditingName(false); setName(c.name); }}>×</Button>
+              </div>
+            ) : (
+              <button onClick={() => setEditingName(true)} style={{ background:'none', border:'none', cursor:'pointer', padding:0, display:'flex', alignItems:'center', gap:6 }}>
+                <h2 style={{ margin:0, font:'500 21px/1.1 var(--font-sans)', color:'var(--ink-1)' }}>{name}</h2>
+                <Icon name="edit" size={13} style={{ color:'var(--ink-4)' }}/>
+              </button>
+            )}
             <Tag hue={STATUS_HUE[c.status]} style={{ fontSize:11 }}>{c.status}</Tag>
           </div>
           <div className="tnum" style={{ font:'400 13px/1 var(--font-sans)', color:'var(--ink-3)', marginTop:5 }}>{c.phone}</div>
@@ -106,60 +134,63 @@ function ClientDetail({ c, isMobile, onBack }: { c: HiloClient; isMobile: boolea
               border:'1px solid var(--line)', background:'var(--surface-tint)', color:'var(--ink-1)',
               font:'400 13.5px/1.5 var(--font-sans)', outline:'none' }}/>
           {!noteSaved && (
-            <Button
-              variant="primary"
-              size="sm"
-              style={{ marginTop:8 }}
-              onClick={handleNoteSave}
-              disabled={updateCustomer.isPending}
-            >
+            <Button variant="primary" size="sm" style={{ marginTop:8 }} onClick={handleNoteSave} disabled={updateCustomer.isPending}>
               {updateCustomer.isPending ? 'Guardando…' : 'Guardar nota'}
             </Button>
           )}
         </div>
 
         <div>
-          <div className="eyebrow" style={{ marginBottom:8 }}>Servicio frecuente</div>
-          <Tag hue={HILO.services.find(s => s.name===c.fav)?.hue||'wine'} style={{ fontSize:13, padding:'5px 12px' }}>{c.fav || '—'}</Tag>
-        </div>
-
-        <div>
           <div className="eyebrow" style={{ marginBottom:10 }}>Historial de citas</div>
-          <div style={{ display:'flex', flexDirection:'column' }}>
-            {history.map((h,i) => {
-              const hue = HILO.hueVar(HILO.services.find(s => s.name===h.s)?.hue||'wine');
-              return (
-                <div key={i} style={{ display:'grid', gridTemplateColumns:'18px 1fr', gap:12 }}>
-                  <div style={{ position:'relative', display:'flex', justifyContent:'center' }}>
-                    {i < history.length-1 && <span style={{ position:'absolute', top:12, bottom:-8, width:2, background:'var(--line)' }}/>}
-                    <span style={{ marginTop:6, width:9, height:9, borderRadius:'50%', background:hue, zIndex:1, flexShrink:0 }}/>
-                  </div>
-                  <div style={{ paddingBottom:14 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <span style={{ font:'500 13.5px/1.2 var(--font-sans)', color:'var(--ink-1)' }}>{h.s}</span>
-                      {h.via==='wa' && <Icon name="whatsapp" size={13} style={{ color:'var(--wa-ink)' }}/>}
+          {history.length === 0 ? (
+            <div style={{ font:'400 13px/1.4 var(--font-sans)', color:'var(--ink-4)' }}>Sin citas registradas.</div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column' }}>
+              {history.map((h, i) => {
+                const hue = HILO.hueVar(HILO.services.find(s => s.name===h.svc)?.hue || 'wine');
+                const dateLabel = h.startAt ? format(parseISO(h.startAt), "d MMM · HH:mm", { locale: es }) : h.time;
+                return (
+                  <div key={h.id} style={{ display:'grid', gridTemplateColumns:'18px 1fr', gap:12 }}>
+                    <div style={{ position:'relative', display:'flex', justifyContent:'center' }}>
+                      {i < history.length-1 && <span style={{ position:'absolute', top:12, bottom:-8, width:2, background:'var(--line)' }}/>}
+                      <span style={{ marginTop:6, width:9, height:9, borderRadius:'50%', background:hue, zIndex:1, flexShrink:0 }}/>
                     </div>
-                    <div className="tnum" style={{ font:'400 12px/1.3 var(--font-sans)', color:'var(--ink-3)', marginTop:2 }}>{h.d} · {h.pro}</div>
+                    <div style={{ paddingBottom:14 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ font:'500 13.5px/1.2 var(--font-sans)', color:'var(--ink-1)' }}>{h.svc}</span>
+                        <Icon name="whatsapp" size={13} style={{ color:'var(--wa-ink)' }}/>
+                      </div>
+                      <div className="tnum" style={{ font:'400 12px/1.3 var(--font-sans)', color:'var(--ink-3)', marginTop:2 }}>{dateLabel}</div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div>
-          <div className="eyebrow" style={{ marginBottom:10 }}>Últimos mensajes</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {msgs.map((m,i) => (
-              <div key={i} style={{ alignSelf: m.from==='agent' ? 'flex-end' : 'flex-start', maxWidth:'80%',
-                padding:'8px 12px', borderRadius: m.from==='agent' ? '13px 13px 4px 13px' : '13px 13px 13px 4px',
-                background: m.from==='agent' ? 'var(--wine)' : 'var(--surface-2)',
-                color: m.from==='agent' ? 'var(--wine-fg)' : 'var(--ink-1)',
-                border: m.from==='agent' ? '0' : '1px solid var(--line)',
-                font:'400 13px/1.4 var(--font-sans)' }}>{m.text}</div>
-            ))}
+        {conv && (
+          <div>
+            <div className="eyebrow" style={{ marginBottom:10 }}>Últimos mensajes</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {lastMsgs.length === 0 ? (
+                <div style={{ font:'400 13px/1.4 var(--font-sans)', color:'var(--ink-4)' }}>Sin mensajes aún.</div>
+              ) : lastMsgs.map(m => {
+                const isAgent = m.direction === 'outbound';
+                return (
+                  <div key={m.id} style={{ alignSelf: isAgent ? 'flex-end' : 'flex-start', maxWidth:'85%',
+                    padding:'8px 12px', borderRadius: isAgent ? '13px 13px 4px 13px' : '13px 13px 13px 4px',
+                    background: isAgent ? 'var(--wine)' : 'var(--surface-2)',
+                    color: isAgent ? 'var(--wine-fg)' : 'var(--ink-1)',
+                    border: isAgent ? '0' : '1px solid var(--line)',
+                    font:'400 13px/1.4 var(--font-sans)' }}>
+                    {m.content ?? '[media]'}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ venv/
 env/
 front-app
 .env*
+backend-lang/graphify-out/cache
 backend-lang/.env
 backend-lang/.env.development
 # ── Variables de entorno y secretos ────────────────────────────────────────

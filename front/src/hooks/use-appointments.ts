@@ -4,12 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO, getHours, getMinutes, differenceInMinutes } from 'date-fns';
 import { useAuth } from '@/lib/auth-context';
-import { listAppointments, updateAppointment } from '@/lib/api/appointments';
+import { listAppointments, updateAppointment, createAppointment } from '@/lib/api/appointments';
 import { listCustomers } from '@/lib/api/conversations';
 import { listServices } from '@/lib/api/services';
 import { toHiloAppointment } from '@/lib/api/adapters';
 import type { HiloAppointment } from '@/lib/hilo-data';
-import type { AppointmentOut, AppointmentStatus, AppointmentUpdate, ServiceOut, CustomerOut } from '@/lib/types/api';
+import type { AppointmentCreate, AppointmentOut, AppointmentStatus, AppointmentUpdate, ServiceOut, CustomerOut } from '@/lib/types/api';
 
 const STALE = 60 * 1000; // 1 min
 
@@ -107,6 +107,26 @@ export function useWeekAppointments({ weekStart, weekEnd }: UseWeekAppointmentsO
     },
     enabled: !!workspaceId,
     staleTime: STALE,
+  });
+}
+
+/** React Query mutation — crear una cita manualmente */
+export function useCreateAppointment() {
+  const { workspaceId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<AppointmentOut, Error, AppointmentCreate>({
+    mutationFn: (body) => {
+      if (!workspaceId) throw new Error('No workspace');
+      return createAppointment(workspaceId, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['appointments', workspaceId] });
+      qc.invalidateQueries({ queryKey: ['appointments-week', workspaceId] });
+      toast.success('Cita creada');
+    },
+    onError: (error) => {
+      toast.error((error as { detail?: string }).detail ?? error.message ?? 'Error al crear cita');
+    },
   });
 }
 

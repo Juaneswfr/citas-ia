@@ -188,12 +188,43 @@ export interface ChannelOut {
   updated_at: string;
 }
 
+export interface MemberOut {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  member_role: string;
+  status: string;
+  joined_at: string | null;
+  created_at: string;
+  name: string | null;
+  email: string | null;
+}
+
+export interface BusinessHoursOut {
+  day_of_week: number;   // 0=Lunes … 6=Domingo
+  open_time: string;     // "HH:MM"
+  close_time: string;
+  is_open: boolean;
+}
+
+export interface AppointmentCreate {
+  customer_id: string;
+  service_id: string;
+  channel_id: string;
+  calendar_id: string;
+  start_at: string;             // ISO 8601 with timezone
+  price_cop: number;
+  is_home_service?: boolean;
+  home_address?: string;
+  home_service_price_cop?: number;
+}
+
 export interface CalendarOut {
   id: string;
   workspace_id: string;
   name: string;
   google_calendar_id: string;
-  connected_by_user_id: string;
+  connected_by_user_id: string | null;
   sync_enabled: boolean;
   sync_status: string; // 'active' | 'disconnected' | 'error'
   last_synced_at: string | null;

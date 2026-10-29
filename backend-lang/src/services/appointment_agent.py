@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
@@ -20,7 +21,7 @@ from core.database import _pool
 
 log = logging.getLogger(__name__)
 
-MODEL = "anthropic:claude-haiku-4-5-20251001"  # mismo modelo que el dispatcher de atenea
+MODEL = "anthropic:claude-haiku-4-5-20251001"  # mismo modelo que el dispatcher de hilo
 MAX_TOOL_CALLS = 5
 TIMEOUT_S = 45
 HISTORY = 10
@@ -31,9 +32,13 @@ _CLAIMS_CONFIRMED = re.compile(r"confirmad|agendad|reservad|qued[óo] list", re.
 
 _SYSTEM = (
     "Eres el asistente de citas de {workspace}. Responde siempre en español, breve y amable. "
-    "Usa las herramientas para listar servicios, consultar disponibilidad y crear la cita. "
+    "Usa las herramientas para listar servicios, consultar disponibilidad, crear, listar y cancelar citas. "
     "Nunca afirmes que una cita está confirmada: el sistema te dirá si se creó. "
-    "No inventes servicios ni horarios. Fecha de hoy: {today} (zona {tz})."
+    "No inventes servicios ni horarios. Fecha de hoy: {today} (zona {tz}).\n"
+    "FORMATO: solo texto plano de WhatsApp. "
+    "Usa *texto* para negrita, _texto_ para cursiva, ~texto~ para tachado. "
+    "NO uses markdown (#, **, ```, [], ![]). NO uses listas con guiones. "
+    "Separa con saltos de línea, no con símbolos raros."
 )
 
 
@@ -56,6 +61,15 @@ class _CreateIn(BaseModel):
     service_id: str
     fecha: str = Field(description="Fecha YYYY-MM-DD")
     hora: str = Field(description="Hora HH:MM")
+
+
+class _CancelIn(BaseModel):
+    appointment_id: str = Field(description="ID de la cita a cancelar (de listar_mis_citas)")
+    motivo: str = Field(default="Cliente solicitó cancelación", description="Motivo de cancelación")
+
+
+class _ListMisIn(BaseModel):
+    pass
 
 
 def _parse(tz: ZoneInfo, fecha: str, hora: str) -> datetime:
@@ -138,6 +152,65 @@ def build_tools(ctx: dict, state: dict) -> list[StructuredTool]:
             log.warning("[agent] crear_cita fallo | err=%s", type(e).__name__)
             return "ERROR: no se pudo crear la cita."
 
+    async def listar_mis_citas() -> str:
+        if not ctx.get("customer_id"):
+            return "ERROR: no hay cliente en la conversación."
+        now = datetime.now(tz)
+        async with _pool.acquire() as db:
+            rows = await db.fetch(
+                """
+                SELECT a.id, s.name AS servicio, a.start_at, a.end_at, a.status
+                FROM appointments a
+                JOIN services s ON s.id = a.service_id
+                WHERE a.workspace_id=$1 AND a.customer_id=$2
+                  AND a.status NOT IN ('cancelled','noshow','completed')
+                  AND a.start_at > $3
+                ORDER BY a.start_at
+                LIMIT 5
+                """,
+                ws, str(ctx["customer_id"]), now,
+            )
+        if not rows:
+            return "No tienes citas próximas agendadas."
+        return "\n".join(
+            f"{r['id']} | {r['servicio']} | {r['start_at'].astimezone(tz):%d/%m/%Y %H:%M}"
+            for r in rows
+        )
+
+    async def cancelar_cita(appointment_id: str, motivo: str) -> str:
+        if not ctx.get("customer_id"):
+            return "ERROR: no hay cliente en la conversación."
+        try:
+            async with _pool.acquire() as db:
+                row = await db.fetchrow(
+                    "SELECT id, google_event_id, status FROM appointments "
+                    "WHERE id=$1 AND workspace_id=$2 AND customer_id=$3",
+                    appointment_id, ws, str(ctx["customer_id"]),
+                )
+                if not row:
+                    return "ERROR: cita no encontrada o no pertenece a este cliente."
+                if row["status"] in ("cancelled", "completed", "noshow"):
+                    return f"ERROR: la cita ya está en estado {row['status']}."
+                await db.execute(
+                    "UPDATE appointments SET status='cancelled', cancellation_reason=$1, "
+                    "cancelled_by='customer', cancelled_at=now() WHERE id=$2",
+                    motivo, appointment_id,
+                )
+                cal = await _calendar(db)
+            if row.get("google_event_id") and cal:
+                try:
+                    from services.calendar_service import CalendarService
+                    await CalendarService(dict(cal)).delete_event(row["google_event_id"])
+                except Exception as ce:
+                    log.warning("[agent] eliminar evento GCal fallo | event=%s | err=%s",
+                                row["google_event_id"], type(ce).__name__)
+            log.info("[agent] cita cancelada | id=%s | conv=%s", appointment_id, ctx.get("conversation_id"))
+            state["cancelled"] = appointment_id
+            return "OK: cita cancelada."
+        except Exception as e:
+            log.warning("[agent] cancelar_cita fallo | err=%s", type(e).__name__)
+            return "ERROR: no se pudo cancelar la cita."
+
     return [
         StructuredTool.from_function(coroutine=listar_servicios, name="listar_servicios",
                                      description="Lista los servicios activos.", args_schema=_ListIn),
@@ -146,6 +219,12 @@ def build_tools(ctx: dict, state: dict) -> list[StructuredTool]:
                                      args_schema=_AvailIn),
         StructuredTool.from_function(coroutine=crear_cita, name="crear_cita",
                                      description="Crea la cita en un horario libre.", args_schema=_CreateIn),
+        StructuredTool.from_function(coroutine=listar_mis_citas, name="listar_mis_citas",
+                                     description="Lista las citas próximas del cliente en esta conversación.",
+                                     args_schema=_ListMisIn),
+        StructuredTool.from_function(coroutine=cancelar_cita, name="cancelar_cita",
+                                     description="Cancela una cita del cliente por su ID.",
+                                     args_schema=_CancelIn),
     ]
 
 
@@ -167,9 +246,17 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
     if not hist or hist[0]["content"] != message:  # el inbound ya se guarda antes de correr el agente
         msgs.append(HumanMessage(message))
 
+    lc_config = RunnableConfig(
+        metadata={
+            "thread_id": str(ctx.get("conversation_id", "")),
+            "workspace_id": str(ctx.get("workspace_id", "")),
+        },
+        configurable={"thread_id": str(ctx.get("conversation_id", ""))},
+        tags=["citas"],
+    )
     used = 0
     while True:
-        ai = await bound.ainvoke(msgs)
+        ai = await bound.ainvoke(msgs, config=lc_config)
         calls = getattr(ai, "tool_calls", None) or []
         if not calls:
             return ai.content if isinstance(ai.content, str) else ""

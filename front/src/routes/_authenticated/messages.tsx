@@ -151,7 +151,9 @@ function ConversationDetail({ convId, clientName }: { convId: string; clientName
             Sin mensajes
           </div>
         ) : (
-          messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)
+          [...messages]
+            .sort((a, b) => (a.sent_at ?? a.received_at ?? a.created_at).localeCompare(b.sent_at ?? b.received_at ?? b.created_at))
+            .map(msg => <MessageBubble key={msg.id} msg={msg} />)
         )}
       </div>
     </div>

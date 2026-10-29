@@ -167,7 +167,7 @@ backend-lang/
 │   │   ├── main.py      ← FastAPI app entry point
 │   │   └── routes/      ← endpoints por dominio
 │   └── agents/
-│       └── atenea/      ← LangGraph agent (coexiste)
+│       └── hilo/      ← LangGraph agent (coexiste)
 └── pyproject.toml
 ```
 

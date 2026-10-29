@@ -19,6 +19,8 @@ No tocar los Dockerfiles — son la configuración actual de producción.
 
 ## Producción (VPS)
 
+YA ESTAN CORRIENDO EN PRODUCCION https://hilo.esjuanez.com/ 
+
 ```bash
 git pull && docker compose up --build -d
 ```

@@ -99,7 +99,7 @@ function EditSheet({
             <Toggle on={home} onChange={setHome}/>
           </div>
           {home && <FieldLabel label="Cargo extra por domicilio" hint="COP"><input ref={extraRef} style={inputStyle} defaultValue={svc.extra} type="number"/></FieldLabel>}
-          <FieldLabel label="Barberos habilitados">
+          <FieldLabel label="Equipo habilitado">
             <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
               {HILO.team.map(b => {
                 const en = svc.pros.includes(b.name.split(' ')[0]);

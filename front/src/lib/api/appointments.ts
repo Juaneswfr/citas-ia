@@ -1,7 +1,7 @@
 // T014 — Módulo de API de citas
 
 import { apiFetch } from './client';
-import type { AppointmentOut, AppointmentUpdate, AppointmentStatus } from '../types/api';
+import type { AppointmentOut, AppointmentUpdate, AppointmentStatus, AppointmentCreate } from '../types/api';
 
 interface ListAppointmentsParams {
   status?: AppointmentStatus;
@@ -28,6 +28,17 @@ export async function getAppointment(
   appointmentId: string,
 ): Promise<AppointmentOut> {
   return apiFetch<AppointmentOut>(`/workspaces/${workspaceId}/appointments/${appointmentId}`);
+}
+
+/** POST /workspaces/{workspaceId}/appointments */
+export async function createAppointment(
+  workspaceId: string,
+  body: AppointmentCreate,
+): Promise<AppointmentOut> {
+  return apiFetch<AppointmentOut>(`/workspaces/${workspaceId}/appointments`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
 /**

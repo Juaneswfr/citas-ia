@@ -3,6 +3,7 @@ import {
   Calendar,
   Scissors,
   Users,
+  UserCheck,
   MessageCircle,
   Settings,
   Shield,
@@ -32,6 +33,7 @@ interface NavItem {
 const items: NavItem[] = [
   { title: "Agenda", url: "/dashboard", icon: Calendar },
   { title: "Servicios", url: "/services", icon: Scissors },
+  { title: "Equipo", url: "/equipo", icon: UserCheck },
   { title: "Clientes", url: "/clients", icon: Users },
   { title: "Mensajes", url: "/messages", icon: MessageCircle },
   { title: "Ajustes", url: "/settings", icon: Settings },

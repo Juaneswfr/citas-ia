@@ -3,13 +3,14 @@ import { useAuth } from "@/lib/auth-context";
 import { useTypography } from "@/lib/typography-context";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
 import { Button } from "@/components/hilo/primitives";
 import { listChannels, updateChannelStatus, listCalendars, createKapsoOnboardingLink, createSandboxSession, getSandboxSession, type SandboxSession } from "@/lib/api/channels";
 import { getGoogleCalendarUrl } from "@/lib/api/auth";
 import { apiFetch } from "@/lib/api/client";
-import type { ChannelOut, CalendarOut, WorkspaceOut } from "@/lib/types/api";
+import { getBusinessHours, updateBusinessHours } from "@/lib/api/workspaces";
+import type { ChannelOut, CalendarOut, WorkspaceOut, BusinessHoursOut } from "@/lib/types/api";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "Ajustes · Hilo" }] }),
@@ -385,6 +386,83 @@ function TypographySection() {
   );
 }
 
+// ── Horario de atención ───────────────────────────────────────────────────────
+
+const DAY_NAMES = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+
+function BusinessHoursSection({ workspaceId }: { workspaceId: string }) {
+  const qc = useQueryClient();
+  const { data: saved, isLoading } = useQuery<BusinessHoursOut[]>({
+    queryKey: ['business-hours', workspaceId],
+    queryFn: () => getBusinessHours(workspaceId),
+    staleTime: 60_000,
+  });
+
+  const [hours, setHours] = useState<BusinessHoursOut[]>([]);
+
+  useEffect(() => {
+    if (saved) setHours(saved);
+  }, [saved]);
+
+  const mutation = useMutation({
+    mutationFn: () => updateBusinessHours(workspaceId, hours),
+    onSuccess: (data) => {
+      qc.setQueryData(['business-hours', workspaceId], data);
+      toast.success('Horario guardado.');
+    },
+    onError: () => toast.error('Error al guardar horario.'),
+  });
+
+  const update = (i: number, patch: Partial<BusinessHoursOut>) =>
+    setHours(h => h.map((d, j) => j === i ? { ...d, ...patch } : d));
+
+  if (isLoading) return <span style={{ font: '400 13px/1 var(--font-sans)', color: 'var(--ink-3)' }}>Cargando...</span>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {hours.map((h, i) => (
+        <div key={h.day_of_week} style={{
+          display: 'grid', gridTemplateColumns: '110px 40px 1fr', alignItems: 'center', gap: 12,
+          padding: '8px 0', borderBottom: i < 6 ? '1px solid var(--line-soft)' : 'none',
+          opacity: h.is_open ? 1 : 0.5,
+        }}>
+          <span style={{ font: '500 13px/1 var(--font-sans)', color: 'var(--ink-1)' }}>
+            {DAY_NAMES[h.day_of_week]}
+          </span>
+          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={h.is_open}
+              onChange={e => update(i, { is_open: e.target.checked })}
+              style={{ width: 16, height: 16, accentColor: 'var(--wine)', cursor: 'pointer' }}
+            />
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="time"
+              value={h.open_time.slice(0, 5)}
+              onChange={e => update(i, { open_time: e.target.value })}
+              disabled={!h.is_open}
+              style={{ ...inputStyle, width: 'auto', padding: '6px 8px', fontSize: 13 }}
+            />
+            <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--ink-3)' }}>–</span>
+            <input
+              type="time"
+              value={h.close_time.slice(0, 5)}
+              onChange={e => update(i, { close_time: e.target.value })}
+              disabled={!h.is_open}
+              style={{ ...inputStyle, width: 'auto', padding: '6px 8px', fontSize: 13 }}
+            />
+          </div>
+        </div>
+      ))}
+      <Button variant="primary" size="sm" onClick={() => mutation.mutate()} disabled={mutation.isPending} style={{ alignSelf: 'flex-end', marginTop: 8 }}>
+        {mutation.isPending ? 'Guardando…' : 'Guardar horario'}
+      </Button>
+    </div>
+  );
+}
+
 // ── Página ────────────────────────────────────────────────────────────────────
 
 const roleLabel: Record<string, string> = {
@@ -493,7 +571,7 @@ function SettingsPage() {
       </SettingsCard>
 
       {/* WhatsApp */}
-      <SettingsCard icon="whatsapp" title="WhatsApp Business" description="Canales conectados. El agente Atenea responde por estos números.">
+      <SettingsCard icon="whatsapp" title="WhatsApp Business" description="Canales conectados. El agente responde por estos números.">
         {me?.workspace_id
           ? <WhatsAppSection workspaceId={me.workspace_id} />
           : <span style={{ font: '400 13px/1 var(--font-sans)', color: 'var(--ink-3)' }}>No hay workspace activo.</span>
@@ -518,9 +596,12 @@ function SettingsPage() {
         }
       </SettingsCard>
 
-      {/* Tipografía */}
-      <SettingsCard icon="layers" title="Tipografía" description="Pareja tipográfica del panel. Se aplica al instante.">
-        <TypographySection />
+      {/* Horario de atención */}
+      <SettingsCard icon="calendar" title="Horario de atención" description="Días y horas en que el negocio recibe citas.">
+        {me?.workspace_id
+          ? <BusinessHoursSection workspaceId={me.workspace_id} />
+          : <span style={{ font: '400 13px/1 var(--font-sans)', color: 'var(--ink-3)' }}>No hay workspace activo.</span>
+        }
       </SettingsCard>
 
     </div>

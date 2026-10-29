@@ -60,3 +60,16 @@ class MemberOut(BaseModel):
     status: str
     joined_at: Optional[datetime]
     created_at: datetime
+    name: Optional[str] = None
+    email: Optional[str] = None
+
+
+class BusinessHoursOut(BaseModel):
+    day_of_week: int
+    open_time: str   # "HH:MM"
+    close_time: str
+    is_open: bool
+
+
+class BusinessHoursUpdate(BaseModel):
+    hours: list[BusinessHoursOut]

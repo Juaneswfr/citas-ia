@@ -3,11 +3,19 @@ import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { startOfWeek, endOfWeek, addDays, format, getDay } from "date-fns";
 import { es } from "date-fns/locale";
+import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
 import { Button, Avatar, Segmented } from "@/components/hilo/primitives";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import HILO from "@/lib/hilo-data";
-import { useAppointments, useWeekAppointments } from "@/hooks/use-appointments";
+import { useAuth } from "@/lib/auth-context";
+import { useAppointments, useWeekAppointments, useCreateAppointment } from "@/hooks/use-appointments";
+import { useTeamMembers } from "@/hooks/use-team";
+import { useCustomers } from "@/hooks/use-customers";
+import { useServices } from "@/hooks/use-services";
+import { listCalendars, listChannels } from "@/lib/api/channels";
 import type { CalendarEvent } from "@/hooks/use-appointments";
+import type { ServiceOut } from "@/lib/types/api";
 
 export const Route = createFileRoute("/_authenticated/agenda")({
   head: () => ({ meta: [{ title: "Agenda · Hilo" }] }),
@@ -23,10 +31,11 @@ function svcHueFromName(name: string): string {
   return s ? HILO.hueVar(s.hue) : 'var(--wine)';
 }
 
-function WeekView({ weekStart, events, isLoading }: {
+function WeekView({ weekStart, events, isLoading, onSlotClick }: {
   weekStart: Date;
   events: CalendarEvent[];
   isLoading: boolean;
+  onSlotClick: (date: string, time: string) => void;
 }) {
   const today = new Date();
   const todayDayIdx = getDay(today); // 0=Dom,1=Lun…6=Sáb
@@ -65,8 +74,20 @@ function WeekView({ weekStart, events, isLoading }: {
           ))}
         </div>
         {days.map((d, di) => (
-          <div key={di} style={{ position:'relative', borderLeft:'1px solid var(--line)',
-            background: d.isToday ? 'color-mix(in srgb, var(--wine) 3%, transparent)' : 'transparent' }}>
+          <div key={di}
+            onClick={e => {
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const offsetY = e.clientY - rect.top;
+              const hourIdx = Math.min(Math.floor(offsetY / PX_PER_HOUR), HOURS.length - 1);
+              const minRaw = ((offsetY % PX_PER_HOUR) / PX_PER_HOUR) * 60;
+              const min = Math.round(minRaw / 15) * 15 % 60;
+              const hour = HOURS[hourIdx];
+              const date = format(addDays(weekStart, di), 'yyyy-MM-dd');
+              const time = `${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+              onSlotClick(date, time);
+            }}
+            style={{ position:'relative', borderLeft:'1px solid var(--line)', cursor:'crosshair',
+              background: d.isToday ? 'color-mix(in srgb, var(--wine) 3%, transparent)' : 'transparent' }}>
             {HOURS.map(h => <div key={h} style={{ height:PX_PER_HOUR, borderBottom:'1px solid var(--line-soft)' }}/>)}
             {d.isToday && (
               <div style={{ position:'absolute', left:0, right:0,
@@ -208,8 +229,132 @@ function MonthView() {
   );
 }
 
+const HUES = ['clay','wine','mustard','steel','sage','plum','teal'];
+const memberHue = (id: string) => HUES[id.charCodeAt(0) % HUES.length];
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '8px 10px', borderRadius: 'var(--r-sm)',
+  border: '1px solid var(--line-strong)', background: 'var(--surface-2)',
+  font: '400 14px/1.3 var(--font-sans)', color: 'var(--ink-1)', outline: 'none',
+};
+
+function NewAppointmentDialog({ open, onClose, initialDate, initialTime }: {
+  open: boolean; onClose: () => void;
+  initialDate?: string; initialTime?: string;
+}) {
+  const { workspaceId } = useAuth();
+  const { data: customers = [] } = useCustomers();
+  const { data: services = [] } = useServices(true);
+  const { data: calendars = [] } = useQuery({
+    queryKey: ['calendars', workspaceId],
+    queryFn: () => listCalendars(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+  });
+  const { data: channels = [] } = useQuery({
+    queryKey: ['channels', workspaceId],
+    queryFn: () => listChannels(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+  });
+
+  const [customerId, setCustomerId] = useState('');
+  const [serviceId, setServiceId] = useState('');
+  const [date, setDate] = useState(initialDate ?? format(new Date(), 'yyyy-MM-dd'));
+  const [time, setTime] = useState(initialTime ?? '09:00');
+
+  // Sincronizar cuando se abre el modal con nuevos valores iniciales
+  useEffect(() => { if (open && initialDate) setDate(initialDate); }, [open, initialDate]);
+  useEffect(() => { if (open && initialTime) setTime(initialTime); }, [open, initialTime]);
+
+  const createMutation = useCreateAppointment();
+  const activeCalendar = calendars.find(c => c.sync_status === 'active');
+  const activeChannel = channels.find(c => c.status === 'active');
+  const selectedService = services.find((s: ServiceOut) => s.id === serviceId);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerId || !serviceId || !activeCalendar || !activeChannel) return;
+    const start_at = new Date(`${date}T${time}:00`).toISOString();
+    await createMutation.mutateAsync({
+      customer_id: customerId,
+      service_id: serviceId,
+      channel_id: activeChannel.id,
+      calendar_id: activeCalendar.id,
+      start_at,
+      price_cop: selectedService?.price_cop ?? 0,
+    });
+    onClose();
+  };
+
+  const labelSt: React.CSSProperties = { font: '500 12px/1 var(--font-sans)', color: 'var(--ink-2)', marginBottom: 6, display: 'block' };
+  const blocked = !activeCalendar || !activeChannel;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent style={{ maxWidth: 440 }}>
+        <DialogHeader>
+          <DialogTitle>Nueva cita</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+          {!activeCalendar && (
+            <div style={{ font: '400 12.5px/1.4 var(--font-sans)', color: 'var(--wine)', padding: '8px 12px', borderRadius: 'var(--r-sm)', background: 'var(--wine-50)', border: '1px solid var(--wine-200)' }}>
+              Sin calendario activo — conecta Google Calendar en Ajustes
+            </div>
+          )}
+          {!activeChannel && (
+            <div style={{ font: '400 12.5px/1.4 var(--font-sans)', color: 'var(--wine)', padding: '8px 12px', borderRadius: 'var(--r-sm)', background: 'var(--wine-50)', border: '1px solid var(--wine-200)' }}>
+              Sin canal activo — conecta WhatsApp en Ajustes
+            </div>
+          )}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={labelSt}>Cliente</span>
+            <select value={customerId} onChange={e => setCustomerId(e.target.value)} required style={inputStyle}>
+              <option value="">— Seleccionar —</option>
+              {customers.map(c => (
+                <option key={c.id} value={c.id}>{c.name ?? c.phone}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={labelSt}>Servicio</span>
+            <select value={serviceId} onChange={e => setServiceId(e.target.value)} required style={inputStyle}>
+              <option value="">— Seleccionar —</option>
+              {services.map((s: ServiceOut) => (
+                <option key={s.id} value={s.id}>{s.name} · {HILO.fmtCOP(s.price_cop)} · {s.duration_minutes}min</option>
+              ))}
+            </select>
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={labelSt}>Fecha</span>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} required style={inputStyle} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={labelSt}>Hora</span>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)} required style={inputStyle} />
+            </label>
+          </div>
+          <Button variant="primary" size="sm" disabled={createMutation.isPending || blocked} style={{ alignSelf: 'flex-end' }}>
+            {createMutation.isPending ? 'Guardando…' : 'Crear cita'}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AgendaPage() {
   const [view, setView] = useState<'day'|'week'|'month'>('week');
+  const [newCitaOpen, setNewCitaOpen] = useState(false);
+  const [slotDate, setSlotDate] = useState<string | undefined>();
+  const [slotTime, setSlotTime] = useState<string | undefined>();
+
+  const handleSlotClick = (date: string, time: string) => {
+    setSlotDate(date);
+    setSlotTime(time);
+    setNewCitaOpen(true);
+  };
   const [weekOffset, setWeekOffset] = useState(0);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 880;
 
@@ -227,6 +372,7 @@ function AgendaPage() {
   }, [weekStart, weekEnd]);
 
   const { data: weekEvents = [], isLoading: weekLoading, isError: weekError } = useWeekAppointments({ weekStart, weekEnd });
+  const { data: team = [] } = useTeamMembers();
 
   useEffect(() => {
     if (weekError) toast.error('No se pudo cargar la agenda semanal.');
@@ -235,6 +381,7 @@ function AgendaPage() {
   return (
     <div style={{ maxWidth:1180, margin:'0 auto', padding: isMobile?'16px 14px 28px':'24px 30px 40px',
       animation:'hilo-fade-up var(--dur-3) var(--ease-out)' }}>
+      <NewAppointmentDialog open={newCitaOpen} onClose={() => setNewCitaOpen(false)} initialDate={slotDate} initialTime={slotTime} />
       <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', marginBottom:18 }}>
         <div style={{ display:'flex', alignItems:'center', gap:6 }}>
           <Button variant="secondary" size="sm" icon="chevL" style={{ padding:'8px' }} onClick={() => setWeekOffset(o => o - 1)}/>
@@ -249,23 +396,23 @@ function AgendaPage() {
             onChange={v => setView(v as 'day'|'week'|'month')}
           />
           {!isMobile && <Button variant="secondary" size="sm" icon="block">Bloquear</Button>}
-          <Button variant="primary" size="sm" icon="plus">{isMobile?'':'Nueva cita'}</Button>
+          <Button variant="primary" size="sm" icon="plus" onClick={() => setNewCitaOpen(true)}>{isMobile?'':'Nueva cita'}</Button>
         </div>
       </div>
 
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, flexWrap:'wrap' }}>
-        <span className="eyebrow">Barberos</span>
-        {HILO.team.map(b => (
-          <span key={b.id} style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'4px 11px 4px 5px',
+        <span className="eyebrow">Equipo</span>
+        {team.map(m => (
+          <span key={m.id} style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'4px 11px 4px 5px',
             borderRadius:'var(--r-full)', background:'var(--surface)', border:'1px solid var(--line)', cursor:'pointer' }}>
-            <Avatar name={b.name} initials={b.initials} hue={b.hue} size={22}/>
-            <span style={{ font:'500 12.5px/1 var(--font-sans)', color:'var(--ink-1)' }}>{b.name.split(' ')[0]}</span>
+            <Avatar name={m.name ?? m.email ?? '?'} hue={memberHue(m.id)} size={22}/>
+            <span style={{ font:'500 12.5px/1 var(--font-sans)', color:'var(--ink-1)' }}>{(m.name ?? m.email ?? '?').split(' ')[0]}</span>
           </span>
         ))}
       </div>
 
       {view==='day' && <DayView isLoading={false} />}
-      {view==='week' && <WeekView weekStart={weekStart} events={weekEvents} isLoading={weekLoading} />}
+      {view==='week' && <WeekView weekStart={weekStart} events={weekEvents} isLoading={weekLoading} onSlotClick={handleSlotClick} />}
       {view==='month' && <MonthView/>}
     </div>
   );

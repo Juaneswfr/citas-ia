@@ -75,6 +75,8 @@ export function toHiloAppointment(
     via: 'wa',         // origen WhatsApp por defecto
     phone: customer?.phone ?? '',
     home: apt.is_home_service,
+    customerId: apt.customer_id,
+    startAt: apt.start_at,
   };
 }
 

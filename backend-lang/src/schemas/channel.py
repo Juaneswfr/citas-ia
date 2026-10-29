@@ -53,7 +53,7 @@ class CalendarOut(BaseModel):
     workspace_id: str
     name: str
     google_calendar_id: str
-    connected_by_user_id: str
+    connected_by_user_id: Optional[str]
     sync_enabled: bool
     sync_status: str
     last_synced_at: Optional[datetime]
