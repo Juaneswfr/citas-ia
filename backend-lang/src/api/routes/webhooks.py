@@ -276,6 +276,57 @@ async def kapso_number_inbound(token: str, request: Request):
     return {"status": "ok"}
 
 
+async def _get_channel_by_phone_number_id(phone_number_id: str):
+    from core import database
+
+    async with database._pool.acquire() as conn:
+        return await conn.fetchrow(
+            "SELECT id, workspace_id, phone_number_id FROM public.channels WHERE phone_number_id=$1",
+            phone_number_id,
+        )
+
+
+@router.post("/kapso/sandbox", summary="Mensajes entrantes del sandbox de Kapso")
+@_kapso_limiter.limit(_KAPSO_LIMIT)
+async def kapso_sandbox_inbound(request: Request):
+    """Webhook para el sandbox de Kapso. Verifica firma con KAPSO_SANDBOX_WEBHOOK_SECRET,
+    extrae phone_number_id del payload y rutea al workspace del canal."""
+    s = get_settings()
+    if not s.kapso_enabled:
+        raise HTTPException(status_code=404)
+    if not s.kapso_sandbox_webhook_secret:
+        log.error("[webhooks/kapso/sandbox] KAPSO_SANDBOX_WEBHOOK_SECRET no configurado")
+        raise HTTPException(status_code=503)
+
+    body_bytes = await _read_body_limited(request)
+    sig = request.headers.get("X-Webhook-Signature", "").strip()
+    expected = hmac.new(s.kapso_sandbox_webhook_secret.encode(), body_bytes, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected.encode(), sig.encode()):
+        log.warning("[webhooks/kapso/sandbox] firma inválida — rechazado")
+        raise HTTPException(status_code=401)
+
+    key = request.headers.get("X-Idempotency-Key", "")
+    if not key:
+        raise HTTPException(status_code=400)
+    event = request.headers.get("X-Webhook-Event", "")
+    if not await _claim_idempotency_key(key, event):
+        return {"status": "duplicate"}
+
+    try:
+        payload = json.loads(body_bytes)
+    except ValueError:
+        raise HTTPException(status_code=400)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400)
+
+    batch = request.headers.get("X-Webhook-Batch", "").lower() == "true"
+    items = payload.get("data") if batch and isinstance(payload.get("data"), list) else [payload]
+
+    if event == "whatsapp.message.received":
+        _spawn(_run_kapso_task(key, event, items))
+    return {"status": "ok"}
+
+
 @router.post("/kapso", summary="Eventos de proyecto de Kapso (no mensajes)")
 @_kapso_limiter.limit(_KAPSO_LIMIT)
 async def kapso_inbound(request: Request):

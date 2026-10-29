@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
 import { Button } from "@/components/hilo/primitives";
-import { listChannels, updateChannelStatus, listCalendars, createKapsoOnboardingLink } from "@/lib/api/channels";
+import { listChannels, updateChannelStatus, listCalendars, createKapsoOnboardingLink, createSandboxSession, getSandboxSession, type SandboxSession } from "@/lib/api/channels";
 import { getGoogleCalendarUrl } from "@/lib/api/auth";
 import { apiFetch } from "@/lib/api/client";
 import type { ChannelOut, CalendarOut, WorkspaceOut } from "@/lib/types/api";
@@ -209,6 +209,147 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
   );
 }
 
+// ── Sandbox Kapso ────────────────────────────────────────────────────────────
+
+function SandboxSection({ workspaceId }: { workspaceId: string }) {
+  const [phone, setPhone] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [session, setSession] = useState<SandboxSession | null>(null);
+
+  const { data: polled } = useQuery<SandboxSession>({
+    queryKey: ['sandbox-session', workspaceId, sessionId],
+    queryFn: () => getSandboxSession(workspaceId, sessionId!),
+    enabled: !!sessionId && session?.status === 'pending_activation',
+    refetchInterval: 3000,
+  });
+
+  useEffect(() => {
+    if (polled) setSession(polled);
+  }, [polled]);
+
+  const handleCreate = async () => {
+    if (!phone.trim()) return;
+    setCreating(true);
+    try {
+      const res = await createSandboxSession(workspaceId, phone.trim());
+      setSession(res);
+      setSessionId(res.id ?? null);
+    } catch (err: any) {
+      toast.error(err?.detail ?? 'Error creando sesión sandbox.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const isExpired = session?.expires_at ? new Date(session.expires_at) < new Date() : false;
+  const status = isExpired ? 'expired' : session?.status;
+
+  // Countdown
+  const [timeLeft, setTimeLeft] = useState('');
+  useEffect(() => {
+    if (!session?.expires_at) return;
+    const tick = () => {
+      const diff = new Date(session.expires_at).getTime() - Date.now();
+      if (diff <= 0) { setTimeLeft('Expirada'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setTimeLeft(`${h}h ${m}m`);
+    };
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, [session?.expires_at]);
+
+  if (!session || status === 'expired') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {status === 'expired' && (
+          <div style={{ font: '400 13px/1.4 var(--font-sans)', color: 'var(--ink-3)', padding: '8px 0' }}>
+            Sesión expirada. Crea una nueva para seguir probando.
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={labelStyle}>Tu número de WhatsApp</span>
+            <input
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="+573001234567"
+              type="tel"
+              style={inputStyle}
+            />
+          </label>
+          <Button variant="primary" size="sm" onClick={handleCreate} disabled={creating}>
+            {creating ? 'Creando…' : 'Crear sesión'}
+          </Button>
+        </div>
+        <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--ink-3)' }}>
+          Formato internacional sin espacios. Las sesiones duran 24 horas.
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'pending_activation') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ font: '400 13px/1.4 var(--font-sans)', color: 'var(--ink-2)' }}>
+          Envía este código desde tu WhatsApp al número del sandbox para activar la sesión:
+        </div>
+        <div style={{
+          padding: '16px 20px', borderRadius: 'var(--r-md)',
+          background: 'var(--surface-2)', border: '1px solid var(--line)',
+          textAlign: 'center',
+        }}>
+          <div style={{ font: '600 28px/1 var(--font-mono)', letterSpacing: '0.1em', color: 'var(--ink-1)' }}>
+            {session.activation_code}
+          </div>
+        </div>
+        {session.activation_link && (
+          <a
+            href={session.activation_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              font: '500 13px/1 var(--font-sans)', color: 'var(--wine)',
+              textDecoration: 'none', alignSelf: 'center',
+            }}
+          >
+            Abrir en WhatsApp
+          </a>
+        )}
+        <div style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--ink-3)', textAlign: 'center' }}>
+          Esperando activación… · Expira en {timeLeft}
+        </div>
+      </div>
+    );
+  }
+
+  // active
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', flexShrink: 0,
+        }} />
+        <span style={{ font: '500 14px/1 var(--font-sans)', color: 'var(--ink-1)' }}>
+          Sandbox activo
+        </span>
+        <span style={{ font: '400 12px/1 var(--font-sans)', color: 'var(--ink-3)', marginLeft: 'auto' }}>
+          Expira en {timeLeft}
+        </span>
+      </div>
+      <div style={{ font: '400 13px/1.4 var(--font-sans)', color: 'var(--ink-2)' }}>
+        Envía un mensaje al <strong>+56 9 2040 3095</strong> desde tu WhatsApp para probar el agente.
+      </div>
+      <Button variant="ghost" size="sm" onClick={() => { setSession(null); setSessionId(null); }} style={{ alignSelf: 'flex-start' }}>
+        Nueva sesión
+      </Button>
+    </div>
+  );
+}
+
 // ── Tipografía ────────────────────────────────────────────────────────────────
 
 function TypographySection() {
@@ -358,6 +499,16 @@ function SettingsPage() {
           : <span style={{ font: '400 13px/1 var(--font-sans)', color: 'var(--ink-3)' }}>No hay workspace activo.</span>
         }
       </SettingsCard>
+
+      {/* Sandbox */}
+      {(me?.role === 'workspace_owner' || me?.role === 'super_admin') && (
+        <SettingsCard icon="whatsapp" title="Sandbox de pruebas" description="Prueba el agente con el número sandbox de Kapso. Sesiones de 24h.">
+          {me?.workspace_id
+            ? <SandboxSection workspaceId={me.workspace_id} />
+            : <span style={{ font: '400 13px/1 var(--font-sans)', color: 'var(--ink-3)' }}>No hay workspace activo.</span>
+          }
+        </SettingsCard>
+      )}
 
       {/* Google Calendar */}
       <SettingsCard icon="calendar" title="Google Calendar" description="Calendarios sincronizados para gestionar disponibilidad.">

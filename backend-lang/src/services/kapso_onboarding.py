@@ -87,6 +87,38 @@ class KapsoPlatformClient:
         )
 
 
+class KapsoSandboxClient:
+    """Client for https://app.kapso.ai/api/v1 — sandbox sessions."""
+
+    def __init__(self, api_key: str, base_url: str = "https://app.kapso.ai/api/v1"):
+        self._api_key = api_key
+        self._base = base_url.rstrip("/")
+
+    async def _request(self, method: str, path: str, body: Optional[dict] = None):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                resp = await c.request(
+                    method, self._base + path, json=body,
+                    headers={"X-API-Key": self._api_key, "Content-Type": "application/json"},
+                )
+        except httpx.HTTPError as e:
+            raise KapsoError(f"network_error:{type(e).__name__}") from None
+        if resp.status_code >= 400:
+            raise KapsoError(f"http_{resp.status_code}")
+        return resp.json()
+
+    async def create_session(self, phone_number: str) -> dict:
+        return await self._request("POST", "/sandbox_sessions", {
+            "whatsapp_sandbox_session": {"phone_number": phone_number},
+        })
+
+    async def list_sessions(self) -> list:
+        return await self._request("GET", "/sandbox_sessions")
+
+    async def get_session(self, session_id: str) -> dict:
+        return await self._request("GET", f"/sandbox_sessions/{session_id}")
+
+
 class KapsoOnboardingService:
     def __init__(self, client: KapsoPlatformClient, frontend_url: str):
         self._client = client

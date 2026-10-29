@@ -29,3 +29,28 @@ export function disconnectCalendar(workspaceId: string, calendarId: string): Pro
 export function createKapsoOnboardingLink(workspaceId: string): Promise<{ url: string; expires_at: string }> {
   return apiFetch(`/workspaces/${workspaceId}/kapso/onboarding-link`, { method: 'POST' });
 }
+
+// ── Sandbox ──────────────────────────────────────────────────────────────────
+
+export interface SandboxSession {
+  id?: string;
+  status: string;
+  activation_code: string;
+  activation_link: string;
+  expires_at: string;
+}
+
+export function createSandboxSession(workspaceId: string, phoneNumber: string): Promise<SandboxSession> {
+  return apiFetch(`/workspaces/${workspaceId}/kapso/sandbox-sessions`, {
+    method: 'POST',
+    body: JSON.stringify({ phone_number: phoneNumber }),
+  });
+}
+
+export function listSandboxSessions(workspaceId: string): Promise<SandboxSession[]> {
+  return apiFetch(`/workspaces/${workspaceId}/kapso/sandbox-sessions`);
+}
+
+export function getSandboxSession(workspaceId: string, sessionId: string): Promise<SandboxSession> {
+  return apiFetch(`/workspaces/${workspaceId}/kapso/sandbox-sessions/${sessionId}`);
+}

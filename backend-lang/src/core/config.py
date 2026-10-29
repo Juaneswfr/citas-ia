@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     kapso_base_url: str = Field(default="https://api.kapso.ai", alias="KAPSO_BASE_URL")
     # Clave Fernet (base64 urlsafe de 32 bytes) que cifra el secreto de webhook de cada canal.
     kapso_secrets_key: str = Field(default="", alias="KAPSO_SECRETS_KEY")
+    # Secreto del webhook de sandbox (auto-generado por Kapso al configurar el webhook en Sandbox WhatsApp).
+    kapso_sandbox_webhook_secret: str = Field(default="", alias="KAPSO_SANDBOX_WEBHOOK_SECRET")
 
     @model_validator(mode="after")
     def _require_kapso_secrets(self):

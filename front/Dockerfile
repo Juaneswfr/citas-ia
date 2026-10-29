@@ -1,15 +1,15 @@
 # Multi-stage: build SSR dentro del container
 # Actualizar: git pull + docker compose up --build frontend
-FROM oven/bun:1-alpine AS build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
-COPY package.json bun.lock ./
-RUN bun install
+COPY package.json package-lock.json ./
+RUN npm install --legacy-peer-deps
 
 # .env debe existir en el server (VITE_* se inlinan en el bundle del cliente)
 COPY . .
-RUN bun run build
+RUN npm run build
 
 # ── Runtime: solo el output de Nitro ───────────────────────────────────────
 FROM node:20-alpine
