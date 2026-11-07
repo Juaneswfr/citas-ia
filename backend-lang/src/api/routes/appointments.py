@@ -10,7 +10,8 @@ import logging
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from core.database import get_db
 from core.security import require_workspace_access
 from schemas.appointment import (
@@ -35,22 +36,25 @@ async def list_appointments(
     status: str = Query(None),
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    params = [workspace_id]
-    filters = ["workspace_id = $1"]
+    filters = ["workspace_id = :workspace_id"]
+    params: dict = {"workspace_id": workspace_id}
     if status:
-        params.append(status)
-        filters.append(f"status = ${len(params)}")
+        filters.append("status = :status")
+        params["status"] = status
     if from_date:
-        params.append(from_date)
-        filters.append(f"start_at >= ${len(params)}")
+        filters.append("start_at >= :from_date")
+        params["from_date"] = from_date
     if to_date:
-        params.append(to_date)
-        filters.append(f"start_at < ${len(params)}::date + INTERVAL '1 day'")
+        filters.append("start_at < :to_date::date + INTERVAL '1 day'")
+        params["to_date"] = to_date
 
     where = " AND ".join(filters)
-    rows = await db.fetch(f"SELECT * FROM appointments WHERE {where} ORDER BY start_at", *params)
+    rows = (await db.execute(
+        text(f"SELECT * FROM appointments WHERE {where} ORDER BY start_at"),
+        params,
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -64,16 +68,16 @@ async def create_appointment(
     workspace_id: str,
     body: AppointmentCreate,
     current_user: dict = Depends(require_workspace_access("staff")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     from services.calendar_service import CalendarService
     from services.audit_service import AuditService
 
     # Obtener servicio
-    svc = await db.fetchrow(
-        "SELECT name, duration_minutes, buffer_minutes FROM services WHERE id = $1",
-        body.service_id,
-    )
+    svc = (await db.execute(
+        text("SELECT name, duration_minutes, buffer_minutes FROM services WHERE id = :service_id"),
+        {"service_id": body.service_id},
+    )).mappings().fetchone()
     if not svc:
         raise HTTPException(status_code=404, detail="Servicio no encontrado.")
 
@@ -85,9 +89,10 @@ async def create_appointment(
     customer_name = ""
     customer_phone = None
     if body.customer_id:
-        cust = await db.fetchrow(
-            "SELECT name, phone FROM customers WHERE id = $1", body.customer_id
-        )
+        cust = (await db.execute(
+            text("SELECT name, phone FROM customers WHERE id = :customer_id"),
+            {"customer_id": body.customer_id},
+        )).mappings().fetchone()
         if cust:
             customer_name = cust["name"] or cust["phone"] or ""
             customer_phone = cust["phone"]
@@ -95,27 +100,27 @@ async def create_appointment(
     # Resolver canal: usar el provisto o buscar el activo del workspace
     channel_id = body.channel_id
     if not channel_id:
-        ch = await db.fetchrow(
-            "SELECT id FROM channels WHERE workspace_id = $1 AND status = 'active' ORDER BY created_at LIMIT 1",
-            workspace_id,
-        )
+        ch = (await db.execute(
+            text("SELECT id FROM channels WHERE workspace_id = :workspace_id AND status = 'active' ORDER BY created_at LIMIT 1"),
+            {"workspace_id": workspace_id},
+        )).mappings().fetchone()
         channel_id = str(ch["id"]) if ch else None
 
     # Resolver calendario: usar el provisto o buscar el activo del workspace
     calendar_id = body.calendar_id
     if not calendar_id:
-        active_cal = await db.fetchrow(
-            "SELECT id FROM calendars WHERE workspace_id = $1 AND sync_status = 'active' ORDER BY created_at LIMIT 1",
-            workspace_id,
-        )
+        active_cal = (await db.execute(
+            text("SELECT id FROM calendars WHERE workspace_id = :workspace_id AND sync_status = 'active' ORDER BY created_at LIMIT 1"),
+            {"workspace_id": workspace_id},
+        )).mappings().fetchone()
         calendar_id = str(active_cal["id"]) if active_cal else None
 
     google_event_id = None
     if calendar_id:
-        cal = await db.fetchrow(
-            "SELECT * FROM calendars WHERE id = $1 AND workspace_id = $2",
-            calendar_id, workspace_id,
-        )
+        cal = (await db.execute(
+            text("SELECT * FROM calendars WHERE id = :calendar_id AND workspace_id = :workspace_id"),
+            {"calendar_id": calendar_id, "workspace_id": workspace_id},
+        )).mappings().fetchone()
         if cal:
             # Verificar disponibilidad y crear evento (Principio VI)
             cal_service = CalendarService(dict(cal))
@@ -145,32 +150,37 @@ async def create_appointment(
                 raise
 
     data = body.model_dump()
-    row = await db.fetchrow(
-        """
+    row = (await db.execute(
+        text("""
         INSERT INTO appointments
             (workspace_id, customer_id, service_id, channel_id, calendar_id,
              start_at, end_at, status, price_cop, home_service_price_cop,
              is_home_service, home_address, google_event_id, created_by)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,'confirmed',$8,$9,$10,$11,$12,$13)
+        VALUES (:workspace_id,:customer_id,:service_id,:channel_id,:calendar_id,
+                :start_at,:end_at,'confirmed',:price_cop,:home_service_price_cop,
+                :is_home_service,:home_address,:google_event_id,:created_by)
         RETURNING *
-        """,
-        workspace_id,
-        data.get("customer_id"),
-        data.get("service_id"),
-        channel_id,
-        calendar_id,
-        data.get("start_at"),
-        end_at,
-        data.get("price_cop"),
-        data.get("home_service_price_cop", 0),
-        data.get("is_home_service", False),
-        data.get("home_address"),
-        google_event_id,
-        current_user.get("sub"),
-    )
+        """),
+        {
+            "workspace_id": workspace_id,
+            "customer_id": data.get("customer_id"),
+            "service_id": data.get("service_id"),
+            "channel_id": channel_id,
+            "calendar_id": calendar_id,
+            "start_at": data.get("start_at"),
+            "end_at": end_at,
+            "price_cop": data.get("price_cop"),
+            "home_service_price_cop": data.get("home_service_price_cop", 0),
+            "is_home_service": data.get("is_home_service", False),
+            "home_address": data.get("home_address"),
+            "google_event_id": google_event_id,
+            "created_by": current_user.get("sub"),
+        },
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=500, detail="Error persistiendo la cita.")
 
+    await db.commit()
     appointment = dict(row)
     await AuditService.log(
         workspace_id=workspace_id,
@@ -185,7 +195,10 @@ async def create_appointment(
 
     # Notificar al cliente por WhatsApp (best-effort — no bloquea la respuesta)
     if channel_id and customer_phone:
-        ch_row = await db.fetchrow("SELECT * FROM channels WHERE id = $1", channel_id)
+        ch_row = (await db.execute(
+            text("SELECT * FROM channels WHERE id = :channel_id"),
+            {"channel_id": channel_id},
+        )).mappings().fetchone()
         if ch_row:
             from services.whatsapp_service import WhatsAppService
             meses = ['enero','febrero','marzo','abril','mayo','junio','julio',
@@ -213,12 +226,12 @@ async def create_appointment(
 async def get_appointment(
     workspace_id: str,
     appointment_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    row = await db.fetchrow(
-        "SELECT * FROM appointments WHERE id = $1 AND workspace_id = $2",
-        appointment_id, workspace_id,
-    )
+    row = (await db.execute(
+        text("SELECT * FROM appointments WHERE id = :appointment_id AND workspace_id = :workspace_id"),
+        {"appointment_id": appointment_id, "workspace_id": workspace_id},
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Cita no encontrada.")
     return dict(row)
@@ -236,7 +249,7 @@ async def update_appointment(
     body: AppointmentUpdate,
     confirmed: bool = Query(False),
     current_user: dict = Depends(require_workspace_access("manager")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     if body.status == "cancelled" and not confirmed:
         raise HTTPException(
@@ -244,10 +257,10 @@ async def update_appointment(
             detail="La cancelación requiere confirmación explícita. Pasa confirmed=true tras obtener aprobación del dueño.",
         )
 
-    current = await db.fetchrow(
-        "SELECT status, google_event_id, calendar_id, channel_id, customer_id, service_id FROM appointments WHERE id = $1 AND workspace_id = $2",
-        appointment_id, workspace_id,
-    )
+    current = (await db.execute(
+        text("SELECT status, google_event_id, calendar_id, channel_id, customer_id, service_id FROM appointments WHERE id = :appointment_id AND workspace_id = :workspace_id"),
+        {"appointment_id": appointment_id, "workspace_id": workspace_id},
+    )).mappings().fetchone()
     if not current:
         raise HTTPException(status_code=404, detail="Cita no encontrada.")
 
@@ -261,24 +274,26 @@ async def update_appointment(
     if body.status == "cancelled":
         data["cancelled_by"] = current_user.get("sub")
 
-    fields = list(data.keys())
-    values = list(data.values())
-    set_clause = ", ".join(f"{f} = ${i+3}" for i, f in enumerate(fields))
+    set_clause = ", ".join(f"{f} = :{f}" for f in data.keys())
+    params = {"appointment_id": appointment_id, "workspace_id": workspace_id, **data}
 
-    row = await db.fetchrow(
-        f"UPDATE appointments SET {set_clause} WHERE id = $1 AND workspace_id = $2 RETURNING *",
-        appointment_id, workspace_id, *values,
-    )
+    row = (await db.execute(
+        text(f"UPDATE appointments SET {set_clause} WHERE id = :appointment_id AND workspace_id = :workspace_id RETURNING *"),
+        params,
+    )).mappings().fetchone()
 
     # Eliminar evento de Calendar si se cancela (Principio VI)
     if body.status == "cancelled" and current["google_event_id"]:
         from services.calendar_service import CalendarService
-        cal = await db.fetchrow(
-            "SELECT * FROM calendars WHERE id = $1", current["calendar_id"]
-        )
+        cal = (await db.execute(
+            text("SELECT * FROM calendars WHERE id = :calendar_id"),
+            {"calendar_id": current["calendar_id"]},
+        )).mappings().fetchone()
         if cal:
             cal_service = CalendarService(dict(cal))
             await cal_service.delete_event(current["google_event_id"])
+
+    await db.commit()
 
     from services.audit_service import AuditService
     await AuditService.log(
@@ -296,10 +311,19 @@ async def update_appointment(
     # Notificar al cliente por WhatsApp (best-effort)
     notify_channel = current["channel_id"]
     if row and notify_channel and (body.status in {"cancelled"} or body.start_at):
-        cust_row = await db.fetchrow("SELECT phone FROM customers WHERE id = $1", current["customer_id"])
-        svc_row  = await db.fetchrow("SELECT name FROM services WHERE id = $1", current["service_id"])
+        cust_row = (await db.execute(
+            text("SELECT phone FROM customers WHERE id = :customer_id"),
+            {"customer_id": current["customer_id"]},
+        )).mappings().fetchone()
+        svc_row = (await db.execute(
+            text("SELECT name FROM services WHERE id = :service_id"),
+            {"service_id": current["service_id"]},
+        )).mappings().fetchone()
         if cust_row and cust_row["phone"] and svc_row:
-            ch_row = await db.fetchrow("SELECT * FROM channels WHERE id = $1", notify_channel)
+            ch_row = (await db.execute(
+                text("SELECT * FROM channels WHERE id = :channel_id"),
+                {"channel_id": notify_channel},
+            )).mappings().fetchone()
             if ch_row:
                 from services.whatsapp_service import WhatsAppService
                 nombre_svc = svc_row["name"]
@@ -334,11 +358,12 @@ async def update_appointment(
 )
 async def list_blocks(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    rows = await db.fetch(
-        "SELECT * FROM availability_blocks WHERE workspace_id = $1", workspace_id
-    )
+    rows = (await db.execute(
+        text("SELECT * FROM availability_blocks WHERE workspace_id = :workspace_id"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -353,7 +378,7 @@ async def create_block(
     body: AvailabilityBlockCreate,
     confirmed: bool = Query(False),
     current_user: dict = Depends(require_workspace_access("manager")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     if not confirmed:
         raise HTTPException(
@@ -362,23 +387,26 @@ async def create_block(
         )
 
     data = body.model_dump()
-    row = await db.fetchrow(
-        """
+    row = (await db.execute(
+        text("""
         INSERT INTO availability_blocks
             (workspace_id, calendar_id, start_at, end_at, block_type, reason, source, created_by)
-        VALUES ($1,$2,$3,$4,$5,$6,'manual',$7)
+        VALUES (:workspace_id,:calendar_id,:start_at,:end_at,:block_type,:reason,'manual',:created_by)
         RETURNING *
-        """,
-        workspace_id,
-        data.get("calendar_id"),
-        data.get("start_at"),
-        data.get("end_at"),
-        data.get("block_type"),
-        data.get("reason"),
-        current_user.get("sub"),
-    )
+        """),
+        {
+            "workspace_id": workspace_id,
+            "calendar_id": data.get("calendar_id"),
+            "start_at": data.get("start_at"),
+            "end_at": data.get("end_at"),
+            "block_type": data.get("block_type"),
+            "reason": data.get("reason"),
+            "created_by": current_user.get("sub"),
+        },
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=500, detail="Error creando bloqueo.")
+    await db.commit()
     log.info("[blocks] created | workspace=%s | start=%s | by=%s",
              workspace_id, body.start_at, current_user.get("sub"))
     return dict(row)
@@ -394,7 +422,7 @@ async def delete_block(
     block_id: str,
     confirmed: bool = Query(False),
     current_user: dict = Depends(require_workspace_access("manager")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     if not confirmed:
         raise HTTPException(
@@ -402,8 +430,9 @@ async def delete_block(
             detail="Eliminar un bloqueo requiere confirmed=true.",
         )
     await db.execute(
-        "DELETE FROM availability_blocks WHERE id = $1 AND workspace_id = $2",
-        block_id, workspace_id,
+        text("DELETE FROM availability_blocks WHERE id = :block_id AND workspace_id = :workspace_id"),
+        {"block_id": block_id, "workspace_id": workspace_id},
     )
+    await db.commit()
     log.info("[blocks] deleted | workspace=%s | block=%s | by=%s",
              workspace_id, block_id, current_user.get("sub"))

@@ -17,6 +17,7 @@ import { Route as PoliticasDePrivacidadRouteImport } from './routes/politicas-de
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as AuthenticatedAgendaRouteImport } from './routes/_authenticated/agenda'
+import { Route as AuthenticatedAlertasRouteImport } from './routes/_authenticated/alertas'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEquipoRouteImport } from './routes/_authenticated/equipo'
@@ -64,6 +65,11 @@ const VerifyEmailRoute = VerifyEmailRouteImport.update({
 const AuthenticatedAgendaRoute = AuthenticatedAgendaRouteImport.update({
   id: '/agenda',
   path: '/agenda',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedAlertasRoute = AuthenticatedAlertasRouteImport.update({
+  id: '/alertas',
+  path: '/alertas',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
@@ -120,6 +126,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/agenda': typeof AuthenticatedAgendaRoute
+  '/alertas': typeof AuthenticatedAlertasRoute
   '/clients': typeof AuthenticatedClientsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/equipo': typeof AuthenticatedEquipoRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/agenda': typeof AuthenticatedAgendaRoute
+  '/alertas': typeof AuthenticatedAlertasRoute
   '/clients': typeof AuthenticatedClientsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/equipo': typeof AuthenticatedEquipoRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/_authenticated/agenda': typeof AuthenticatedAgendaRoute
+  '/_authenticated/alertas': typeof AuthenticatedAlertasRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/equipo': typeof AuthenticatedEquipoRoute
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/verify-email'
     | '/agenda'
+    | '/alertas'
     | '/clients'
     | '/dashboard'
     | '/equipo'
@@ -196,6 +206,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/verify-email'
     | '/agenda'
+    | '/alertas'
     | '/clients'
     | '/dashboard'
     | '/equipo'
@@ -215,6 +226,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/verify-email'
     | '/_authenticated/agenda'
+    | '/_authenticated/alertas'
     | '/_authenticated/clients'
     | '/_authenticated/dashboard'
     | '/_authenticated/equipo'
@@ -295,6 +307,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgendaRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/alertas': {
+      id: '/_authenticated/alertas'
+      path: '/alertas'
+      fullPath: '/alertas'
+      preLoaderRoute: typeof AuthenticatedAlertasRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/clients': {
       id: '/_authenticated/clients'
       path: '/clients'
@@ -363,6 +382,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAgendaRoute: typeof AuthenticatedAgendaRoute
+  AuthenticatedAlertasRoute: typeof AuthenticatedAlertasRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEquipoRoute: typeof AuthenticatedEquipoRoute
@@ -375,6 +395,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAgendaRoute: AuthenticatedAgendaRoute,
+  AuthenticatedAlertasRoute: AuthenticatedAlertasRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEquipoRoute: AuthenticatedEquipoRoute,

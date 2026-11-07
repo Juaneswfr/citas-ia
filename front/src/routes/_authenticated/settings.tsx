@@ -6,10 +6,10 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
 import { Button } from "@/components/hilo/primitives";
-import { listChannels, updateChannelStatus, listCalendars, createKapsoOnboardingLink, createSandboxSession, getSandboxSession, type SandboxSession } from "@/lib/api/channels";
+import { listChannels, updateChannelStatus, listCalendars, createKapsoOnboardingLink, createSandboxSession, getSandboxSession, listSandboxSessions, type SandboxSession } from "@/lib/api/channels";
 import { getGoogleCalendarUrl } from "@/lib/api/auth";
 import { apiFetch } from "@/lib/api/client";
-import { getBusinessHours, updateBusinessHours } from "@/lib/api/workspaces";
+import { getBusinessHours, updateBusinessHours, listMembers } from "@/lib/api/workspaces";
 import type { ChannelOut, CalendarOut, WorkspaceOut, BusinessHoursOut } from "@/lib/types/api";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -128,6 +128,8 @@ function WhatsAppSection({ workspaceId }: { workspaceId: string }) {
 function CalendarSection({ workspaceId }: { workspaceId: string }) {
   const qc = useQueryClient();
   const [connecting, setConnecting] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickedMemberId, setPickedMemberId] = useState('');
 
   const { data: calendars = [], isLoading } = useQuery<CalendarOut[]>({
     queryKey: ['calendars', workspaceId],
@@ -135,10 +137,17 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
     staleTime: 30_000,
   });
 
-  const handleConnect = async () => {
+  const { data: members = [] } = useQuery<import('@/lib/types/api').MemberOut[]>({
+    queryKey: ['members', workspaceId],
+    queryFn: () => listMembers(workspaceId),
+    staleTime: 60_000,
+    enabled: showPicker,
+  });
+
+  const handleConnect = async (memberId?: string) => {
     setConnecting(true);
     try {
-      const { url } = await getGoogleCalendarUrl(workspaceId, 'settings');
+      const { url } = await getGoogleCalendarUrl(workspaceId, 'settings', memberId || undefined);
       window.location.href = url;
     } catch {
       toast.error('No se pudo iniciar la conexión con Google Calendar.');
@@ -161,7 +170,9 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
             background: cal.sync_status === 'active' ? 'var(--success)' : 'var(--ink-4)',
           }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ font: '500 14px/1.2 var(--font-sans)', color: 'var(--ink-1)' }}>{cal.name}</div>
+            <div style={{ font: '500 14px/1.2 var(--font-sans)', color: 'var(--ink-1)' }}>
+              {cal.member_name ?? cal.name}
+            </div>
             <div style={{ font: '400 12px/1.3 var(--font-sans)', color: 'var(--ink-3)', marginTop: 2 }}>
               {cal.google_calendar_id}
               {cal.last_synced_at ? ` · sync ${new Date(cal.last_synced_at).toLocaleDateString('es-CO')}` : ''}
@@ -177,12 +188,12 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
             }}>
               {cal.sync_status === 'active' ? 'Sincronizado' : 'Desconectado'}
             </span>
-            <Button variant="ghost" size="sm" icon="sync" onClick={handleConnect} disabled={connecting} style={{ padding: 7 }} />
+            <Button variant="ghost" size="sm" icon="sync" onClick={() => { setShowPicker(true); setPickedMemberId(cal.member_id ?? ''); }} disabled={connecting} style={{ padding: 7 }} />
           </div>
         </div>
       ))}
 
-      {calendars.length === 0 && (
+      {calendars.length === 0 && !showPicker && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12,
           padding: '14px', borderRadius: 'var(--r-md)',
@@ -195,14 +206,46 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
               Conecta Google Calendar para sincronizar citas automáticamente
             </div>
           </div>
-          <Button variant="primary" size="sm" onClick={handleConnect} disabled={connecting}>
-            {connecting ? 'Conectando…' : 'Conectar'}
+          <Button variant="primary" size="sm" onClick={() => setShowPicker(true)} disabled={connecting}>
+            Conectar
           </Button>
         </div>
       )}
 
-      {calendars.length > 0 && (
-        <Button variant="ghost" size="sm" icon="plus" onClick={handleConnect} disabled={connecting} style={{ alignSelf: 'flex-start' }}>
+      {showPicker && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 10,
+          padding: '14px', borderRadius: 'var(--r-md)',
+          border: '1px solid var(--line-strong)', background: 'var(--surface-2)',
+        }}>
+          <div style={{ font: '500 13px/1.2 var(--font-sans)', color: 'var(--ink-1)' }}>¿A quién le pertenece este calendario?</div>
+          <select
+            value={pickedMemberId}
+            onChange={e => setPickedMemberId(e.target.value)}
+            style={{
+              padding: '8px 10px', borderRadius: 'var(--r-sm)',
+              border: '1px solid var(--line-strong)', background: 'var(--surface)',
+              font: '400 14px/1.3 var(--font-sans)', color: 'var(--ink-1)', cursor: 'pointer',
+            }}
+          >
+            <option value="">Sin asignar</option>
+            {members.map(m => (
+              <option key={m.id} value={m.id}>{m.name ?? m.email}</option>
+            ))}
+          </select>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="primary" size="sm" onClick={() => handleConnect(pickedMemberId)} disabled={connecting}>
+              {connecting ? 'Conectando…' : 'Continuar con Google'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { setShowPicker(false); setPickedMemberId(''); }}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {calendars.length > 0 && !showPicker && (
+        <Button variant="ghost" size="sm" icon="plus" onClick={() => { setShowPicker(true); setPickedMemberId(''); }} disabled={connecting} style={{ alignSelf: 'flex-start' }}>
           Agregar calendario
         </Button>
       )}
@@ -217,6 +260,19 @@ function SandboxSection({ workspaceId }: { workspaceId: string }) {
   const [creating, setCreating] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [session, setSession] = useState<SandboxSession | null>(null);
+
+  // Restaurar sesión vigente al recargar
+  useEffect(() => {
+    listSandboxSessions(workspaceId).then((sessions) => {
+      const active = (sessions as SandboxSession[]).find(
+        (s) => s.id && s.expires_at && new Date(s.expires_at) > new Date(),
+      );
+      if (active) {
+        setSession(active);
+        setSessionId(active.id ?? null);
+      }
+    }).catch(() => {/* sin sesiones, no importa */});
+  }, [workspaceId]);
 
   const { data: polled } = useQuery<SandboxSession>({
     queryKey: ['sandbox-session', workspaceId, sessionId],

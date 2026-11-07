@@ -33,10 +33,14 @@ export async function getMe(): Promise<MeResponse> {
  * GET /auth/google/calendar/url — obtiene la URL de autorización OAuth de Google Calendar.
  * El frontend redirige al usuario a esa URL para conectar su calendario.
  */
-export async function getGoogleCalendarUrl(workspaceId: string, returnTo: 'onboarding' | 'settings' = 'onboarding'): Promise<{ url: string }> {
-  return apiFetch<{ url: string }>(
-    `/auth/google/calendar/url?workspace_id=${encodeURIComponent(workspaceId)}&return_to=${returnTo}`,
-  );
+export async function getGoogleCalendarUrl(
+  workspaceId: string,
+  returnTo: 'onboarding' | 'settings' = 'onboarding',
+  memberId?: string,
+): Promise<{ url: string }> {
+  const params = new URLSearchParams({ workspace_id: workspaceId, return_to: returnTo });
+  if (memberId) params.set('member_id', memberId);
+  return apiFetch<{ url: string }>(`/auth/google/calendar/url?${params}`);
 }
 
 /**

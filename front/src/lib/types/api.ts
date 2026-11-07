@@ -251,11 +251,25 @@ export interface CalendarOut {
   name: string;
   google_calendar_id: string;
   connected_by_user_id: string | null;
+  member_id: string | null;
+  member_name: string | null;
   sync_enabled: boolean;
   sync_status: string; // 'active' | 'disconnected' | 'error'
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ── Agent Alerts ──────────────────────────────────────────────────────────────
+
+export interface AgentAlertOut {
+  id: string;
+  workspace_id: string;
+  conversation_id: string | null;
+  severity: 'info' | 'warning' | 'error' | 'critical';
+  reason: string;
+  resolved: boolean;
+  created_at: string;
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────

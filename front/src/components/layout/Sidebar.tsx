@@ -13,6 +13,7 @@ interface SidebarProps {
   ownerInitials?: string;
   ownerRole?: string;
   onLogout?: () => void;
+  alertCount?: number;
 }
 
 export function Sidebar({
@@ -25,6 +26,7 @@ export function Sidebar({
   ownerInitials = '',
   ownerRole = '',
   onLogout,
+  alertCount = 0,
 }: SidebarProps) {
   return (
     <aside className={styles.sidebar}>
@@ -51,6 +53,9 @@ export function Sidebar({
                   {isActive && <span className={styles['sidebar__item-indicator']} />}
                   <Icon name={item.icon} size={18} strokeWidth={isActive ? 1.9 : 1.7} />
                   <span className={styles['sidebar__item-label']}>{item.label}</span>
+                  {item.id === 'alertas' && alertCount > 0 && (
+                    <span className={styles['sidebar__item-count']}>{alertCount > 99 ? '99+' : alertCount}</span>
+                  )}
                   {item.soon && (
                     <span className={styles['sidebar__item-badge']}>pronto</span>
                   )}

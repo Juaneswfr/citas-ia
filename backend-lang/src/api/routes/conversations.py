@@ -7,7 +7,8 @@ Principio V: Todo lo que ocurre en el sistema debe poder auditarse.
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from core.database import get_db
 from core.security import require_workspace_access
 from schemas.conversation import (
@@ -28,9 +29,12 @@ router = APIRouter(tags=["conversations", "customers"])
 )
 async def list_customers(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    rows = await db.fetch("SELECT * FROM customers WHERE workspace_id = $1", workspace_id)
+    rows = (await db.execute(
+        text("SELECT * FROM customers WHERE workspace_id = :workspace_id"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -44,23 +48,25 @@ async def list_customers(
 async def create_customer(
     workspace_id: str,
     body: CustomerCreate,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    existing = await db.fetchrow(
-        "SELECT * FROM customers WHERE workspace_id = $1 AND phone = $2",
-        workspace_id, body.phone,
-    )
+    existing = (await db.execute(
+        text("SELECT * FROM customers WHERE workspace_id = :workspace_id AND phone = :phone"),
+        {"workspace_id": workspace_id, "phone": body.phone},
+    )).mappings().fetchone()
     if existing:
         # Si ya existe, actualiza el nombre y retorna
-        row = await db.fetchrow(
-            "UPDATE customers SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
-            body.name, existing["id"],
-        )
+        row = (await db.execute(
+            text("UPDATE customers SET name = :name, updated_at = NOW() WHERE id = :customer_id RETURNING *"),
+            {"name": body.name, "customer_id": existing["id"]},
+        )).mappings().fetchone()
+        await db.commit()
         return dict(row)
-    row = await db.fetchrow(
-        "INSERT INTO customers (workspace_id, phone, name) VALUES ($1, $2, $3) RETURNING *",
-        workspace_id, body.phone, body.name,
-    )
+    row = (await db.execute(
+        text("INSERT INTO customers (workspace_id, phone, name) VALUES (:workspace_id, :phone, :name) RETURNING *"),
+        {"workspace_id": workspace_id, "phone": body.phone, "name": body.name},
+    )).mappings().fetchone()
+    await db.commit()
     log.info("[customers] created | workspace=%s | phone=%s", workspace_id, body.phone)
     return dict(row)
 
@@ -74,12 +80,12 @@ async def create_customer(
 async def get_customer(
     workspace_id: str,
     customer_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    row = await db.fetchrow(
-        "SELECT * FROM customers WHERE id = $1 AND workspace_id = $2",
-        customer_id, workspace_id,
-    )
+    row = (await db.execute(
+        text("SELECT * FROM customers WHERE id = :customer_id AND workspace_id = :workspace_id"),
+        {"customer_id": customer_id, "workspace_id": workspace_id},
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
     return dict(row)
@@ -95,28 +101,28 @@ async def update_customer(
     workspace_id: str,
     customer_id: str,
     body: CustomerUpdate,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     data = body.model_dump(exclude_none=True)
     if not data:
-        row = await db.fetchrow(
-            "SELECT * FROM customers WHERE id = $1 AND workspace_id = $2",
-            customer_id, workspace_id,
-        )
+        row = (await db.execute(
+            text("SELECT * FROM customers WHERE id = :customer_id AND workspace_id = :workspace_id"),
+            {"customer_id": customer_id, "workspace_id": workspace_id},
+        )).mappings().fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Cliente no encontrado.")
         return dict(row)
 
-    fields = list(data.keys())
-    values = list(data.values())
-    set_clause = ", ".join(f"{f} = ${i+3}" for i, f in enumerate(fields))
+    set_clause = ", ".join(f"{f} = :{f}" for f in data.keys())
+    params = {"customer_id": customer_id, "workspace_id": workspace_id, **data}
 
-    row = await db.fetchrow(
-        f"UPDATE customers SET {set_clause} WHERE id = $1 AND workspace_id = $2 RETURNING *",
-        customer_id, workspace_id, *values,
-    )
+    row = (await db.execute(
+        text(f"UPDATE customers SET {set_clause} WHERE id = :customer_id AND workspace_id = :workspace_id RETURNING *"),
+        params,
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    await db.commit()
     return dict(row)
 
 
@@ -131,18 +137,18 @@ async def update_customer(
 async def list_conversations(
     workspace_id: str,
     status: str = None,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     if status:
-        rows = await db.fetch(
-            "SELECT * FROM conversations WHERE workspace_id = $1 AND status = $2 ORDER BY last_message_at DESC",
-            workspace_id, status,
-        )
+        rows = (await db.execute(
+            text("SELECT * FROM conversations WHERE workspace_id = :workspace_id AND status = :status ORDER BY last_message_at DESC"),
+            {"workspace_id": workspace_id, "status": status},
+        )).mappings().fetchall()
     else:
-        rows = await db.fetch(
-            "SELECT * FROM conversations WHERE workspace_id = $1 ORDER BY last_message_at DESC",
-            workspace_id,
-        )
+        rows = (await db.execute(
+            text("SELECT * FROM conversations WHERE workspace_id = :workspace_id ORDER BY last_message_at DESC"),
+            {"workspace_id": workspace_id},
+        )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -155,12 +161,12 @@ async def list_conversations(
 async def get_conversation(
     workspace_id: str,
     conversation_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    row = await db.fetchrow(
-        "SELECT * FROM conversations WHERE id = $1 AND workspace_id = $2",
-        conversation_id, workspace_id,
-    )
+    row = (await db.execute(
+        text("SELECT * FROM conversations WHERE id = :conversation_id AND workspace_id = :workspace_id"),
+        {"conversation_id": conversation_id, "workspace_id": workspace_id},
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Conversación no encontrada.")
     return dict(row)
@@ -175,10 +181,10 @@ async def get_conversation(
 async def list_messages(
     workspace_id: str,
     conversation_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    rows = await db.fetch(
-        "SELECT * FROM messages WHERE conversation_id = $1 AND workspace_id = $2 ORDER BY sent_at",
-        conversation_id, workspace_id,
-    )
+    rows = (await db.execute(
+        text("SELECT * FROM messages WHERE conversation_id = :conversation_id AND workspace_id = :workspace_id ORDER BY sent_at"),
+        {"conversation_id": conversation_id, "workspace_id": workspace_id},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]

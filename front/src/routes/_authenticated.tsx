@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api/client';
 import { listChannels, listCalendars, listSandboxSessions } from '@/lib/api/channels';
 import { listServices } from '@/lib/api/services';
 import { getAgentConfig, getAgentHours } from '@/lib/api/agent';
+import { countAgentAlerts } from '@/lib/api/alerts';
 import type { AgentHoursOut } from '@/lib/types/api';
 import { PATH_TO_ID, TITLES } from '@/lib/nav';
 import { useIsMobile } from '@/hooks/use-is-mobile';
@@ -89,6 +90,15 @@ function PanelLayout() {
     enabled: !!me?.workspace_id,
     staleTime: 60_000,
   });
+
+  const { data: alertCountData } = useQuery({
+    queryKey: ['agent-alerts-count', me?.workspace_id],
+    queryFn: () => countAgentAlerts(me!.workspace_id!),
+    enabled: !!me?.workspace_id,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const alertCount = alertCountData?.count ?? 0;
 
   const { data: rawSandbox } = useQuery({
     queryKey: ['sandbox-sessions', me?.workspace_id],
@@ -187,6 +197,7 @@ function PanelLayout() {
           ownerInitials={ownerInitials}
           ownerRole={ownerRole}
           onLogout={logout}
+          alertCount={alertCount}
         />
       )}
       <div className={styles.panel__content}>

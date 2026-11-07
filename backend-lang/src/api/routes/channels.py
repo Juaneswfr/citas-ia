@@ -7,7 +7,8 @@ Principio VII: Tokens OAuth se almacenan cifrados; nunca se retornan en response
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from core.database import get_db
 from core.security import require_workspace_access
 from schemas.channel import (
@@ -28,9 +29,12 @@ router = APIRouter(tags=["channels", "calendars"])
 )
 async def list_channels(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    rows = await db.fetch("SELECT * FROM channels WHERE workspace_id = $1", workspace_id)
+    rows = (await db.execute(
+        text("SELECT * FROM channels WHERE workspace_id = :workspace_id"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -45,30 +49,34 @@ async def create_channel(
     workspace_id: str,
     body: ChannelCreate,
     current_user: dict = Depends(require_workspace_access("workspace_owner")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     import json
     data = body.model_dump()
-    row = await db.fetchrow(
-        """
+    row = (await db.execute(
+        text("""
         INSERT INTO channels
             (workspace_id, channel_type, provider, phone_number, phone_number_id,
              display_name, coexistence_enabled, external_account_id, status, metadata)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active',$9)
+        VALUES (:workspace_id,:channel_type,:provider,:phone_number,:phone_number_id,
+                :display_name,:coexistence_enabled,:external_account_id,'active',:metadata)
         RETURNING *
-        """,
-        workspace_id,
-        data.get("channel_type", "whatsapp"),
-        data.get("provider", ""),
-        data.get("phone_number", ""),
-        data.get("phone_number_id"),
-        data.get("display_name"),
-        data.get("coexistence_enabled", True),
-        data.get("external_account_id"),
-        json.dumps(data.get("metadata")) if data.get("metadata") else None,
-    )
+        """),
+        {
+            "workspace_id": workspace_id,
+            "channel_type": data.get("channel_type", "whatsapp"),
+            "provider": data.get("provider", ""),
+            "phone_number": data.get("phone_number", ""),
+            "phone_number_id": data.get("phone_number_id"),
+            "display_name": data.get("display_name"),
+            "coexistence_enabled": data.get("coexistence_enabled", True),
+            "external_account_id": data.get("external_account_id"),
+            "metadata": json.dumps(data.get("metadata")) if data.get("metadata") else None,
+        },
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=500, detail="Error registrando canal.")
+    await db.commit()
     log.info("[channels] created | workspace=%s | phone=%s", workspace_id, body.phone_number)
     return dict(row)
 
@@ -84,23 +92,24 @@ async def update_channel_status(
     channel_id: str,
     new_status: str,
     current_user: dict = Depends(require_workspace_access("workspace_owner")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     from services.audit_service import AuditService
     allowed = {"active", "paused", "disconnected"}
     if new_status not in allowed:
         raise HTTPException(status_code=422, detail=f"Estado inválido. Permitidos: {allowed}")
 
-    before = await db.fetchrow(
-        "SELECT id, status FROM channels WHERE id = $1 AND workspace_id = $2",
-        channel_id, workspace_id,
-    )
-    row = await db.fetchrow(
-        "UPDATE channels SET status = $1 WHERE id = $2 AND workspace_id = $3 RETURNING *",
-        new_status, channel_id, workspace_id,
-    )
+    before = (await db.execute(
+        text("SELECT id, status FROM channels WHERE id = :channel_id AND workspace_id = :workspace_id"),
+        {"channel_id": channel_id, "workspace_id": workspace_id},
+    )).mappings().fetchone()
+    row = (await db.execute(
+        text("UPDATE channels SET status = :new_status WHERE id = :channel_id AND workspace_id = :workspace_id RETURNING *"),
+        {"new_status": new_status, "channel_id": channel_id, "workspace_id": workspace_id},
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Canal no encontrado.")
+    await db.commit()
 
     await AuditService.log(
         workspace_id=workspace_id,
@@ -125,7 +134,7 @@ async def embedded_signup_connect(
     workspace_id: str,
     body: EmbeddedSignupRequest,
     current_user: dict = Depends(require_workspace_access("workspace_owner")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     import json
     from services.embedded_signup_service import EmbeddedSignupService
@@ -160,40 +169,49 @@ async def embedded_signup_connect(
     })
 
     # Verificar si ya existe un canal con este WABA (reconexión)
-    existing = await db.fetchrow(
-        "SELECT id FROM channels WHERE workspace_id = $1 AND external_account_id = $2",
-        workspace_id, body.waba_id,
-    )
+    existing = (await db.execute(
+        text("SELECT id FROM channels WHERE workspace_id = :workspace_id AND external_account_id = :waba_id"),
+        {"workspace_id": workspace_id, "waba_id": body.waba_id},
+    )).mappings().fetchone()
 
     if existing:
-        row = await db.fetchrow(
-            """
+        row = (await db.execute(
+            text("""
             UPDATE channels SET
-                phone_number = $1, phone_number_id = $2, display_name = $3,
-                status = 'active', metadata = $4
-            WHERE id = $5
+                phone_number = :phone_number, phone_number_id = :phone_number_id, display_name = :display_name,
+                status = 'active', metadata = :metadata
+            WHERE id = :channel_id
             RETURNING *
-            """,
-            display_phone, body.phone_number_id, verified_name or display_phone,
-            metadata, existing["id"],
-        )
+            """),
+            {
+                "phone_number": display_phone, "phone_number_id": body.phone_number_id,
+                "display_name": verified_name or display_phone,
+                "metadata": metadata, "channel_id": existing["id"],
+            },
+        )).mappings().fetchone()
         log.info("[channels] reconectado | workspace=%s | phone=%s", workspace_id, display_phone)
     else:
-        row = await db.fetchrow(
-            """
+        row = (await db.execute(
+            text("""
             INSERT INTO channels
                 (workspace_id, channel_type, provider, phone_number, phone_number_id,
                  display_name, coexistence_enabled, external_account_id, status, metadata)
-            VALUES ($1,'whatsapp','meta_cloud_api',$2,$3,$4,TRUE,$5,'active',$6)
+            VALUES (:workspace_id,'whatsapp','meta_cloud_api',:phone_number,:phone_number_id,
+                    :display_name,TRUE,:waba_id,'active',:metadata)
             RETURNING *
-            """,
-            workspace_id, display_phone, body.phone_number_id,
-            verified_name or display_phone, body.waba_id, metadata,
-        )
+            """),
+            {
+                "workspace_id": workspace_id, "phone_number": display_phone,
+                "phone_number_id": body.phone_number_id,
+                "display_name": verified_name or display_phone, "waba_id": body.waba_id,
+                "metadata": metadata,
+            },
+        )).mappings().fetchone()
         log.info("[channels] nuevo canal | workspace=%s | phone=%s", workspace_id, display_phone)
 
     if not row:
         raise HTTPException(status_code=500, detail="Error guardando canal en la base de datos.")
+    await db.commit()
     return dict(row)
 
 
@@ -207,18 +225,21 @@ async def embedded_signup_connect(
 )
 async def list_calendars(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     # Principio VII: NO retornar oauth_refresh_token_encrypted
-    rows = await db.fetch(
-        """
-        SELECT id, workspace_id, name, google_calendar_id, connected_by_user_id,
-               sync_enabled, sync_status, last_synced_at, created_at, updated_at
-        FROM calendars
-        WHERE workspace_id = $1
-        """,
-        workspace_id,
-    )
+    rows = (await db.execute(
+        text("""
+        SELECT c.id, c.workspace_id, c.name, c.google_calendar_id, c.connected_by_user_id,
+               c.sync_enabled, c.sync_status, c.last_synced_at, c.created_at, c.updated_at,
+               c.member_id, u.name AS member_name
+        FROM calendars c
+        LEFT JOIN workspace_members wm ON wm.id = c.member_id
+        LEFT JOIN users u ON u.id = wm.user_id
+        WHERE c.workspace_id = :workspace_id
+        """),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -233,7 +254,7 @@ async def connect_calendar(
     workspace_id: str,
     body: CalendarCreate,
     current_user: dict = Depends(require_workspace_access("workspace_owner")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     from integrations.google_calendar import exchange_oauth_code
 
@@ -241,24 +262,28 @@ async def connect_calendar(
     if not token:
         raise HTTPException(status_code=400, detail="Error intercambiando código OAuth con Google.")
 
-    row = await db.fetchrow(
-        """
+    row = (await db.execute(
+        text("""
         INSERT INTO calendars
-            (workspace_id, name, google_calendar_id, connected_by_user_id,
+            (workspace_id, name, google_calendar_id, connected_by_user_id, member_id,
              oauth_refresh_token_encrypted, sync_enabled, sync_status)
-        VALUES ($1,$2,$3,$4,$5,TRUE,'active')
-        RETURNING id, workspace_id, name, google_calendar_id, connected_by_user_id,
+        VALUES (:workspace_id,:name,:google_calendar_id,:connected_by_user_id,:member_id,:token,TRUE,'active')
+        RETURNING id, workspace_id, name, google_calendar_id, connected_by_user_id, member_id,
                   sync_enabled, sync_status, last_synced_at, created_at, updated_at
-        """,
-        workspace_id,
-        body.name,
-        body.google_calendar_id,
-        current_user.get("sub"),
-        token["encrypted_refresh_token"],
-    )
+        """),
+        {
+            "workspace_id": workspace_id,
+            "name": body.name,
+            "google_calendar_id": body.google_calendar_id,
+            "connected_by_user_id": current_user.get("sub"),
+            "member_id": body.member_id,
+            "token": token["encrypted_refresh_token"],
+        },
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=500, detail="Error guardando calendario.")
 
+    await db.commit()
     log.info("[calendars] connected | workspace=%s | cal=%s", workspace_id, body.google_calendar_id)
     return dict(row)
 
@@ -273,11 +298,12 @@ async def disconnect_calendar(
     workspace_id: str,
     calendar_id: str,
     current_user: dict = Depends(require_workspace_access("workspace_owner")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     await db.execute(
-        "UPDATE calendars SET sync_enabled=FALSE, sync_status='disconnected' WHERE id=$1 AND workspace_id=$2",
-        calendar_id, workspace_id,
+        text("UPDATE calendars SET sync_enabled=FALSE, sync_status='disconnected' WHERE id=:calendar_id AND workspace_id=:workspace_id"),
+        {"calendar_id": calendar_id, "workspace_id": workspace_id},
     )
+    await db.commit()
     log.info("[calendars] disconnected | workspace=%s | cal=%s | by=%s",
              workspace_id, calendar_id, current_user.get("sub"))

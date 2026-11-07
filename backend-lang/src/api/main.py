@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from core.config import get_settings
-from core.database import create_pool, close_pool
+from core.database import init_db, close_db
 
 from api.routes.auth import router as auth_router
 from api.routes.workspaces import router as workspaces_router
@@ -24,6 +24,7 @@ from api.routes.billing import router as billing_router
 from api.routes.webhooks import router as webhooks_router
 from api.routes.kapso import router as kapso_router
 from api.routes.agent_config import router as agent_config_router
+from api.routes.agent_alerts import router as agent_alerts_router
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ limiter = Limiter(key_func=get_remote_address)
 async def lifespan(app: FastAPI):
     log.info("[startup] CitasIA API iniciando")
     settings = get_settings()
-    await create_pool(settings.database_url)
+    await init_db()
     log.info("[startup] Pool PostgreSQL creado")
 
     # T038: Iniciar scheduler de recordatorios en background
@@ -52,7 +53,7 @@ async def lifespan(app: FastAPI):
         await reminder_task
     except BaseException:
         pass
-    await close_pool()
+    await close_db()
     log.info("[shutdown] CitasIA API detenida")
 
 
@@ -85,6 +86,7 @@ app.include_router(billing_router)
 app.include_router(webhooks_router)
 app.include_router(kapso_router)
 app.include_router(agent_config_router)
+app.include_router(agent_alerts_router)
 
 
 @app.get("/", tags=["health"])

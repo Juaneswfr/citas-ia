@@ -22,12 +22,10 @@ async def run_reminders() -> None:
     Busca citas confirmadas próximas y envía recordatorios WhatsApp + email.
     Diseñado para ejecutarse cada 30 minutos via scheduler.
     """
-    from core.database import _pool
+    from core.database import AsyncSessionLocal
+    from sqlalchemy import text
     from services.whatsapp_service import WhatsAppService
     from services.email_service import EmailService
-
-    if _pool is None:
-        return
 
     now = datetime.now(timezone.utc)
     hours_before = _DEFAULT_HOURS_BEFORE
@@ -36,18 +34,17 @@ async def run_reminders() -> None:
     window_from = target_start - timedelta(minutes=_TOLERANCE_MINUTES)
     window_to = target_start + timedelta(minutes=_TOLERANCE_MINUTES)
 
-    async with _pool.acquire() as db:
-        appointments = await db.fetch(
-            """
+    async with AsyncSessionLocal() as session:
+        appointments = (await session.execute(
+            text("""
             SELECT id, workspace_id, start_at, customer_id, service_id, reminder_sent
             FROM appointments
             WHERE status = 'confirmed'
               AND reminder_sent = FALSE
-              AND start_at >= $1 AND start_at <= $2
-            """,
-            window_from,
-            window_to,
-        )
+              AND start_at >= :window_from AND start_at <= :window_to
+            """),
+            {"window_from": window_from, "window_to": window_to},
+        )).mappings().fetchall()
 
     if not appointments:
         return
@@ -57,26 +54,28 @@ async def run_reminders() -> None:
     for appt in appointments:
         appt_id = appt["id"]
 
-        async with _pool.acquire() as db:
-            channel = await db.fetchrow(
-                "SELECT phone_number_id FROM channels WHERE workspace_id=$1 AND status='active' LIMIT 1",
-                appt["workspace_id"],
-            )
+        async with AsyncSessionLocal() as session:
+            channel = (await session.execute(
+                text("SELECT phone_number_id FROM channels WHERE workspace_id=:workspace_id AND status='active' LIMIT 1"),
+                {"workspace_id": appt["workspace_id"]},
+            )).mappings().fetchone()
             if not channel:
                 log.warning("[reminders] sin canal activo | workspace=%s | appt=%s",
                             appt["workspace_id"], appt_id)
                 continue
 
-            customer = await db.fetchrow(
-                "SELECT phone, name, email FROM customers WHERE id=$1", appt["customer_id"]
-            )
+            customer = (await session.execute(
+                text("SELECT phone, name, email FROM customers WHERE id=:customer_id"),
+                {"customer_id": appt["customer_id"]},
+            )).mappings().fetchone()
             if not customer or not customer["phone"]:
                 log.warning("[reminders] cliente sin teléfono | appt=%s", appt_id)
                 continue
 
-            service = await db.fetchrow(
-                "SELECT name FROM services WHERE id=$1", appt["service_id"]
-            )
+            service = (await session.execute(
+                text("SELECT name FROM services WHERE id=:service_id"),
+                {"service_id": appt["service_id"]},
+            )).mappings().fetchone()
 
         phone_number_id = channel["phone_number_id"]
         customer_phone = customer["phone"]
@@ -89,7 +88,7 @@ async def run_reminders() -> None:
         fecha = start_at.strftime("%d/%m/%Y")
 
         greeting = f"Hola {customer_name}! " if customer_name else "Hola! "
-        text = (
+        text_msg = (
             f"{greeting}Te recordamos que tienes *{service_name}* "
             f"el {fecha} a las {hora}. "
             f"Te esperamos pronto. ✂️"
@@ -97,16 +96,17 @@ async def run_reminders() -> None:
 
         sent = await WhatsAppService.send_message(
             to=customer_phone,
-            text=text,
+            text=text_msg,
             phone_number_id=phone_number_id,
         )
 
         if customer_email:
             workspace_row = None
-            async with _pool.acquire() as db:
-                workspace_row = await db.fetchrow(
-                    "SELECT name FROM workspaces WHERE id=$1", appt["workspace_id"]
-                )
+            async with AsyncSessionLocal() as session:
+                workspace_row = (await session.execute(
+                    text("SELECT name FROM workspaces WHERE id=:workspace_id"),
+                    {"workspace_id": appt["workspace_id"]},
+                )).mappings().fetchone()
             business_name = workspace_row["name"] if workspace_row else ""
             await EmailService.send_appointment_reminder(
                 customer_email=customer_email,
@@ -118,10 +118,12 @@ async def run_reminders() -> None:
             )
 
         if sent or customer_email:
-            async with _pool.acquire() as db:
-                await db.execute(
-                    "UPDATE appointments SET reminder_sent=TRUE WHERE id=$1", appt_id
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    text("UPDATE appointments SET reminder_sent=TRUE WHERE id=:appt_id"),
+                    {"appt_id": appt_id},
                 )
+                await session.commit()
             log.info("[reminders] enviado | appt=%s | to=%s", appt_id, customer_phone)
         else:
             log.warning("[reminders] fallo envío | appt=%s | to=%s", appt_id, customer_phone)

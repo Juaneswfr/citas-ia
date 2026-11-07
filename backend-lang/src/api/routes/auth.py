@@ -1,7 +1,7 @@
 """
 Router /auth — Autenticación y sesión sin Supabase.
 
-Usa bcrypt + JWT propio + asyncpg (Postgres directo).
+Usa bcrypt + JWT propio + SQLAlchemy async (Postgres directo).
 Seguridad (Principio XI):
 - POST /login y /refresh no requieren JWT (son de entrada).
 - Errores de auth no exponen detalles internos.
@@ -14,7 +14,8 @@ from core.database import get_db
 from core.security import create_access_token, decode_token, get_current_user
 from schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 import bcrypt as _bcrypt
 
 
@@ -40,12 +41,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
     summary="Registrar nuevo dueño de negocio",
 )
-async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_db)):
+async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """
     Onboarding en un paso: crea usuario + workspace + membership atómicamente.
     """
     # Verificar email disponible
-    existing = await db.fetchrow("SELECT id FROM users WHERE email = $1", body.email)
+    existing = (await db.execute(
+        text("SELECT id FROM users WHERE email = :email"),
+        {"email": body.email},
+    )).mappings().fetchone()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -54,39 +58,34 @@ async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_d
 
     password_hash = bcrypt_ctx.hash(body.password)
 
-    async with db.transaction():
+    async with db.begin():
         # 1. Crear usuario
-        user_id = await db.fetchval(
-            """
+        user_id = (await db.execute(
+            text("""
             INSERT INTO users (email, password_hash, name, role, is_active)
-            VALUES ($1, $2, $3, 'workspace_owner', TRUE)
+            VALUES (:email, :password_hash, :name, 'workspace_owner', TRUE)
             RETURNING id
-            """,
-            body.email,
-            password_hash,
-            body.email.split("@")[0],
-        )
+            """),
+            {"email": body.email, "password_hash": password_hash, "name": body.email.split("@")[0]},
+        )).scalar_one_or_none()
 
         # 2. Crear workspace
-        workspace_id = await db.fetchval(
-            """
+        workspace_id = (await db.execute(
+            text("""
             INSERT INTO workspaces (name, slug, timezone, country, is_active)
-            VALUES ($1, $2, $3, 'CO', TRUE)
+            VALUES (:name, :slug, :timezone, 'CO', TRUE)
             RETURNING id
-            """,
-            body.workspace_name,
-            body.workspace_slug,
-            body.timezone,
-        )
+            """),
+            {"name": body.workspace_name, "slug": body.workspace_slug, "timezone": body.timezone},
+        )).scalar_one_or_none()
 
         # 3. Vincular usuario al workspace
         await db.execute(
-            """
+            text("""
             INSERT INTO workspace_members (workspace_id, user_id, member_role, status)
-            VALUES ($1, $2, 'owner', 'active')
-            """,
-            workspace_id,
-            user_id,
+            VALUES (:workspace_id, :user_id, 'owner', 'active')
+            """),
+            {"workspace_id": workspace_id, "user_id": user_id},
         )
 
     token = create_access_token({
@@ -105,19 +104,19 @@ async def register(body: RegisterRequest, db: asyncpg.Connection = Depends(get_d
     response_model=TokenResponse,
     summary="Iniciar sesión con email y contraseña",
 )
-async def login(body: LoginRequest, db: asyncpg.Connection = Depends(get_db)):
-    row = await db.fetchrow(
-        """
+async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(
+        text("""
         SELECT u.id, u.email, u.password_hash, u.role, u.is_active,
                wm.workspace_id
         FROM users u
         LEFT JOIN workspace_members wm
             ON wm.user_id = u.id AND wm.status = 'active'
-        WHERE u.email = $1
+        WHERE u.email = :email
         LIMIT 1
-        """,
-        body.email,
-    )
+        """),
+        {"email": body.email},
+    )).mappings().fetchone()
 
     # No exponer si el email existe o no (Principio XI)
     invalid = HTTPException(
@@ -183,7 +182,11 @@ async def me(current_user: dict = Depends(get_current_user)):
     "/google/calendar/url",
     summary="Genera la URL de autorización OAuth de Google Calendar",
 )
-async def google_calendar_authorize_url(workspace_id: str, return_to: str = "onboarding"):
+async def google_calendar_authorize_url(
+    workspace_id: str,
+    return_to: str = "onboarding",
+    member_id: str = "",
+):
     import json as _json
     from core.config import get_settings
     settings = get_settings()
@@ -194,7 +197,10 @@ async def google_calendar_authorize_url(workspace_id: str, return_to: str = "onb
             detail="Google Calendar no está configurado en este servidor.",
         )
 
-    state = _json.dumps({"workspace_id": workspace_id, "return_to": return_to})
+    state_obj: dict = {"workspace_id": workspace_id, "return_to": return_to}
+    if member_id:
+        state_obj["member_id"] = member_id
+    state = _json.dumps(state_obj)
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
@@ -215,7 +221,7 @@ async def google_calendar_authorize_url(workspace_id: str, return_to: str = "onb
 async def google_oauth_callback(
     code: str,
     state: str = "",
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     import json as _json
     from fastapi.responses import RedirectResponse
@@ -225,10 +231,12 @@ async def google_oauth_callback(
 
     workspace_id = ""
     return_to = "onboarding"
+    member_id = ""
     try:
         parsed = _json.loads(state)
         workspace_id = parsed.get("workspace_id", "").strip()
         return_to = parsed.get("return_to", "onboarding")
+        member_id = parsed.get("member_id", "").strip()
     except (ValueError, AttributeError):
         workspace_id = state.strip()
 
@@ -245,19 +253,41 @@ async def google_oauth_callback(
 
     if workspace_id:
         try:
-            await db.execute(
-                """
-                INSERT INTO calendars
-                    (workspace_id, name, google_calendar_id, oauth_refresh_token_encrypted, sync_enabled, sync_status)
-                VALUES ($1, 'Google Calendar', 'primary', $2, TRUE, 'active')
-                ON CONFLICT (workspace_id, google_calendar_id) DO UPDATE
-                    SET oauth_refresh_token_encrypted = EXCLUDED.oauth_refresh_token_encrypted,
-                        sync_enabled = TRUE, sync_status = 'active'
-                """,
-                workspace_id,
-                result["encrypted_refresh_token"],
-            )
-            log.info("[auth] Google Calendar conectado | workspace=%s", workspace_id)
+            if member_id:
+                member_name = (await db.execute(
+                    text(
+                        "SELECT u.name FROM workspace_members wm JOIN users u ON u.id = wm.user_id "
+                        "WHERE wm.id = :member_id AND wm.workspace_id = :workspace_id"
+                    ),
+                    {"member_id": member_id, "workspace_id": workspace_id},
+                )).scalar_one_or_none() or "Google Calendar"
+                await db.execute(
+                    text("""
+                    INSERT INTO calendars
+                        (workspace_id, name, google_calendar_id, member_id,
+                         oauth_refresh_token_encrypted, sync_enabled, sync_status)
+                    VALUES (:workspace_id, :name, 'primary', :member_id, :token, TRUE, 'active')
+                    ON CONFLICT (workspace_id, member_id) WHERE member_id IS NOT NULL
+                        DO UPDATE SET oauth_refresh_token_encrypted = EXCLUDED.oauth_refresh_token_encrypted,
+                                      name = EXCLUDED.name, sync_enabled = TRUE, sync_status = 'active'
+                    """),
+                    {"workspace_id": workspace_id, "name": member_name, "member_id": member_id,
+                     "token": result["encrypted_refresh_token"]},
+                )
+            else:
+                await db.execute(
+                    text("""
+                    INSERT INTO calendars
+                        (workspace_id, name, google_calendar_id, oauth_refresh_token_encrypted, sync_enabled, sync_status)
+                    VALUES (:workspace_id, 'Google Calendar', 'primary', :token, TRUE, 'active')
+                    ON CONFLICT (workspace_id, google_calendar_id) WHERE member_id IS NULL
+                        DO UPDATE SET oauth_refresh_token_encrypted = EXCLUDED.oauth_refresh_token_encrypted,
+                                      sync_enabled = TRUE, sync_status = 'active'
+                    """),
+                    {"workspace_id": workspace_id, "token": result["encrypted_refresh_token"]},
+                )
+            await db.commit()
+            log.info("[auth] Google Calendar conectado | workspace=%s | member=%s", workspace_id, member_id or "none")
         except Exception as e:
             log.error("[auth] Error guardando calendario | workspace=%s | err=%s", workspace_id, e)
             return error_redirect()

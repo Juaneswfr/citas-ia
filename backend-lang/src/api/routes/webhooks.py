@@ -184,22 +184,31 @@ def _verify_kapso_signature(request_body: bytes, signature_header: str) -> bool:
 
 async def _claim_idempotency_key(key: str, event: str) -> bool:
     """True si la clave es nueva (se reclama); False si ya existía (reintento)."""
-    from core import database
+    from core.database import AsyncSessionLocal
+    from sqlalchemy import text as _text
 
-    async with database._pool.acquire() as conn:
-        row = await conn.fetchval(
-            "INSERT INTO public.kapso_webhook_events (idempotency_key, event) "
-            "VALUES ($1, $2) ON CONFLICT (idempotency_key) DO NOTHING RETURNING 1",
-            key, event,
-        )
+    async with AsyncSessionLocal() as session:
+        row = (await session.execute(
+            _text(
+                "INSERT INTO public.kapso_webhook_events (idempotency_key, event) "
+                "VALUES (:key, :event) ON CONFLICT (idempotency_key) DO NOTHING RETURNING 1"
+            ),
+            {"key": key, "event": event},
+        )).scalar_one_or_none()
+        await session.commit()
     return row is not None
 
 
 async def _release_idempotency_key(key: str) -> None:
-    from core import database
+    from core.database import AsyncSessionLocal
+    from sqlalchemy import text as _text
 
-    async with database._pool.acquire() as conn:
-        await conn.execute("DELETE FROM public.kapso_webhook_events WHERE idempotency_key=$1", key)
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            _text("DELETE FROM public.kapso_webhook_events WHERE idempotency_key=:key"),
+            {"key": key},
+        )
+        await session.commit()
 
 
 async def _run_kapso_task(key: str, event: str, items: list) -> None:
@@ -220,13 +229,16 @@ async def _run_kapso_task(key: str, event: str, items: list) -> None:
 
 
 async def _get_channel_by_webhook_token(token: str):
-    from core import database
+    from core.database import AsyncSessionLocal
+    from sqlalchemy import text as _text
 
-    async with database._pool.acquire() as conn:
-        return await conn.fetchrow(
-            "SELECT phone_number_id, webhook_secret_encrypted FROM public.channels WHERE webhook_token=$1",
-            token,
-        )
+    async with AsyncSessionLocal() as session:
+        return (await session.execute(
+            _text(
+                "SELECT phone_number_id, webhook_secret_encrypted FROM public.channels WHERE webhook_token=:token"
+            ),
+            {"token": token},
+        )).mappings().fetchone()
 
 
 @router.post("/kapso/n/{token}", summary="Mensajes entrantes de Kapso (webhook por número)")
@@ -277,13 +289,16 @@ async def kapso_number_inbound(token: str, request: Request):
 
 
 async def _get_channel_by_phone_number_id(phone_number_id: str):
-    from core import database
+    from core.database import AsyncSessionLocal
+    from sqlalchemy import text as _text
 
-    async with database._pool.acquire() as conn:
-        return await conn.fetchrow(
-            "SELECT id, workspace_id, phone_number_id FROM public.channels WHERE phone_number_id=$1",
-            phone_number_id,
-        )
+    async with AsyncSessionLocal() as session:
+        return (await session.execute(
+            _text(
+                "SELECT id, workspace_id, phone_number_id FROM public.channels WHERE phone_number_id=:phone_number_id"
+            ),
+            {"phone_number_id": phone_number_id},
+        )).mappings().fetchone()
 
 
 @router.post("/kapso/sandbox", summary="Mensajes entrantes del sandbox de Kapso")
@@ -370,14 +385,15 @@ async def _process_kapso_events(event: str, items: list):
     evento "whatsapp.message.received" y forma del payload vienen del plan, no de docs oficiales.
     """
     if event in ("whatsapp.phone_number.created", "whatsapp.phone_number.deleted"):
-        from core import database
+        from core.database import AsyncSessionLocal
+        from sqlalchemy import text as _text
         from services import kapso_onboarding as ko
         s = get_settings()
         client = ko.KapsoPlatformClient(s.kapso_api_key, s.kapso_base_url)
         failed = False
         for item in items:
             try:
-                async with database._pool.acquire() as conn:
+                async with AsyncSessionLocal() as conn:
                     if event.endswith(".created"):
                         if await ko.KapsoOnboardingService.handle_phone_number_created(conn, item):
                             await ko.provision_number_webhook(

@@ -8,7 +8,8 @@ import logging
 from typing import Optional
 from datetime import datetime, timezone
 
-from core.database import _pool
+from core.database import AsyncSessionLocal
+from sqlalchemy import text
 
 log = logging.getLogger(__name__)
 
@@ -28,12 +29,12 @@ class ConversationService:
         Returns:
             Fila de la tabla conversations.
         """
-        async with _pool.acquire() as db:
+        async with AsyncSessionLocal() as session:
             # Buscar canal por phone_number_id del negocio
-            channel = await db.fetchrow(
-                "SELECT id, workspace_id FROM channels WHERE phone_number_id = $1 AND status = 'active' LIMIT 1",
-                phone_number_id,
-            )
+            channel = (await session.execute(
+                text("SELECT id, workspace_id FROM channels WHERE phone_number_id = :phone_number_id AND status = 'active' LIMIT 1"),
+                {"phone_number_id": phone_number_id},
+            )).mappings().fetchone()
             if not channel:
                 log.warning("[conv] canal no encontrado para phone_number_id=%s", phone_number_id)
                 raise ValueError(f"No hay canal activo para phone_number_id={phone_number_id}")
@@ -49,29 +50,27 @@ class ConversationService:
             )
 
             # Buscar conversación abierta o activa
-            conv = await db.fetchrow(
-                """
+            conv = (await session.execute(
+                text("""
                 SELECT * FROM conversations
-                WHERE workspace_id = $1 AND customer_id = $2 AND status IN ('open', 'active')
+                WHERE workspace_id = :workspace_id AND customer_id = :customer_id AND status IN ('open', 'active')
                 ORDER BY last_message_at DESC LIMIT 1
-                """,
-                workspace_id,
-                customer["id"],
-            )
+                """),
+                {"workspace_id": workspace_id, "customer_id": customer["id"]},
+            )).mappings().fetchone()
             if conv:
                 return dict(conv)
 
             # Crear nueva conversación
-            new_conv = await db.fetchrow(
-                """
+            new_conv = (await session.execute(
+                text("""
                 INSERT INTO conversations (workspace_id, channel_id, customer_id, status, needs_review)
-                VALUES ($1, $2, $3, 'open', FALSE)
+                VALUES (:workspace_id, :channel_id, :customer_id, 'open', FALSE)
                 RETURNING *
-                """,
-                workspace_id,
-                channel_id,
-                customer["id"],
-            )
+                """),
+                {"workspace_id": workspace_id, "channel_id": channel_id, "customer_id": customer["id"]},
+            )).mappings().fetchone()
+            await session.commit()
             log.info("[conv] nueva conversación | workspace=%s | customer=%s",
                      workspace_id, customer["id"])
             return dict(new_conv)
@@ -81,25 +80,28 @@ class ConversationService:
         workspace_id: str, phone: str, channel_id: str
     ) -> dict:
         """Encuentra o crea el cliente por teléfono dentro del workspace."""
-        async with _pool.acquire() as db:
-            row = await db.fetchrow(
-                "SELECT * FROM customers WHERE workspace_id = $1 AND phone = $2",
-                workspace_id, phone,
-            )
+        async with AsyncSessionLocal() as session:
+            row = (await session.execute(
+                text("SELECT * FROM customers WHERE workspace_id = :workspace_id AND phone = :phone"),
+                {"workspace_id": workspace_id, "phone": phone},
+            )).mappings().fetchone()
             if row:
                 return dict(row)
 
-            new_row = await db.fetchrow(
-                """
+            new_row = (await session.execute(
+                text("""
                 INSERT INTO customers (workspace_id, phone, source_channel_id, last_seen_at)
-                VALUES ($1, $2, $3, $4)
+                VALUES (:workspace_id, :phone, :channel_id, :last_seen_at)
                 RETURNING *
-                """,
-                workspace_id,
-                phone,
-                channel_id,
-                datetime.now(timezone.utc),
-            )
+                """),
+                {
+                    "workspace_id": workspace_id,
+                    "phone": phone,
+                    "channel_id": channel_id,
+                    "last_seen_at": datetime.now(timezone.utc),
+                },
+            )).mappings().fetchone()
+            await session.commit()
             return dict(new_row)
 
     @staticmethod
@@ -121,36 +123,40 @@ class ConversationService:
             direction: 'inbound' | 'outbound'
             sender_type: 'customer' | 'agent' | 'system'
         """
-        async with _pool.acquire() as db:
+        async with AsyncSessionLocal() as session:
             now = datetime.now(timezone.utc)
-            row = await db.fetchrow(
-                """
+            row = (await session.execute(
+                text("""
                 INSERT INTO messages
                     (conversation_id, workspace_id, channel_id, customer_id,
                      direction, sender_type, message_type, content,
                      provider_message_id, status, sent_at, received_at)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                VALUES (:conversation_id,:workspace_id,:channel_id,:customer_id,
+                        :direction,:sender_type,:message_type,:content,
+                        :provider_message_id,:status,:sent_at,:received_at)
                 RETURNING *
-                """,
-                conversation_id,
-                workspace_id,
-                channel_id,
-                customer_id,
-                direction,
-                sender_type,
-                message_type,
-                content,
-                provider_message_id,
-                "sent" if direction == "outbound" else "received",
-                now if direction == "outbound" else None,
-                now if direction == "inbound" else None,
-            )
+                """),
+                {
+                    "conversation_id": conversation_id,
+                    "workspace_id": workspace_id,
+                    "channel_id": channel_id,
+                    "customer_id": customer_id,
+                    "direction": direction,
+                    "sender_type": sender_type,
+                    "message_type": message_type,
+                    "content": content,
+                    "provider_message_id": provider_message_id,
+                    "status": "sent" if direction == "outbound" else "received",
+                    "sent_at": now if direction == "outbound" else None,
+                    "received_at": now if direction == "inbound" else None,
+                },
+            )).mappings().fetchone()
 
             # Actualizar last_message_at en la conversación
-            await db.execute(
-                "UPDATE conversations SET last_message_at = $1, status = 'active' WHERE id = $2",
-                now,
-                conversation_id,
+            await session.execute(
+                text("UPDATE conversations SET last_message_at = :now, status = 'active' WHERE id = :conversation_id"),
+                {"now": now, "conversation_id": conversation_id},
             )
+            await session.commit()
 
             return dict(row)

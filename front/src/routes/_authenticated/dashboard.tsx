@@ -13,6 +13,7 @@ import { useConversations, useMessages } from "@/hooks/use-conversations";
 import { listChannels, listCalendars } from "@/lib/api/channels";
 import { listCustomers } from "@/lib/api/conversations";
 import { getWorkspaceStats } from "@/lib/api/workspaces";
+import { countAgentAlerts } from "@/lib/api/alerts";
 import { useAuth } from "@/lib/auth-context";
 import type { CustomerOut } from "@/lib/types/api";
 
@@ -242,6 +243,14 @@ function DashboardPage() {
 
   const { data: conversations = [] } = useConversations();
 
+  const { data: alertCountData } = useQuery({
+    queryKey: ['agent-alerts-count', workspaceId],
+    queryFn: () => countAgentAlerts(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: 30_000,
+  });
+  const alertCount = alertCountData?.count ?? 0;
+
   useEffect(() => {
     if (isError) toast.error('No se pudieron cargar las citas del día.');
   }, [isError]);
@@ -362,10 +371,20 @@ function DashboardPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <AgentPanel />
 
-          {/* Conversaciones que necesitan atención */}
-          {reviewConvs.length > 0 && (
+          {/* Alertas del agente */}
+          {(alertCount > 0 || reviewConvs.length > 0) && (
             <div className="card" style={{ padding: '4px 0' }}>
-              <div className="eyebrow" style={{ padding: '12px 16px 8px' }}>Necesita tu atención</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px 8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="eyebrow">Necesita tu atención</span>
+                  {alertCount > 0 && (
+                    <span style={{ font: '600 10px/1 var(--font-sans)', minWidth: 18, height: 18, padding: '0 5px', borderRadius: 'var(--r-full)', background: 'var(--wine)', color: '#fff', display: 'grid', placeItems: 'center' }}>
+                      {alertCount}
+                    </span>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" iconRight="arrowR" onClick={() => navigate({ to: '/alertas' })}>Ver todas</Button>
+              </div>
               {reviewConvs.slice(0, 3).map((c, i) => (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 16px', borderTop: i ? '1px solid var(--line)' : 'none' }}>
                   <span style={{ width: 30, height: 30, borderRadius: 'var(--r-sm)', display: 'grid', placeItems: 'center', background: 'var(--warning-bg)', color: 'var(--warning)' }}>

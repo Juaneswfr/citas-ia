@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     kapso_secrets_key: str = Field(default="", alias="KAPSO_SECRETS_KEY")
     # Secreto del webhook de sandbox (auto-generado por Kapso al configurar el webhook en Sandbox WhatsApp).
     kapso_sandbox_webhook_secret: str = Field(default="", alias="KAPSO_SANDBOX_WEBHOOK_SECRET")
+    # phone_number_id del número sandbox de Kapso (+56 9 2040 3095 en Meta).
+    kapso_sandbox_phone_number_id: str = Field(default="597907523413541", alias="KAPSO_SANDBOX_PHONE_NUMBER_ID")
 
     @model_validator(mode="after")
     def _require_kapso_secrets(self):

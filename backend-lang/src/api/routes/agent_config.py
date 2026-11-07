@@ -7,7 +7,8 @@ que puede diferir del horario en que se aceptan citas.
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from pydantic import BaseModel
 
 from core.database import get_db
@@ -51,12 +52,12 @@ class AgentHoursUpdate(BaseModel):
 )
 async def get_agent_config(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    row = await db.fetchrow(
-        "SELECT agent_enabled, out_of_hours_message FROM agent_config WHERE workspace_id=$1",
-        workspace_id,
-    )
+    row = (await db.execute(
+        text("SELECT agent_enabled, out_of_hours_message FROM agent_config WHERE workspace_id=:workspace_id"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchone()
     if not row:
         return {"agent_enabled": True, "out_of_hours_message": DEFAULT_OOH_MSG}
     return dict(row)
@@ -71,26 +72,27 @@ async def get_agent_config(
 async def update_agent_config(
     workspace_id: str,
     body: AgentConfigUpdate,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     data = body.model_dump(exclude_none=True)
     if not data:
         return await get_agent_config(workspace_id, db)
 
     fields = list(data.keys())
-    values = list(data.values())
     # $1=workspace_id, $2=default_ooh (INSERT only), $3...$N=update values
-    set_clause = ", ".join(f"{f} = ${i+3}" for i, f in enumerate(fields))
+    set_clause = ", ".join(f"{f} = :{f}" for f in fields)
+    params = {"workspace_id": workspace_id, "default_ooh": DEFAULT_OOH_MSG, **data}
 
-    row = await db.fetchrow(
-        f"""
+    row = (await db.execute(
+        text(f"""
         INSERT INTO agent_config (workspace_id, agent_enabled, out_of_hours_message)
-        VALUES ($1, TRUE, $2)
+        VALUES (:workspace_id, TRUE, :default_ooh)
         ON CONFLICT (workspace_id) DO UPDATE SET {set_clause}, updated_at = now()
         RETURNING agent_enabled, out_of_hours_message
-        """,
-        workspace_id, DEFAULT_OOH_MSG, *values,
-    )
+        """),
+        params,
+    )).mappings().fetchone()
+    await db.commit()
     return dict(row)
 
 
@@ -104,27 +106,29 @@ async def update_agent_config(
 )
 async def get_agent_hours(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    rows = await db.fetch(
-        "SELECT day_of_week, open_time::text, close_time::text, is_active "
-        "FROM agent_hours WHERE workspace_id=$1 ORDER BY day_of_week",
-        workspace_id,
-    )
+    rows = (await db.execute(
+        text(
+            "SELECT day_of_week, open_time::text, close_time::text, is_active "
+            "FROM agent_hours WHERE workspace_id=:workspace_id ORDER BY day_of_week"
+        ),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     if rows:
         return [dict(r) for r in rows]
 
     # Auto-create defaults: lun-sáb 09-21 activo, domingo inactivo
     from datetime import time as _time
-    defaults = [
-        (workspace_id, i, _time(9, 0), _time(21, 0), i < 6)
-        for i in range(7)
-    ]
-    await db.executemany(
-        "INSERT INTO agent_hours (workspace_id, day_of_week, open_time, close_time, is_active) "
-        "VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
-        defaults,
-    )
+    for i in range(7):
+        await db.execute(
+            text(
+                "INSERT INTO agent_hours (workspace_id, day_of_week, open_time, close_time, is_active) "
+                "VALUES (:workspace_id,:day,:open_t,:close_t,:is_active) ON CONFLICT DO NOTHING"
+            ),
+            {"workspace_id": workspace_id, "day": i, "open_t": _time(9, 0), "close_t": _time(21, 0), "is_active": i < 6},
+        )
+    await db.commit()
     return [
         {"day_of_week": i, "open_time": "09:00", "close_time": "21:00", "is_active": i < 6}
         for i in range(7)
@@ -140,7 +144,7 @@ async def get_agent_hours(
 async def update_agent_hours(
     workspace_id: str,
     body: AgentHoursUpdate,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     if len(body.hours) != 7:
         raise HTTPException(status_code=422, detail="Se requieren exactamente 7 días.")
@@ -150,16 +154,22 @@ async def update_agent_hours(
         h, m = s.split(":")
         return _time(int(h), int(m))
 
-    async with db.transaction():
+    async with db.begin():
         for h in body.hours:
             await db.execute(
-                """
+                text("""
                 INSERT INTO agent_hours (workspace_id, day_of_week, open_time, close_time, is_active)
-                VALUES ($1, $2, $3, $4, $5)
+                VALUES (:workspace_id, :day_of_week, :open_time, :close_time, :is_active)
                 ON CONFLICT (workspace_id, day_of_week) DO UPDATE
-                SET open_time=$3, close_time=$4, is_active=$5
-                """,
-                workspace_id, h.day_of_week, _t(h.open_time), _t(h.close_time), h.is_active,
+                SET open_time=:open_time, close_time=:close_time, is_active=:is_active
+                """),
+                {
+                    "workspace_id": workspace_id,
+                    "day_of_week": h.day_of_week,
+                    "open_time": _t(h.open_time),
+                    "close_time": _t(h.close_time),
+                    "is_active": h.is_active,
+                },
             )
 
     return await get_agent_hours(workspace_id, db)

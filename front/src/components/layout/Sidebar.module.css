@@ -95,6 +95,24 @@
   flex: 1;
 }
 
+.sidebar__item-count {
+  font: 600 10px/1 var(--font-sans);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-full);
+  background: var(--wine);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  letter-spacing: 0;
+}
+
+.sidebar__item--active .sidebar__item-count {
+  background: var(--wine);
+  color: #fff;
+}
+
 .sidebar__item-badge {
   font: 500 9px/1 var(--font-sans);
   text-transform: uppercase;

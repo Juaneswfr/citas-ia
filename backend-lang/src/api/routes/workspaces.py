@@ -8,7 +8,8 @@ import logging
 from datetime import time, datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from core.database import get_db
 from core.security import require_role, require_workspace_access
 from schemas.workspace import (
@@ -30,26 +31,30 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 async def create_workspace(
     body: WorkspaceCreate,
     current_user: dict = Depends(require_role("workspace_owner")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     data = body.model_dump()
     data["is_active"] = True
-    row = await db.fetchrow(
-        """
+    row = (await db.execute(
+        text("""
         INSERT INTO workspaces (name, slug, timezone, country, is_active,
                                 legal_name, business_type, primary_phone,
                                 primary_email, brand_color, logo_url)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        VALUES (:name,:slug,:timezone,:country,:is_active,:legal_name,:business_type,:primary_phone,:primary_email,:brand_color,:logo_url)
         RETURNING *
-        """,
-        data.get("name"), data.get("slug"), data.get("timezone", "America/Bogota"),
-        data.get("country", "CO"), True,
-        data.get("legal_name"), data.get("business_type"),
-        data.get("primary_phone"), data.get("primary_email"),
-        data.get("brand_color"), data.get("logo_url"),
-    )
+        """),
+        {
+            "name": data.get("name"), "slug": data.get("slug"),
+            "timezone": data.get("timezone", "America/Bogota"),
+            "country": data.get("country", "CO"), "is_active": True,
+            "legal_name": data.get("legal_name"), "business_type": data.get("business_type"),
+            "primary_phone": data.get("primary_phone"), "primary_email": data.get("primary_email"),
+            "brand_color": data.get("brand_color"), "logo_url": data.get("logo_url"),
+        },
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=500, detail="Error creando workspace.")
+    await db.commit()
     log.info("[workspaces] created | slug=%s | user=%s", body.slug, current_user.get("sub"))
     return dict(row)
 
@@ -62,11 +67,12 @@ async def create_workspace(
 )
 async def get_workspace(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    row = await db.fetchrow(
-        "SELECT * FROM workspaces WHERE id = $1", workspace_id
-    )
+    row = (await db.execute(
+        text("SELECT * FROM workspaces WHERE id = :workspace_id"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Workspace no encontrado.")
     return dict(row)
@@ -81,22 +87,22 @@ async def get_workspace(
 async def update_workspace(
     workspace_id: str,
     body: WorkspaceUpdate,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     data = body.model_dump(exclude_none=True)
     if not data:
         raise HTTPException(status_code=422, detail="Sin campos para actualizar.")
 
-    fields = list(data.keys())
-    values = list(data.values())
-    set_clause = ", ".join(f"{f} = ${i+2}" for i, f in enumerate(fields))
+    set_clause = ", ".join(f"{f} = :{f}" for f in data.keys())
+    params = {"workspace_id": workspace_id, **data}
 
-    row = await db.fetchrow(
-        f"UPDATE workspaces SET {set_clause} WHERE id = $1 RETURNING *",
-        workspace_id, *values,
-    )
+    row = (await db.execute(
+        text(f"UPDATE workspaces SET {set_clause} WHERE id = :workspace_id RETURNING *"),
+        params,
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Workspace no encontrado.")
+    await db.commit()
     log.info("[workspaces] updated | workspace=%s", workspace_id)
     return dict(row)
 
@@ -111,18 +117,18 @@ async def update_workspace(
 )
 async def list_members(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    rows = await db.fetch(
-        """
+    rows = (await db.execute(
+        text("""
         SELECT wm.*, u.name, u.email
         FROM workspace_members wm
         JOIN users u ON u.id = wm.user_id
-        WHERE wm.workspace_id = $1
+        WHERE wm.workspace_id = :workspace_id
         ORDER BY wm.created_at
-        """,
-        workspace_id,
-    )
+        """),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -136,22 +142,26 @@ async def list_members(
 async def invite_member(
     workspace_id: str,
     body: MemberInvite,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    user = await db.fetchrow("SELECT id FROM users WHERE email = $1", body.email)
+    user = (await db.execute(
+        text("SELECT id FROM users WHERE email = :email"),
+        {"email": body.email},
+    )).mappings().fetchone()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado. Debe registrarse primero.")
 
-    row = await db.fetchrow(
-        """
+    row = (await db.execute(
+        text("""
         INSERT INTO workspace_members (workspace_id, user_id, member_role, status)
-        VALUES ($1, $2, $3, 'active')
+        VALUES (:workspace_id, :user_id, :member_role, 'active')
         RETURNING *
-        """,
-        workspace_id, user["id"], body.member_role,
-    )
+        """),
+        {"workspace_id": workspace_id, "user_id": user["id"], "member_role": body.member_role},
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=500, detail="Error invitando miembro.")
+    await db.commit()
     log.info("[members] invited | workspace=%s | email=%s | role=%s",
              workspace_id, body.email, body.member_role)
     return dict(row)
@@ -166,12 +176,13 @@ async def invite_member(
 async def remove_member(
     workspace_id: str,
     user_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     await db.execute(
-        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-        workspace_id, user_id,
+        text("DELETE FROM workspace_members WHERE workspace_id = :workspace_id AND user_id = :user_id"),
+        {"workspace_id": workspace_id, "user_id": user_id},
     )
+    await db.commit()
     log.info("[members] removed | workspace=%s | user=%s", workspace_id, user_id)
 
 
@@ -196,12 +207,12 @@ _DEFAULT_HOURS = [
 )
 async def get_business_hours(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    rows = await db.fetch(
-        "SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = $1 ORDER BY day_of_week",
-        workspace_id,
-    )
+    rows = (await db.execute(
+        text("SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = :workspace_id ORDER BY day_of_week"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     if len(rows) == 7:
         return [dict(r) for r in rows]
 
@@ -210,14 +221,15 @@ async def get_business_hours(
     for day, open_t, close_t, is_open in _DEFAULT_HOURS:
         if day not in existing_days:
             await db.execute(
-                "INSERT INTO business_hours (workspace_id, day_of_week, open_time, close_time, is_open) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
-                workspace_id, day, open_t, close_t, is_open,
+                text("INSERT INTO business_hours (workspace_id, day_of_week, open_time, close_time, is_open) VALUES (:workspace_id,:day,:open_t,:close_t,:is_open) ON CONFLICT DO NOTHING"),
+                {"workspace_id": workspace_id, "day": day, "open_t": open_t, "close_t": close_t, "is_open": is_open},
             )
+    await db.commit()
 
-    rows = await db.fetch(
-        "SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = $1 ORDER BY day_of_week",
-        workspace_id,
-    )
+    rows = (await db.execute(
+        text("SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = :workspace_id ORDER BY day_of_week"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -230,26 +242,32 @@ async def get_business_hours(
 async def update_business_hours(
     workspace_id: str,
     body: BusinessHoursUpdate,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    async with db.transaction():
+    async with db.begin():
         for h in body.hours:
             await db.execute(
-                """
+                text("""
                 INSERT INTO business_hours (workspace_id, day_of_week, open_time, close_time, is_open)
-                VALUES ($1, $2, $3, $4, $5)
+                VALUES (:workspace_id, :day_of_week, :open_time, :close_time, :is_open)
                 ON CONFLICT (workspace_id, day_of_week)
                 DO UPDATE SET open_time = EXCLUDED.open_time,
                               close_time = EXCLUDED.close_time,
                               is_open = EXCLUDED.is_open
-                """,
-                workspace_id, h.day_of_week, time.fromisoformat(h.open_time), time.fromisoformat(h.close_time), h.is_open,
+                """),
+                {
+                    "workspace_id": workspace_id,
+                    "day_of_week": h.day_of_week,
+                    "open_time": time.fromisoformat(h.open_time),
+                    "close_time": time.fromisoformat(h.close_time),
+                    "is_open": h.is_open,
+                },
             )
     log.info("[business-hours] updated | workspace=%s", workspace_id)
-    rows = await db.fetch(
-        "SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = $1 ORDER BY day_of_week",
-        workspace_id,
-    )
+    rows = (await db.execute(
+        text("SELECT day_of_week, open_time::text, close_time::text, is_open FROM business_hours WHERE workspace_id = :workspace_id ORDER BY day_of_week"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -263,41 +281,41 @@ async def update_business_hours(
 )
 async def get_workspace_stats(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     prev_month_start = (month_start - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     # Ingresos y automatización
-    rev = await db.fetchrow(
-        """
+    rev = (await db.execute(
+        text("""
         SELECT
             COALESCE(SUM(price_cop + home_service_price_cop)
-                FILTER (WHERE start_at >= $2 AND status NOT IN ('cancelled','noshow')), 0)::int AS revenue_month,
+                FILTER (WHERE start_at >= :month_start AND status NOT IN ('cancelled','noshow')), 0)::int AS revenue_month,
             COALESCE(SUM(price_cop + home_service_price_cop)
-                FILTER (WHERE start_at >= $3 AND start_at < $2 AND status NOT IN ('cancelled','noshow')), 0)::int AS revenue_prev_month,
-            COUNT(*) FILTER (WHERE start_at >= $2)                               AS total_month,
-            COUNT(*) FILTER (WHERE start_at >= $2 AND created_by IS NULL)         AS agent_month
+                FILTER (WHERE start_at >= :prev_month_start AND start_at < :month_start AND status NOT IN ('cancelled','noshow')), 0)::int AS revenue_prev_month,
+            COUNT(*) FILTER (WHERE start_at >= :month_start)                               AS total_month,
+            COUNT(*) FILTER (WHERE start_at >= :month_start AND created_by IS NULL)         AS agent_month
         FROM appointments
-        WHERE workspace_id = $1 AND start_at >= $3
-        """,
-        workspace_id, month_start, prev_month_start,
-    )
+        WHERE workspace_id = :workspace_id AND start_at >= :prev_month_start
+        """),
+        {"workspace_id": workspace_id, "month_start": month_start, "prev_month_start": prev_month_start},
+    )).mappings().fetchone()
 
     total = rev["total_month"] or 0
     agent = rev["agent_month"] or 0
     automation_pct = round(agent / total * 100) if total else 0
 
     # Chats este mes
-    chats_row = await db.fetchrow(
-        "SELECT COUNT(*)::int AS chats_month FROM conversations WHERE workspace_id = $1 AND created_at >= $2",
-        workspace_id, month_start,
-    )
+    chats_row = (await db.execute(
+        text("SELECT COUNT(*)::int AS chats_month FROM conversations WHERE workspace_id = :workspace_id AND created_at >= :month_start"),
+        {"workspace_id": workspace_id, "month_start": month_start},
+    )).mappings().fetchone()
 
     # Tiempo de respuesta medio del agente (segundos)
-    resp_row = await db.fetchrow(
-        """
+    resp_row = (await db.execute(
+        text("""
         WITH pairs AS (
             SELECT
                 COALESCE(m1.sent_at, m1.received_at, m1.created_at) AS t_in,
@@ -309,17 +327,17 @@ async def get_workspace_stats(
                 AND m2.sender_type      = 'agent'
                 AND COALESCE(m2.sent_at, m2.received_at, m2.created_at)
                     > COALESCE(m1.sent_at, m1.received_at, m1.created_at)
-            WHERE m1.workspace_id = $1
+            WHERE m1.workspace_id = :workspace_id
               AND m1.direction     = 'inbound'
-              AND m1.created_at   >= $2
+              AND m1.created_at   >= :month_start
             GROUP BY m1.id, COALESCE(m1.sent_at, m1.received_at, m1.created_at)
         )
         SELECT AVG(EXTRACT(EPOCH FROM (t_out - t_in)))::int AS avg_seconds
         FROM pairs
         WHERE t_out - t_in < INTERVAL '1 hour'
-        """,
-        workspace_id, month_start,
-    )
+        """),
+        {"workspace_id": workspace_id, "month_start": month_start},
+    )).mappings().fetchone()
 
     return StatsOut(
         revenue_month=rev["revenue_month"],

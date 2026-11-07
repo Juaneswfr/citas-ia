@@ -127,13 +127,14 @@ class CalendarService:
         Usa nextSyncToken incremental para traer solo eventos modificados.
         Principio VI: Mantener BD sincronizada con Calendar.
         """
-        from core.database import _pool
+        from core.database import AsyncSessionLocal
+        from sqlalchemy import text
 
-        async with _pool.acquire() as db:
-            cal_row = await db.fetchrow(
-                "SELECT * FROM calendars WHERE google_notification_channel_id = $1",
-                channel_id,
-            )
+        async with AsyncSessionLocal() as session:
+            cal_row = (await session.execute(
+                text("SELECT * FROM calendars WHERE google_notification_channel_id = :channel_id"),
+                {"channel_id": channel_id},
+            )).mappings().fetchone()
         if not cal_row:
             log.warning("[calendar] sync: canal no encontrado | channel=%s", channel_id)
             return
@@ -159,27 +160,28 @@ class CalendarService:
 
             log.info("[calendar] sync | channel=%s | eventos=%d", channel_id, len(items))
 
-            async with _pool.acquire() as db:
+            async with AsyncSessionLocal() as session:
                 for event in items:
                     event_id = event.get("id")
                     if event.get("status") == "cancelled":
-                        appt = await db.fetchrow(
-                            "SELECT id, status FROM appointments WHERE google_event_id=$1 AND workspace_id=$2",
-                            event_id, calendar_data["workspace_id"],
-                        )
+                        appt = (await session.execute(
+                            text("SELECT id, status FROM appointments WHERE google_event_id=:event_id AND workspace_id=:workspace_id"),
+                            {"event_id": event_id, "workspace_id": calendar_data["workspace_id"]},
+                        )).mappings().fetchone()
                         if appt and appt["status"] not in {"cancelled", "completed"}:
-                            await db.execute(
-                                "UPDATE appointments SET status='cancelled', cancelled_by=NULL WHERE id=$1",
-                                appt["id"],
+                            await session.execute(
+                                text("UPDATE appointments SET status='cancelled', cancelled_by=NULL WHERE id=:appt_id"),
+                                {"appt_id": appt["id"]},
                             )
                             log.info("[calendar] cita cancelada por sync | appt=%s | event=%s",
                                      appt["id"], event_id)
 
                 if next_sync_token:
-                    await db.execute(
-                        "UPDATE calendars SET next_sync_token=$1 WHERE id=$2",
-                        next_sync_token, calendar_data["id"],
+                    await session.execute(
+                        text("UPDATE calendars SET next_sync_token=:sync_token WHERE id=:calendar_id"),
+                        {"sync_token": next_sync_token, "calendar_id": calendar_data["id"]},
                     )
+                await session.commit()
 
         except Exception as e:
             log.error("[calendar] error en sync_from_notification | channel=%s | err=%s",

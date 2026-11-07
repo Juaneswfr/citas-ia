@@ -4,7 +4,6 @@ Con KAPSO_ENABLED=false todas las rutas responden 404 (antes de autenticar).
 """
 import logging
 import re
-import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -14,6 +13,8 @@ log = logging.getLogger(__name__)
 from core.database import get_db
 from core.security import require_workspace_access
 from services.kapso_onboarding import KapsoError, KapsoOnboardingService, KapsoPlatformClient, KapsoSandboxClient
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 
 def _require_kapso_enabled():
@@ -41,7 +42,7 @@ def get_sandbox_client() -> KapsoSandboxClient:
 )
 async def create_onboarding_link(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     service: KapsoOnboardingService = Depends(get_onboarding_service),
 ):
     try:
@@ -72,14 +73,25 @@ async def create_sandbox_session(
     workspace_id: str,
     body: SandboxSessionCreate,
     client: KapsoSandboxClient = Depends(get_sandbox_client),
+    db: AsyncSession = Depends(get_db),
 ):
     if not _PHONE_RE.match(body.phone_number):
         raise HTTPException(status_code=422, detail="Formato E.164 requerido: +573001234567")
     try:
-        return await client.create_session(body.phone_number)
+        result = await client.create_session(body.phone_number)
     except KapsoError as e:
         log.error("[kapso/sandbox] create_session falló | err=%s", e)
         raise HTTPException(status_code=502, detail=f"Error de Kapso: {e}")
+    sandbox_pid = get_settings().kapso_sandbox_phone_number_id
+    await db.execute(
+        text(
+            "UPDATE channels SET status = 'active', updated_at = now() "
+            "WHERE workspace_id = :workspace_id AND phone_number_id = :sandbox_pid"
+        ),
+        {"workspace_id": workspace_id, "sandbox_pid": sandbox_pid},
+    )
+    await db.commit()
+    return result
 
 
 @router.get(

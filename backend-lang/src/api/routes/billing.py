@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from core.database import get_db
 from core.security import require_role, require_workspace_access
 
@@ -49,8 +50,10 @@ class SubscriptionOut(BaseModel):
     response_model=list[BillingPlanOut],
     summary="Listar planes disponibles (público)",
 )
-async def list_plans(db: asyncpg.Connection = Depends(get_db)):
-    rows = await db.fetch("SELECT * FROM billing_plans WHERE is_active = TRUE")
+async def list_plans(db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        text("SELECT * FROM billing_plans WHERE is_active = TRUE"),
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -62,12 +65,12 @@ async def list_plans(db: asyncpg.Connection = Depends(get_db)):
 )
 async def get_subscription(
     workspace_id: str,
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    row = await db.fetchrow(
-        "SELECT * FROM subscriptions WHERE workspace_id = $1 AND status = 'active'",
-        workspace_id,
-    )
+    row = (await db.execute(
+        text("SELECT * FROM subscriptions WHERE workspace_id = :workspace_id AND status = 'active'"),
+        {"workspace_id": workspace_id},
+    )).mappings().fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Suscripción activa no encontrada.")
     return dict(row)
@@ -84,24 +87,25 @@ async def update_subscription_status(
     new_status: str,
     notes: Optional[str] = None,
     current_user: dict = Depends(require_role("super_admin")),
-    db: asyncpg.Connection = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     allowed = {"active", "pending_payment", "suspended", "cancelled", "expired"}
     if new_status not in allowed:
         raise HTTPException(status_code=422, detail=f"Estado inválido. Permitidos: {allowed}")
 
     if notes:
-        row = await db.fetchrow(
-            "UPDATE subscriptions SET status=$1, notes=$2 WHERE workspace_id=$3 RETURNING *",
-            new_status, notes, workspace_id,
-        )
+        row = (await db.execute(
+            text("UPDATE subscriptions SET status=:new_status, notes=:notes WHERE workspace_id=:workspace_id RETURNING *"),
+            {"new_status": new_status, "notes": notes, "workspace_id": workspace_id},
+        )).mappings().fetchone()
     else:
-        row = await db.fetchrow(
-            "UPDATE subscriptions SET status=$1 WHERE workspace_id=$2 RETURNING *",
-            new_status, workspace_id,
-        )
+        row = (await db.execute(
+            text("UPDATE subscriptions SET status=:new_status WHERE workspace_id=:workspace_id RETURNING *"),
+            {"new_status": new_status, "workspace_id": workspace_id},
+        )).mappings().fetchone()
 
     if not row:
         raise HTTPException(status_code=404, detail="Suscripción no encontrada.")
+    await db.commit()
     log.info("[billing] status=%s | workspace=%s | by=%s", new_status, workspace_id, current_user.get("sub"))
     return dict(row)

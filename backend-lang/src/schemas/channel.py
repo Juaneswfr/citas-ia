@@ -46,6 +46,7 @@ class CalendarCreate(BaseModel):
     name: str = Field(..., description="Nombre descriptivo del calendario")
     google_calendar_id: str = Field(..., description="ID del calendario en Google")
     oauth_code: str = Field(..., description="Código OAuth de autorización de Google")
+    member_id: Optional[str] = Field(None, description="ID del workspace_member al que pertenece este calendario")
 
 
 class CalendarOut(BaseModel):
@@ -54,6 +55,8 @@ class CalendarOut(BaseModel):
     name: str
     google_calendar_id: str
     connected_by_user_id: Optional[str] = None
+    member_id: Optional[str] = None
+    member_name: Optional[str] = None
     sync_enabled: bool
     sync_status: str
     last_synced_at: Optional[datetime]
