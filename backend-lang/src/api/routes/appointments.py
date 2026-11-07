@@ -47,7 +47,7 @@ async def list_appointments(
         filters.append(f"start_at >= ${len(params)}")
     if to_date:
         params.append(to_date)
-        filters.append(f"start_at <= ${len(params)}")
+        filters.append(f"start_at < ${len(params)}::date + INTERVAL '1 day'")
 
     where = " AND ".join(filters)
     rows = await db.fetch(f"SELECT * FROM appointments WHERE {where} ORDER BY start_at", *params)
@@ -81,40 +81,68 @@ async def create_appointment(
     end_at = body.start_at + timedelta(minutes=svc["duration_minutes"])
     service_name = svc["name"]
 
-    # Nombre del cliente
+    # Nombre y teléfono del cliente
     customer_name = ""
+    customer_phone = None
     if body.customer_id:
         cust = await db.fetchrow(
             "SELECT name, phone FROM customers WHERE id = $1", body.customer_id
         )
         if cust:
             customer_name = cust["name"] or cust["phone"] or ""
+            customer_phone = cust["phone"]
 
-    # Obtener calendario
-    cal = await db.fetchrow(
-        "SELECT * FROM calendars WHERE id = $1 AND workspace_id = $2",
-        body.calendar_id, workspace_id,
-    )
-    if not cal:
-        raise HTTPException(status_code=404, detail="Calendario no encontrado.")
-
-    # Verificar disponibilidad y crear evento (Principio VI)
-    cal_service = CalendarService(dict(cal))
-    is_available = await cal_service.check_availability(body.start_at, end_at)
-    if not is_available:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="El horario solicitado no está disponible.",
+    # Resolver canal: usar el provisto o buscar el activo del workspace
+    channel_id = body.channel_id
+    if not channel_id:
+        ch = await db.fetchrow(
+            "SELECT id FROM channels WHERE workspace_id = $1 AND status = 'active' ORDER BY created_at LIMIT 1",
+            workspace_id,
         )
+        channel_id = str(ch["id"]) if ch else None
 
-    google_event_id = await cal_service.create_event(
-        body, end_at, service_name=service_name, customer_name=customer_name
-    )
-    if not google_event_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No se pudo crear el evento en Google Calendar. La cita no fue registrada.",
+    # Resolver calendario: usar el provisto o buscar el activo del workspace
+    calendar_id = body.calendar_id
+    if not calendar_id:
+        active_cal = await db.fetchrow(
+            "SELECT id FROM calendars WHERE workspace_id = $1 AND sync_status = 'active' ORDER BY created_at LIMIT 1",
+            workspace_id,
         )
+        calendar_id = str(active_cal["id"]) if active_cal else None
+
+    google_event_id = None
+    if calendar_id:
+        cal = await db.fetchrow(
+            "SELECT * FROM calendars WHERE id = $1 AND workspace_id = $2",
+            calendar_id, workspace_id,
+        )
+        if cal:
+            # Verificar disponibilidad y crear evento (Principio VI)
+            cal_service = CalendarService(dict(cal))
+            try:
+                is_available = await cal_service.check_availability(body.start_at, end_at)
+                if not is_available:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="El horario solicitado no está disponible.",
+                    )
+                google_event_id = await cal_service.create_event(
+                    body, end_at, service_name=service_name, customer_name=customer_name
+                )
+                if not google_event_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="No se pudo crear el evento en Google Calendar. La cita no fue registrada.",
+                    )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                if "invalid_grant" in str(exc) or "Token has been expired" in str(exc):
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="El token de Google Calendar expiró. Reconecta el calendario en Ajustes.",
+                    )
+                raise
 
     data = body.model_dump()
     row = await db.fetchrow(
@@ -129,10 +157,10 @@ async def create_appointment(
         workspace_id,
         data.get("customer_id"),
         data.get("service_id"),
-        data.get("channel_id"),
-        data.get("calendar_id"),
+        channel_id,
+        calendar_id,
         data.get("start_at"),
-        end_at.isoformat(),
+        end_at,
         data.get("price_cop"),
         data.get("home_service_price_cop", 0),
         data.get("is_home_service", False),
@@ -154,6 +182,25 @@ async def create_appointment(
     )
     log.info("[appointments] created | workspace=%s | id=%s | start=%s",
              workspace_id, appointment["id"], body.start_at)
+
+    # Notificar al cliente por WhatsApp (best-effort — no bloquea la respuesta)
+    if channel_id and customer_phone:
+        ch_row = await db.fetchrow("SELECT * FROM channels WHERE id = $1", channel_id)
+        if ch_row:
+            from services.whatsapp_service import WhatsAppService
+            meses = ['enero','febrero','marzo','abril','mayo','junio','julio',
+                     'agosto','septiembre','octubre','noviembre','diciembre']
+            fecha_str = f"{body.start_at.day} de {meses[body.start_at.month - 1]} a las {body.start_at.strftime('%H:%M')}"
+            msg = f"✅ Tu cita de *{service_name}* quedó confirmada para el *{fecha_str}*. ¡Te esperamos!"
+            try:
+                await WhatsAppService.send_text(
+                    to=customer_phone, text=msg,
+                    phone_number_id=ch_row["phone_number_id"],
+                    provider=ch_row["provider"],
+                )
+            except Exception:
+                log.warning("[appointments] no se pudo notificar confirmación por WhatsApp | id=%s", appointment["id"])
+
     return appointment
 
 
@@ -198,7 +245,7 @@ async def update_appointment(
         )
 
     current = await db.fetchrow(
-        "SELECT status, google_event_id, calendar_id FROM appointments WHERE id = $1 AND workspace_id = $2",
+        "SELECT status, google_event_id, calendar_id, channel_id, customer_id, service_id FROM appointments WHERE id = $1 AND workspace_id = $2",
         appointment_id, workspace_id,
     )
     if not current:
@@ -245,6 +292,35 @@ async def update_appointment(
     )
     log.info("[appointments] updated | workspace=%s | id=%s | status=%s | by=%s",
              workspace_id, appointment_id, body.status, current_user.get("sub"))
+
+    # Notificar al cliente por WhatsApp (best-effort)
+    notify_channel = current["channel_id"]
+    if row and notify_channel and (body.status in {"cancelled"} or body.start_at):
+        cust_row = await db.fetchrow("SELECT phone FROM customers WHERE id = $1", current["customer_id"])
+        svc_row  = await db.fetchrow("SELECT name FROM services WHERE id = $1", current["service_id"])
+        if cust_row and cust_row["phone"] and svc_row:
+            ch_row = await db.fetchrow("SELECT * FROM channels WHERE id = $1", notify_channel)
+            if ch_row:
+                from services.whatsapp_service import WhatsAppService
+                nombre_svc = svc_row["name"]
+                if body.status == "cancelled":
+                    msg = f"❌ Tu cita de *{nombre_svc}* fue cancelada. Escríbenos si quieres reagendar."
+                else:
+                    apt_row = dict(row)
+                    meses = ['enero','febrero','marzo','abril','mayo','junio','julio',
+                             'agosto','septiembre','octubre','noviembre','diciembre']
+                    start = apt_row["start_at"]
+                    fecha_str = f"{start.day} de {meses[start.month - 1]} a las {start.strftime('%H:%M')}"
+                    msg = f"📅 Tu cita de *{nombre_svc}* fue reagendada para el *{fecha_str}*."
+                try:
+                    await WhatsAppService.send_text(
+                        to=cust_row["phone"], text=msg,
+                        phone_number_id=ch_row["phone_number_id"],
+                        provider=ch_row["provider"],
+                    )
+                except Exception:
+                    log.warning("[appointments] no se pudo notificar actualización por WhatsApp | id=%s", appointment_id)
+
     return dict(row)
 
 

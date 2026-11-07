@@ -1,3 +1,7 @@
+.constitution/front.md                 # Frontend React
+.constitution/backend.md               # Backend Express o FastAPI
+.constitution/database.md              # Base de datos / ORM / queries
+
 # CitasIA / Hilo
 
 SaaS multi-tenant de citas por WhatsApp para barberías y negocios de servicios.

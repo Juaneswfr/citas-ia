@@ -89,9 +89,6 @@ async def build_calendar_client(encrypted_refresh_token: str):
         token_uri="https://oauth2.googleapis.com/token",
         client_id=settings.google_client_id,
         client_secret=settings.google_client_secret,
-        scopes=[
-            "https://www.googleapis.com/auth/calendar",
-            "https://www.googleapis.com/auth/calendar.readonly",
-        ],
+        scopes=["https://www.googleapis.com/auth/calendar"],
     )
     return google_build("calendar", "v3", credentials=creds, cache_discovery=False)

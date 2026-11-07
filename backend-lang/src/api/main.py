@@ -23,6 +23,7 @@ from api.routes.conversations import router as conversations_router
 from api.routes.billing import router as billing_router
 from api.routes.webhooks import router as webhooks_router
 from api.routes.kapso import router as kapso_router
+from api.routes.agent_config import router as agent_config_router
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ async def lifespan(app: FastAPI):
     reminder_task.cancel()
     try:
         await reminder_task
-    except Exception:
+    except BaseException:
         pass
     await close_pool()
     log.info("[shutdown] CitasIA API detenida")
@@ -83,6 +84,7 @@ app.include_router(conversations_router)
 app.include_router(billing_router)
 app.include_router(webhooks_router)
 app.include_router(kapso_router)
+app.include_router(agent_config_router)
 
 
 @app.get("/", tags=["health"])

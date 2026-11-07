@@ -1,9 +1,17 @@
 // T019 — Módulo de API de clientes, conversaciones y mensajes
 
 import { apiFetch } from './client';
-import type { CustomerOut, CustomerUpdate, ConversationOut, MessageOut } from '../types/api';
+import type { CustomerCreate, CustomerOut, CustomerUpdate, ConversationOut, MessageOut } from '../types/api';
 
 // ── Customers ─────────────────────────────────────────────────────────────────
+
+/** POST /workspaces/{workspaceId}/customers — crea cliente (phone + name requeridos) */
+export async function createCustomer(workspaceId: string, body: CustomerCreate): Promise<CustomerOut> {
+  return apiFetch<CustomerOut>(`/workspaces/${workspaceId}/customers`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
 
 /** GET /workspaces/{workspaceId}/customers */
 export async function listCustomers(workspaceId: string): Promise<CustomerOut[]> {

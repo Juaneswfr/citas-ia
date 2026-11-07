@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Avatar } from "@/components/hilo/primitives";
-import { useTeamMembers } from "@/hooks/use-team";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Avatar, Button } from "@/components/hilo/primitives";
+import { useAuth } from "@/lib/auth-context";
+import { listMembers, inviteMember, removeMember } from "@/lib/api/workspaces";
+import type { MemberOut } from "@/lib/types/api";
 
 export const Route = createFileRoute("/_authenticated/equipo")({
   head: () => ({ meta: [{ title: "Equipo · Hilo" }] }),
@@ -17,19 +22,92 @@ const ROLE_LABEL: Record<string, string> = {
   viewer: 'Observador',
 };
 
+const ROLES = ['staff', 'manager', 'viewer'] as const;
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '8px 10px', borderRadius: 'var(--r-sm)',
+  border: '1px solid var(--line-strong)', background: 'var(--surface-2)',
+  font: '400 14px/1.3 var(--font-sans)', color: 'var(--ink-1)', outline: 'none',
+};
+
 function EquipoPage() {
-  const { data: team = [], isLoading } = useTeamMembers();
+  const { workspaceId } = useAuth();
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<string>('staff');
+
+  const { data: team = [], isLoading } = useQuery<MemberOut[]>({
+    queryKey: ['team', workspaceId],
+    queryFn: () => listMembers(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+  });
+
+  const invite = useMutation({
+    mutationFn: () => inviteMember(workspaceId!, email.trim(), role),
+    onSuccess: () => {
+      toast.success('Miembro agregado');
+      qc.invalidateQueries({ queryKey: ['team', workspaceId] });
+      setEmail(''); setRole('staff'); setShowForm(false);
+    },
+    onError: (err: any) => {
+      toast.error(err?.detail ?? err?.message ?? 'Error al agregar miembro');
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (userId: string) => removeMember(workspaceId!, userId),
+    onSuccess: () => {
+      toast.success('Miembro eliminado');
+      qc.invalidateQueries({ queryKey: ['team', workspaceId] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.detail ?? err?.message ?? 'Error al eliminar miembro');
+    },
+  });
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 20px 40px', animation: 'hilo-fade-up var(--dur-3) var(--ease-out)' }}>
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0, font: '500 22px/1.1 var(--font-sans)', letterSpacing: '-0.02em', color: 'var(--ink-1)' }}>
-          Equipo
-        </h2>
-        <p style={{ margin: '4px 0 0', font: '400 13px/1.4 var(--font-sans)', color: 'var(--ink-3)' }}>
-          Miembros con acceso al workspace.
-        </p>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
+        <div>
+          <h2 style={{ margin: 0, font: '500 22px/1.1 var(--font-sans)', letterSpacing: '-0.02em', color: 'var(--ink-1)' }}>Equipo</h2>
+          <p style={{ margin: '4px 0 0', font: '400 13px/1.4 var(--font-sans)', color: 'var(--ink-3)' }}>
+            Miembros con acceso al workspace.
+          </p>
+        </div>
+        <Button variant="primary" size="sm" icon="plus" style={{ marginLeft: 'auto' }} onClick={() => setShowForm(v => !v)}>
+          Agregar miembro
+        </Button>
       </div>
+
+      {showForm && (
+        <div className="card" style={{ padding: '16px 20px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--ink-2)' }}>Email del usuario</span>
+            <input
+              type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="usuario@ejemplo.com" style={inputStyle}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--ink-2)' }}>Rol</span>
+            <select value={role} onChange={e => setRole(e.target.value)} style={inputStyle}>
+              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            </select>
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="primary" size="sm" disabled={!email.trim() || invite.isPending}
+              onClick={() => invite.mutate()}>
+              {invite.isPending ? 'Agregando…' : 'Agregar'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>Cancelar</Button>
+          </div>
+          <p style={{ margin: 0, font: '400 11.5px/1.4 var(--font-sans)', color: 'var(--ink-3)' }}>
+            El usuario debe tener cuenta registrada en Hilo para poder ser agregado.
+          </p>
+        </div>
+      )}
 
       <div className="card" style={{ overflow: 'hidden' }}>
         {isLoading ? (
@@ -71,6 +149,16 @@ function EquipoPage() {
               }}>
                 {ROLE_LABEL[m.member_role] ?? m.member_role}
               </span>
+              {m.member_role !== 'owner' && (
+                <button
+                  onClick={() => remove.mutate(m.user_id)}
+                  disabled={remove.isPending}
+                  title="Eliminar miembro"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-4)', padding: '4px', borderRadius: 'var(--r-sm)' }}
+                >
+                  ✕
+                </button>
+              )}
             </div>
           ))
         )}

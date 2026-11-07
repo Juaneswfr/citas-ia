@@ -73,3 +73,11 @@ class BusinessHoursOut(BaseModel):
 
 class BusinessHoursUpdate(BaseModel):
     hours: list[BusinessHoursOut]
+
+
+class StatsOut(BaseModel):
+    revenue_month: int
+    revenue_prev_month: int
+    chats_month: int
+    automation_pct: int   # 0–100
+    response_avg_seconds: int | None

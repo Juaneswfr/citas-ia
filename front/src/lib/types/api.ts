@@ -90,8 +90,8 @@ export interface AppointmentOut {
   workspace_id: string;
   customer_id: string;
   service_id: string;
-  channel_id: string;
-  calendar_id: string;
+  channel_id: string | null;
+  calendar_id: string | null;
   start_at: string; // ISO 8601
   end_at: string;   // ISO 8601
   status: AppointmentStatus;
@@ -126,14 +126,40 @@ export interface CustomerOut {
   notes: string | null;
   last_seen_at: string | null;
   source_channel_id: string | null;
+  agent_enabled: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface CustomerCreate {
+  phone: string;
+  name: string;
 }
 
 export interface CustomerUpdate {
   name?: string;
   email?: string;
   notes?: string;
+  agent_enabled?: boolean;
+}
+
+// ── Agent config ──────────────────────────────────────────────────────────────
+
+export interface AgentConfigOut {
+  agent_enabled: boolean;
+  out_of_hours_message: string;
+}
+
+export interface AgentConfigUpdate {
+  agent_enabled?: boolean;
+  out_of_hours_message?: string;
+}
+
+export interface AgentHoursOut {
+  day_of_week: number;  // 0=Lunes … 6=Domingo
+  open_time: string;    // "HH:MM"
+  close_time: string;
+  is_active: boolean;
 }
 
 // ── Conversations ─────────────────────────────────────────────────────────────
@@ -210,8 +236,8 @@ export interface BusinessHoursOut {
 export interface AppointmentCreate {
   customer_id: string;
   service_id: string;
-  channel_id: string;
-  calendar_id: string;
+  channel_id?: string;
+  calendar_id?: string;
   start_at: string;             // ISO 8601 with timezone
   price_cop: number;
   is_home_service?: boolean;
@@ -230,6 +256,16 @@ export interface CalendarOut {
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+
+export interface WorkspaceStats {
+  revenue_month: number;
+  revenue_prev_month: number;
+  chats_month: number;
+  automation_pct: number;
+  response_avg_seconds: number | null;
 }
 
 // ── Billing ───────────────────────────────────────────────────────────────────

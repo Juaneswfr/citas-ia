@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 class AppointmentCreate(BaseModel):
     customer_id: str = Field(..., description="ID del cliente")
     service_id: str = Field(..., description="ID del servicio")
-    channel_id: str = Field(..., description="Canal de WhatsApp de origen")
-    calendar_id: str = Field(..., description="Calendario destino")
+    channel_id: Optional[str] = Field(None, description="Canal de WhatsApp (opcional — si None el backend busca el activo)")
+    calendar_id: Optional[str] = Field(None, description="Calendario destino (opcional — si None no sincroniza con Google Calendar)")
     start_at: datetime = Field(..., description="Inicio de la cita (ISO 8601 con timezone)")
     is_home_service: bool = Field(default=False)
     home_address: Optional[str] = Field(None, description="Dirección si es domicilio")
@@ -31,8 +31,8 @@ class AppointmentOut(BaseModel):
     workspace_id: str
     customer_id: str
     service_id: str
-    channel_id: str
-    calendar_id: str
+    channel_id: Optional[str]
+    calendar_id: Optional[str]
     start_at: datetime
     end_at: datetime
     status: str

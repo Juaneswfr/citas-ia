@@ -13,14 +13,21 @@ class CustomerOut(BaseModel):
     notes: Optional[str]
     last_seen_at: Optional[datetime]
     source_channel_id: Optional[str]
+    agent_enabled: bool
     created_at: datetime
     updated_at: datetime
+
+
+class CustomerCreate(BaseModel):
+    phone: str = Field(..., description="Teléfono del cliente — requerido")
+    name: str  = Field(..., description="Nombre del cliente — requerido")
 
 
 class CustomerUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     notes: Optional[str] = None
+    agent_enabled: Optional[bool] = None
 
 
 class ConversationOut(BaseModel):

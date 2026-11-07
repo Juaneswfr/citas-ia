@@ -1,0 +1,84 @@
+.topbar {
+  height: 56px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  background: var(--mat-toolbar);
+  backdrop-filter: var(--blur-thin);
+  -webkit-backdrop-filter: var(--blur-thin);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar__title {
+  margin: 0;
+  font: 500 19px/1 var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+}
+
+.topbar__search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  margin-left: 10px;
+  background: var(--surface-tint);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  flex: 1 1 0;
+  max-width: 360px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.topbar__search-placeholder {
+  flex: 1;
+  font: 400 13px/1 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.topbar__search-kbd {
+  font: 500 11px/1 var(--font-mono);
+  color: var(--ink-3);
+  padding: 3px 6px;
+  background: var(--surface);
+  border-radius: 5px;
+  border: 1px solid var(--line);
+}
+
+.topbar__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--r-full);
+  background: var(--wa-bg);
+  border: 1px solid color-mix(in srgb, var(--wa-ink) 22%, transparent);
+}
+
+.topbar__status-label {
+  font: 500 12px/1 var(--font-sans);
+  color: var(--wa-ink);
+}
+
+.topbar__search-icon {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.topbar__bell-btn {
+  /* shortcut: Button usa inline style para padding; clase no puede sobreescribir.
+     Mantener style={{ padding: 8 }} hasta que Button migre a BEM. */
+}

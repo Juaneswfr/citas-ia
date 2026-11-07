@@ -1,0 +1,82 @@
+/* ── MonthView ────────────────────────────────────────────────────────────── */
+
+.month-view {
+  overflow: hidden;
+}
+
+.month-view__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+/* ── Day-of-week headers ── */
+.month-view__header-cell {
+  padding: 10px;
+  text-align: center;
+  font: 500 11px/1 var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── Day cells ── */
+.month-view__cell {
+  min-height: 88px;
+  padding: 8px;
+  border-left: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--dur-1);
+}
+
+.month-view__cell:nth-child(7n + 1) {
+  border-left: none;
+}
+
+.month-view__cell--today {
+  background: var(--wine-50);
+}
+
+.month-view__cell--empty {
+  cursor: default;
+}
+
+/* ── Day number ── */
+.month-view__day-num {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font: 400 13px/1 var(--font-sans);
+  color: var(--ink-2);
+  margin-bottom: 6px;
+  background: transparent;
+}
+
+.month-view__day-num--today {
+  font-weight: 500;
+  color: var(--wine-fg);
+  background: var(--wine);
+}
+
+/* ── Appointment dots ── */
+.month-view__dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.month-view__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wine-300);
+}
+
+.month-view__dot-overflow {
+  font: 400 10px/1 var(--font-mono);
+  color: var(--ink-3);
+}

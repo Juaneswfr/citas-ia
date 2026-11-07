@@ -1,7 +1,7 @@
 // API helpers para workspaces
 
 import { apiFetch } from './client';
-import type { MemberOut, BusinessHoursOut } from '../types/api';
+import type { MemberOut, BusinessHoursOut, WorkspaceStats } from '../types/api';
 
 export interface WorkspacePatch {
   name?: string;
@@ -21,6 +21,24 @@ export async function patchWorkspace(workspaceId: string, data: WorkspacePatch):
 /** GET /workspaces/{id}/members — lista miembros con nombre y email */
 export async function listMembers(workspaceId: string): Promise<MemberOut[]> {
   return apiFetch<MemberOut[]>(`/workspaces/${workspaceId}/members`);
+}
+
+/** POST /workspaces/{id}/members — invitar miembro por email */
+export async function inviteMember(workspaceId: string, email: string, member_role: string): Promise<MemberOut> {
+  return apiFetch<MemberOut>(`/workspaces/${workspaceId}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ email, member_role }),
+  });
+}
+
+/** DELETE /workspaces/{id}/members/{userId} — eliminar miembro */
+export async function removeMember(workspaceId: string, userId: string): Promise<void> {
+  await apiFetch(`/workspaces/${workspaceId}/members/${userId}`, { method: 'DELETE' });
+}
+
+/** GET /workspaces/{id}/stats — métricas del mes */
+export async function getWorkspaceStats(workspaceId: string): Promise<WorkspaceStats> {
+  return apiFetch<WorkspaceStats>(`/workspaces/${workspaceId}/stats`);
 }
 
 /** GET /workspaces/{id}/business-hours */

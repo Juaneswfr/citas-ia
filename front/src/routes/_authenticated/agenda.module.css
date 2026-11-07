@@ -1,0 +1,79 @@
+/* ── AgendaPage ───────────────────────────────────────────────────────────── */
+
+.agenda-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 30px 40px;
+  animation: hilo-fade-up var(--dur-3) var(--ease-out);
+}
+
+@media (max-width: 879px) {
+  .agenda-page {
+    padding: 16px 14px 28px;
+  }
+}
+
+/* ── Toolbar ── */
+.agenda-page__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.agenda-page__nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agenda-page__title {
+  margin: 0;
+  font: 400 22px/1 var(--font-serif);
+  color: var(--ink-1);
+  min-width: 160px;
+}
+
+.agenda-page__controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Config alert ── */
+.agenda-page__alert {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: var(--wine-50);
+  border: 1px solid var(--wine-200);
+  border-radius: var(--r-md);
+  font: 400 13px/1.5 var(--font-sans);
+  color: var(--wine);
+}
+
+/* ── Team filter ── */
+.agenda-page__team-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.agenda-page__team-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px 4px 5px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.agenda-page__team-name {
+  font: 500 12.5px/1 var(--font-sans);
+  color: var(--ink-1);
+}

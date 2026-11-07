@@ -34,6 +34,77 @@ class AgentService:
         started_at = datetime.now(timezone.utc)
         start_ts = time.monotonic()
 
+        # Pre-flight: toggle global + toggle por cliente + horario del agente
+        async with _pool.acquire() as db:
+            # 1. Toggle global del agente
+            cfg = await db.fetchrow(
+                "SELECT agent_enabled, out_of_hours_message FROM agent_config WHERE workspace_id=$1",
+                workspace_id,
+            )
+            if cfg and not cfg["agent_enabled"]:
+                log.info("[agent] skip: agente pausado globalmente (workspace=%s)", workspace_id)
+                return None
+
+            # 2. Toggle por cliente (whitelist de coexistencia)
+            if conversation.get("customer_id"):
+                cust = await db.fetchrow(
+                    "SELECT agent_enabled FROM customers WHERE id=$1",
+                    conversation["customer_id"],
+                )
+                if cust and not cust["agent_enabled"]:
+                    log.info("[agent] skip: bot desactivado para cliente %s", conversation["customer_id"])
+                    return None
+
+            # 3. Horario del agente (separado del horario de citas)
+            ws = await db.fetchrow(
+                "SELECT timezone FROM workspaces WHERE id=$1", workspace_id
+            )
+            if ws:
+                from zoneinfo import ZoneInfo
+                from datetime import datetime as _dt
+                tz = ZoneInfo(ws["timezone"])
+                now_local = _dt.now(tz)
+                ah = await db.fetchrow(
+                    "SELECT is_active, open_time, close_time FROM agent_hours "
+                    "WHERE workspace_id=$1 AND day_of_week=$2",
+                    workspace_id, now_local.weekday(),
+                )
+                if ah:
+                    outside = not ah["is_active"] or not (ah["open_time"] <= now_local.time() <= ah["close_time"])
+                    if outside:
+                        log.info("[agent] skip: fuera del horario del agente (%s)", now_local.time())
+                        ooh_msg = cfg["out_of_hours_message"] if cfg else None
+                        if ooh_msg and conversation.get("customer_id") and conversation.get("channel_id"):
+                            cust_row = await db.fetchrow(
+                                "SELECT phone FROM customers WHERE id=$1",
+                                conversation["customer_id"],
+                            )
+                            ch_row = await db.fetchrow(
+                                "SELECT phone_number_id, provider FROM channels WHERE id=$1",
+                                conversation["channel_id"],
+                            )
+                            if cust_row and ch_row:
+                                from services.whatsapp_service import WhatsAppService
+                                from services.conversation_service import ConversationService
+                                sent = await WhatsAppService.send_text(
+                                    to=cust_row["phone"],
+                                    text=ooh_msg,
+                                    phone_number_id=ch_row["phone_number_id"],
+                                    provider=ch_row["provider"],
+                                )
+                                if sent.ok:
+                                    await ConversationService.save_message(
+                                        conversation_id=conversation["id"],
+                                        workspace_id=workspace_id,
+                                        channel_id=conversation.get("channel_id"),
+                                        customer_id=conversation.get("customer_id"),
+                                        direction="outbound",
+                                        sender_type="agent",
+                                        content=ooh_msg,
+                                        provider_message_id=sent.message_id or None,
+                                    )
+                        return None
+
         # Crear registro agent_run (Principio V)
         run_id = None
         async with _pool.acquire() as db:

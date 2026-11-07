@@ -1,0 +1,40 @@
+.bottom-tabs {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  background: var(--mat-toolbar);
+  backdrop-filter: var(--blur-thin);
+  -webkit-backdrop-filter: var(--blur-thin);
+  border-top: 1px solid var(--line);
+  padding: 6px 8px;
+}
+
+.bottom-tabs__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 4px 0;
+  color: var(--ink-3);
+  transition: color var(--dur-2) var(--ease-std);
+}
+
+.bottom-tabs__item--active {
+  color: var(--wine);
+}
+
+.bottom-tabs__item-label {
+  font: 400 10px/1 var(--font-sans);
+}
+
+.bottom-tabs__item--active .bottom-tabs__item-label {
+  font-weight: 500;
+}

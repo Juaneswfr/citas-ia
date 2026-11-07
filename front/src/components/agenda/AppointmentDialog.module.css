@@ -1,0 +1,440 @@
+/* ── AppointmentDialog — overlay + panel ─────────────────────────────────── */
+
+.apt-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: apt-fade-in 0.15s var(--ease-out);
+}
+
+@keyframes apt-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.apt-dialog-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+  animation: apt-slide-up 0.18s var(--ease-out);
+}
+
+@keyframes apt-slide-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.apt-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.apt-dialog-title {
+  margin: 0;
+  font: 500 17px/1.2 var(--font-sans);
+  color: var(--ink-1);
+}
+
+.apt-dialog-close {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ink-3);
+  border-radius: var(--r-sm);
+  transition: color var(--dur-1), background var(--dur-1);
+}
+
+.apt-dialog-close:hover {
+  color: var(--ink-1);
+  background: var(--surface-2);
+}
+
+/* ── AppointmentDialog ───────────────────────────────────────────────────── */
+
+.apt-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.apt-dialog__warning {
+  font: 400 12.5px/1.4 var(--font-sans);
+  color: var(--wine);
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--wine-50);
+  border: 1px solid var(--wine-200);
+}
+
+.apt-dialog__info {
+  font: 400 12.5px/1.4 var(--font-sans);
+  color: var(--ink-3);
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.apt-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.apt-dialog__label {
+  font: 500 12px/1 var(--font-sans);
+  color: var(--ink-2);
+}
+
+.apt-dialog__input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  font: 400 14px/1.3 var(--font-sans);
+  color: var(--ink-1);
+  outline: none;
+  transition: border-color var(--dur-1) var(--ease-std);
+  box-sizing: border-box;
+}
+
+.apt-dialog__input:focus {
+  border-color: var(--wine);
+}
+
+.apt-dialog__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.apt-dialog__preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font: 400 12.5px/1.4 var(--font-sans);
+  color: var(--ink-2);
+}
+
+.apt-dialog__preview-svc {
+  font-weight: 500;
+  color: var(--ink-1);
+}
+
+.apt-dialog__preview-detail {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.apt-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.apt-dialog__customer-hint {
+  font: 400 11.5px/1 var(--font-mono);
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+.apt-dialog__preview-body {
+  flex: 1;
+}
+
+.apt-dialog__preview-price {
+  font: 500 13px/1 var(--font-sans);
+  color: var(--ink-1);
+}
+
+/* ── CustomerSearch ──────────────────────────────────────────────────────── */
+
+.cs-token {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: var(--r-md);
+  background: var(--wine-50);
+  border: 1px solid color-mix(in srgb, var(--wine) 25%, transparent);
+}
+
+.cs-token-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cs-token-name {
+  font: 500 13.5px/1 var(--font-sans);
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-token-phone {
+  font: 400 11px/1 var(--font-mono);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.cs-token-clear {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 3px;
+  cursor: pointer;
+  color: var(--ink-3);
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: color var(--dur-1);
+}
+
+.cs-token-clear:hover { color: var(--ink-1); }
+
+/* Search */
+
+.cs-wrap { position: relative; }
+
+.cs-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  transition: border-color var(--dur-1);
+}
+
+.cs-input-wrap--open { border-color: var(--wine); }
+
+.cs-search-icon { color: var(--ink-3); flex-shrink: 0; }
+
+.cs-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font: 400 14px/1 var(--font-sans);
+  color: var(--ink-1);
+}
+
+.cs-input::placeholder { color: var(--ink-4); }
+
+.cs-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.cs-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--dur-1);
+}
+
+.cs-option:last-of-type { border-bottom: none; }
+.cs-option:hover { background: var(--wine-50); }
+
+.cs-option-info { flex: 1; min-width: 0; }
+
+.cs-option-name {
+  display: block;
+  font: 500 13.5px/1.2 var(--font-sans);
+  color: var(--ink-1);
+}
+
+.cs-option-phone {
+  display: block;
+  font: 400 11.5px/1 var(--font-mono);
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+
+.cs-empty {
+  padding: 14px 12px;
+  font: 400 13px/1.4 var(--font-sans);
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.cs-create-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  font: 500 13px/1 var(--font-sans);
+  color: var(--wine);
+  text-align: left;
+  transition: background var(--dur-1);
+}
+
+.cs-create-row:hover { background: var(--wine-50); }
+
+.cs-create-form {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.cs-create-title {
+  font: 500 12.5px/1 var(--font-sans);
+  color: var(--ink-2);
+  margin-bottom: 2px;
+}
+
+.cs-create-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  font: 400 13.5px/1 var(--font-sans);
+  color: var(--ink-1);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--dur-1);
+}
+
+.cs-create-input:focus { border-color: var(--wine); }
+
+.cs-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.cs-create-cancel {
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  font: 400 13px/1 var(--font-sans);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.cs-create-btn {
+  padding: 6px 14px;
+  border-radius: var(--r-sm);
+  border: none;
+  background: var(--wine);
+  color: var(--wine-fg);
+  font: 500 13px/1 var(--font-sans);
+  cursor: pointer;
+  transition: opacity var(--dur-1);
+}
+
+.cs-create-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Service picker ──────────────────────────────────────────────────────── */
+
+.svc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.svc-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: border-color var(--dur-1), background var(--dur-1);
+}
+
+.svc-item:hover { border-color: var(--line-strong); background: var(--surface); }
+
+.svc-item--sel {
+  border-color: var(--wine);
+  background: var(--wine-50);
+}
+
+.svc-item-name {
+  font: 500 13.5px/1.2 var(--font-sans);
+  color: var(--ink-1);
+  flex: 1;
+}
+
+.svc-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.svc-item-dur {
+  font: 400 11.5px/1 var(--font-mono);
+  color: var(--ink-3);
+}
+
+.svc-item-price {
+  font: 500 13px/1 var(--font-sans);
+  color: var(--wine);
+  min-width: 70px;
+  text-align: right;
+}

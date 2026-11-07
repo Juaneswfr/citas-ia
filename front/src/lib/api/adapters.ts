@@ -144,5 +144,6 @@ export function toHiloClient(
     spend,
     status: deriveClientStatus(visits),
     note: customer.notes ?? '',
+    agent_enabled: customer.agent_enabled,
   };
 }

@@ -164,6 +164,7 @@ class Customer(Base):
     notes = Column(Text)
     last_seen_at = Column(DateTime(timezone=True))
     source_channel_id = Column(UUID(as_uuid=False), ForeignKey("channels.id"))
+    agent_enabled = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=NOW)
 

@@ -3,13 +3,16 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
 import { Button, Avatar, Tag } from "@/components/hilo/primitives";
-import HILO from "@/lib/hilo-data";
+import { fmtCOP, hueVar } from "@/lib/hilo-data";
 import type { HiloClient } from "@/lib/hilo-data";
 import { useCustomers, useUpdateCustomer } from "@/hooks/use-customers";
 import { useAppointments } from "@/hooks/use-appointments";
 import { useConversations, useMessages } from "@/hooks/use-conversations";
+import { createCustomer } from "@/lib/api/conversations";
+import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/_authenticated/clients")({
   head: () => ({ meta: [{ title: "Clientes · Hilo" }] }),
@@ -60,6 +63,7 @@ function ClientDetail({ c, isMobile, onBack }: { c: HiloClient; isMobile: boolea
   const [noteSaved, setNoteSaved] = useState(true);
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(c.name);
+  const [botOn, setBotOn] = useState(c.agent_enabled);
   const updateCustomer = useUpdateCustomer(c.id);
 
   const handleNoteSave = () => {
@@ -120,8 +124,29 @@ function ClientDetail({ c, isMobile, onBack }: { c: HiloClient; isMobile: boolea
       <div style={{ padding:'20px 22px', display:'flex', flexDirection:'column', gap:20 }}>
         <div style={{ display:'flex', gap:10 }}>
           <StatBox k="Visitas" v={String(c.visits)}/>
-          <StatBox k="Gasto total" v={HILO.fmtCOP(c.spend)} hue="var(--clay)"/>
+          <StatBox k="Gasto total" v={fmtCOP(c.spend)} hue="var(--clay)"/>
           <StatBox k="Próxima" v={c.next==='—'?'—':c.next.replace('Hoy · ','')} hue="var(--wine)"/>
+        </div>
+
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px',
+          background:'var(--surface)', border:'1px solid var(--line)', borderRadius:'var(--r-md)' }}>
+          <div>
+            <div style={{ font:'500 13.5px/1.2 var(--font-sans)', color:'var(--ink-1)' }}>Bot activo</div>
+            <div style={{ font:'400 12px/1.3 var(--font-sans)', color:'var(--ink-3)', marginTop:3 }}>
+              El agente responde automáticamente a este cliente
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { const next = !botOn; setBotOn(next); updateCustomer.mutate({ agent_enabled: next }); }}
+            style={{ width:44, height:26, borderRadius:13, border:0, cursor:'pointer',
+              background: botOn ? 'var(--wine)' : 'var(--line-strong)',
+              transition:'background var(--dur-2) var(--ease-std)', position:'relative', flexShrink:0 }}>
+            <span style={{ position:'absolute', top:3, left: botOn ? 21 : 3, width:20, height:20,
+              borderRadius:'50%', background:'white',
+              transition:'left var(--dur-2) var(--ease-std)',
+              boxShadow:'0 1px 4px rgba(0,0,0,0.2)' }}/>
+          </button>
         </div>
 
         <div>
@@ -147,7 +172,8 @@ function ClientDetail({ c, isMobile, onBack }: { c: HiloClient; isMobile: boolea
           ) : (
             <div style={{ display:'flex', flexDirection:'column' }}>
               {history.map((h, i) => {
-                const hue = HILO.hueVar(HILO.services.find(s => s.name===h.svc)?.hue || 'wine');
+                const SVC_HUES = ['wine','clay','mustard','steel','sage','plum'];
+                const hue = hueVar(SVC_HUES[history.indexOf(h) % SVC_HUES.length] ?? 'wine');
                 const dateLabel = h.startAt ? format(parseISO(h.startAt), "d MMM · HH:mm", { locale: es }) : h.time;
                 return (
                   <div key={h.id} style={{ display:'grid', gridTemplateColumns:'18px 1fr', gap:12 }}>
@@ -214,33 +240,105 @@ function ClientsListSkeleton() {
   );
 }
 
+function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+  const { workspaceId } = useAuth();
+  const qc = useQueryClient();
+  const [phone, setPhone] = useState('');
+  const [name, setName]   = useState('');
+
+  const mut = useMutation({
+    mutationFn: () => createCustomer(workspaceId!, { phone: phone.trim(), name: name.trim() }),
+    onSuccess: (c) => {
+      qc.invalidateQueries({ queryKey: ['customers', workspaceId] });
+      toast.success('Cliente creado');
+      onCreated(c.id);
+    },
+    onError: () => toast.error('Error al crear el cliente'),
+  });
+
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(0,0,0,0.5)',
+      display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:'var(--surface)', border:'1px solid var(--line)',
+        borderRadius:'var(--r-lg)', boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:380, padding:24 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+          <h3 style={{ margin:0, font:'500 16px/1.2 var(--font-sans)', color:'var(--ink-1)' }}>Nuevo cliente</h3>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-3)', fontSize:14 }}>✕</button>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <label style={{ display:'flex', flexDirection:'column', gap:5 }}>
+            <span style={{ font:'500 12px/1 var(--font-sans)', color:'var(--ink-2)' }}>Teléfono <span style={{ color:'var(--wine)' }}>*</span></span>
+            <input
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="+57 300 000 0000"
+              autoFocus
+              style={{ padding:'9px 11px', borderRadius:'var(--r-sm)', border:'1px solid var(--line-strong)',
+                background:'var(--surface-2)', font:'400 14px/1 var(--font-sans)', color:'var(--ink-1)', outline:'none' }}
+              onFocus={e => (e.target.style.borderColor = 'var(--wine)')}
+              onBlur={e => (e.target.style.borderColor = 'var(--line-strong)')}
+            />
+          </label>
+          <label style={{ display:'flex', flexDirection:'column', gap:5 }}>
+            <span style={{ font:'500 12px/1 var(--font-sans)', color:'var(--ink-2)' }}>Nombre <span style={{ color:'var(--wine)' }}>*</span></span>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Juan García"
+              onKeyDown={e => { if (e.key === 'Enter' && phone.trim() && name.trim()) mut.mutate(); }}
+              style={{ padding:'9px 11px', borderRadius:'var(--r-sm)', border:'1px solid var(--line-strong)',
+                background:'var(--surface-2)', font:'400 14px/1 var(--font-sans)', color:'var(--ink-1)', outline:'none' }}
+              onFocus={e => (e.target.style.borderColor = 'var(--wine)')}
+              onBlur={e => (e.target.style.borderColor = 'var(--line-strong)')}
+            />
+          </label>
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:8, paddingTop:4, borderTop:'1px solid var(--line)', marginTop:4 }}>
+            <Button variant="ghost" size="sm" type="button" onClick={onClose}>Cancelar</Button>
+            <Button
+              variant="primary" size="sm"
+              disabled={!phone.trim() || !name.trim() || mut.isPending}
+              onClick={() => mut.mutate()}
+            >
+              {mut.isPending ? 'Guardando…' : 'Crear cliente'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClientsPage() {
-  const [sel, setSel] = useState<ClientWithOpen | null>(null);
-  const [q, setQ] = useState('');
+  const { workspaceId } = useAuth();
+  const [sel, setSel]       = useState<ClientWithOpen | null>(null);
+  const [q, setQ]           = useState('');
+  const [showNew, setShowNew] = useState(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 880;
 
   const { data: clients = [], isLoading, isError } = useCustomers();
-  const list = clients.filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
+  const list = clients.filter(c =>
+    c.name.toLowerCase().includes(q.toLowerCase()) || c.phone.includes(q),
+  );
 
   useEffect(() => {
     if (isError) toast.error('No se pudieron cargar los clientes.');
   }, [isError]);
   const showDetail = !isMobile || (sel as ClientWithOpen | null)?.__open;
 
-  // Seleccionar el primero cuando cargan los datos
-  if (!sel && clients.length > 0 && !isMobile) {
-    setSel(clients[0]);
-  }
+  if (!sel && clients.length > 0 && !isMobile) setSel(clients[0]);
 
   const ListPane = (
     <div style={{ width:isMobile?'100%':338, flexShrink:0, borderRight: isMobile?'none':'1px solid var(--line)',
       display:'flex', flexDirection:'column', height:'100%', background:'var(--paper)' }}>
       <div style={{ padding:'18px 16px 12px' }}>
-        <h2 style={{ margin:'0 0 14px', font:'400 24px/1 var(--font-serif)', color:'var(--ink-1)' }}>Clientes</h2>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+          <h2 style={{ margin:0, font:'400 24px/1 var(--font-serif)', color:'var(--ink-1)' }}>Clientes</h2>
+          <Button variant="secondary" size="sm" icon="plus" onClick={() => setShowNew(true)}>Nuevo</Button>
+        </div>
         <div style={{ display:'flex', alignItems:'center', gap:9, padding:'9px 12px', background:'var(--surface-2)',
           border:'1px solid var(--line-strong)', borderRadius:'var(--r-md)' }}>
           <Icon name="search" size={15} style={{ color:'var(--ink-3)' }}/>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por nombre…"
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar nombre o teléfono…"
             style={{ flex:1, border:0, background:'transparent', outline:'none', font:'400 13.5px/1 var(--font-sans)', color:'var(--ink-1)' }}/>
         </div>
       </div>
@@ -265,16 +363,29 @@ function ClientsPage() {
   );
 
   return (
-    <div style={{ height:'100%', display:'flex', animation:'hilo-fade-up var(--dur-3) var(--ease-out)' }}>
-      {(!isMobile || !showDetail) && ListPane}
-      {(!isMobile || showDetail) && (
-        <div style={{ flex:1, minWidth:0, height:'100%' }}>
-          {sel
-            ? <ClientDetail c={sel} isMobile={isMobile} onBack={() => setSel({...sel, __open:false})}/>
-            : <div style={{ display:'grid', placeItems:'center', height:'100%', color:'var(--ink-3)' }}>Selecciona un cliente</div>
-          }
-        </div>
+    <>
+      <div style={{ height:'100%', display:'flex', animation:'hilo-fade-up var(--dur-3) var(--ease-out)' }}>
+        {(!isMobile || !showDetail) && ListPane}
+        {(!isMobile || showDetail) && (
+          <div style={{ flex:1, minWidth:0, height:'100%' }}>
+            {sel
+              ? <ClientDetail c={sel} isMobile={isMobile} onBack={() => setSel({...sel, __open:false})}/>
+              : <div style={{ display:'grid', placeItems:'center', height:'100%', color:'var(--ink-3)' }}>Selecciona un cliente</div>
+            }
+          </div>
+        )}
+      </div>
+      {showNew && (
+        <NewClientModal
+          onClose={() => setShowNew(false)}
+          onCreated={(id) => {
+            setShowNew(false);
+            // Seleccionar el nuevo cliente tras refresh
+            const found = clients.find(c => c.id === id);
+            if (found) setSel(isMobile ? {...found, __open:true} : found);
+          }}
+        />
       )}
-    </div>
+    </>
   );
 }

@@ -50,6 +50,7 @@ export interface CalendarEvent {
   client: string;
   svc: string;   // nombre del servicio
   pro: string;
+  hue?: string;  // nombre del hue CSS (ej. 'wine', 'clay')
 }
 
 interface UseWeekAppointmentsOptions {
@@ -78,30 +79,32 @@ export function useWeekAppointments({ weekStart, weekEnd }: UseWeekAppointmentsO
       const customersMap = new Map<string, CustomerOut>(customers.map(c => [c.id, c]));
       const servicesMap = new Map<string, ServiceOut>(services.map(s => [s.id, s]));
 
+      const SVC_HUES  = ['wine', 'clay', 'mustard', 'steel', 'sage', 'plum'];
+      const svcHueMap = new Map<string, string>(
+        services.map((s, i) => [s.id, SVC_HUES[i % SVC_HUES.length]])
+      );
+
       return apts
         .filter(apt => apt.status !== 'cancelled' && apt.status !== 'noshow')
         .map((apt): CalendarEvent => {
           const start = parseISO(apt.start_at);
-          const end = parseISO(apt.end_at);
+          const end   = parseISO(apt.end_at);
 
-          // Día relativo al inicio de semana (0 = lunes si weekStart es lunes)
           const msPerDay = 24 * 60 * 60 * 1000;
           const d = Math.floor((start.getTime() - weekStart.getTime()) / msPerDay);
-
           const s = getHours(start) + getMinutes(start) / 60;
           const m = differenceInMinutes(end, start);
 
           const customer = customersMap.get(apt.customer_id);
-          const service = servicesMap.get(apt.service_id);
+          const service  = servicesMap.get(apt.service_id);
 
           return {
             id: apt.id,
-            d,
-            s,
-            m,
+            d, s, m,
             client: customer?.name ?? customer?.phone ?? '',
-            svc: service?.name ?? '',
-            pro: '',
+            svc:    service?.name ?? '',
+            pro:    '',
+            hue:    svcHueMap.get(apt.service_id) ?? 'wine',
           };
         });
     },

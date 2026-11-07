@@ -11,7 +11,7 @@ import asyncpg
 from core.database import get_db
 from core.security import require_workspace_access
 from schemas.conversation import (
-    ConversationOut, CustomerOut, CustomerUpdate, MessageOut
+    ConversationOut, CustomerCreate, CustomerOut, CustomerUpdate, MessageOut
 )
 
 log = logging.getLogger(__name__)
@@ -32,6 +32,37 @@ async def list_customers(
 ):
     rows = await db.fetch("SELECT * FROM customers WHERE workspace_id = $1", workspace_id)
     return [dict(r) for r in rows]
+
+
+@router.post(
+    "/workspaces/{workspace_id}/customers",
+    response_model=CustomerOut,
+    status_code=201,
+    summary="Crear un cliente manualmente (teléfono y nombre requeridos)",
+    dependencies=[Depends(require_workspace_access("staff"))],
+)
+async def create_customer(
+    workspace_id: str,
+    body: CustomerCreate,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    existing = await db.fetchrow(
+        "SELECT * FROM customers WHERE workspace_id = $1 AND phone = $2",
+        workspace_id, body.phone,
+    )
+    if existing:
+        # Si ya existe, actualiza el nombre y retorna
+        row = await db.fetchrow(
+            "UPDATE customers SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+            body.name, existing["id"],
+        )
+        return dict(row)
+    row = await db.fetchrow(
+        "INSERT INTO customers (workspace_id, phone, name) VALUES ($1, $2, $3) RETURNING *",
+        workspace_id, body.phone, body.name,
+    )
+    log.info("[customers] created | workspace=%s | phone=%s", workspace_id, body.phone)
+    return dict(row)
 
 
 @router.get(

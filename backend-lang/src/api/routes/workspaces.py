@@ -5,6 +5,7 @@ Principio IV (Constitución): Cada usuario solo accede a su workspace.
 Principio XI: Todo endpoint verifica JWT + rol antes de procesar.
 """
 import logging
+from datetime import time, datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 
 import asyncpg
@@ -12,7 +13,7 @@ from core.database import get_db
 from core.security import require_role, require_workspace_access
 from schemas.workspace import (
     MemberInvite, MemberOut, WorkspaceCreate, WorkspaceOut, WorkspaceUpdate,
-    BusinessHoursOut, BusinessHoursUpdate,
+    BusinessHoursOut, BusinessHoursUpdate, StatsOut,
 )
 
 log = logging.getLogger(__name__)
@@ -177,13 +178,13 @@ async def remove_member(
 # ── Horario de atención ────────────────────────────────────────────────────────
 
 _DEFAULT_HOURS = [
-    (0, '09:00', '19:00', True),   # Lunes
-    (1, '09:00', '19:00', True),   # Martes
-    (2, '09:00', '19:00', True),   # Miércoles
-    (3, '09:00', '19:00', True),   # Jueves
-    (4, '09:00', '19:00', True),   # Viernes
-    (5, '09:00', '19:00', True),   # Sábado
-    (6, '09:00', '19:00', False),  # Domingo
+    (0, time(9, 0), time(19, 0), True),   # Lunes
+    (1, time(9, 0), time(19, 0), True),   # Martes
+    (2, time(9, 0), time(19, 0), True),   # Miércoles
+    (3, time(9, 0), time(19, 0), True),   # Jueves
+    (4, time(9, 0), time(19, 0), True),   # Viernes
+    (5, time(9, 0), time(19, 0), True),   # Sábado
+    (6, time(9, 0), time(19, 0), False),  # Domingo
 ]
 
 
@@ -242,7 +243,7 @@ async def update_business_hours(
                               close_time = EXCLUDED.close_time,
                               is_open = EXCLUDED.is_open
                 """,
-                workspace_id, h.day_of_week, h.open_time, h.close_time, h.is_open,
+                workspace_id, h.day_of_week, time.fromisoformat(h.open_time), time.fromisoformat(h.close_time), h.is_open,
             )
     log.info("[business-hours] updated | workspace=%s", workspace_id)
     rows = await db.fetch(
@@ -250,3 +251,80 @@ async def update_business_hours(
         workspace_id,
     )
     return [dict(r) for r in rows]
+
+
+# ── Stats ──────────────────────────────────────────────────────────────────────
+
+@router.get(
+    "/{workspace_id}/stats",
+    response_model=StatsOut,
+    summary="Métricas del mes: ingresos, chats, automatización, respuesta media",
+    dependencies=[Depends(require_workspace_access("viewer"))],
+)
+async def get_workspace_stats(
+    workspace_id: str,
+    db: asyncpg.Connection = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    prev_month_start = (month_start - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Ingresos y automatización
+    rev = await db.fetchrow(
+        """
+        SELECT
+            COALESCE(SUM(price_cop + home_service_price_cop)
+                FILTER (WHERE start_at >= $2 AND status NOT IN ('cancelled','noshow')), 0)::int AS revenue_month,
+            COALESCE(SUM(price_cop + home_service_price_cop)
+                FILTER (WHERE start_at >= $3 AND start_at < $2 AND status NOT IN ('cancelled','noshow')), 0)::int AS revenue_prev_month,
+            COUNT(*) FILTER (WHERE start_at >= $2)                               AS total_month,
+            COUNT(*) FILTER (WHERE start_at >= $2 AND created_by IS NULL)         AS agent_month
+        FROM appointments
+        WHERE workspace_id = $1 AND start_at >= $3
+        """,
+        workspace_id, month_start, prev_month_start,
+    )
+
+    total = rev["total_month"] or 0
+    agent = rev["agent_month"] or 0
+    automation_pct = round(agent / total * 100) if total else 0
+
+    # Chats este mes
+    chats_row = await db.fetchrow(
+        "SELECT COUNT(*)::int AS chats_month FROM conversations WHERE workspace_id = $1 AND created_at >= $2",
+        workspace_id, month_start,
+    )
+
+    # Tiempo de respuesta medio del agente (segundos)
+    resp_row = await db.fetchrow(
+        """
+        WITH pairs AS (
+            SELECT
+                COALESCE(m1.sent_at, m1.received_at, m1.created_at) AS t_in,
+                MIN(COALESCE(m2.sent_at, m2.received_at, m2.created_at)) AS t_out
+            FROM messages m1
+            JOIN messages m2
+                ON  m2.conversation_id = m1.conversation_id
+                AND m2.direction        = 'outbound'
+                AND m2.sender_type      = 'agent'
+                AND COALESCE(m2.sent_at, m2.received_at, m2.created_at)
+                    > COALESCE(m1.sent_at, m1.received_at, m1.created_at)
+            WHERE m1.workspace_id = $1
+              AND m1.direction     = 'inbound'
+              AND m1.created_at   >= $2
+            GROUP BY m1.id, COALESCE(m1.sent_at, m1.received_at, m1.created_at)
+        )
+        SELECT AVG(EXTRACT(EPOCH FROM (t_out - t_in)))::int AS avg_seconds
+        FROM pairs
+        WHERE t_out - t_in < INTERVAL '1 hour'
+        """,
+        workspace_id, month_start,
+    )
+
+    return StatsOut(
+        revenue_month=rev["revenue_month"],
+        revenue_prev_month=rev["revenue_prev_month"],
+        chats_month=chats_row["chats_month"] or 0,
+        automation_pct=automation_pct,
+        response_avg_seconds=resp_row["avg_seconds"],
+    )
