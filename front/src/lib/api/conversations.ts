@@ -1,6 +1,7 @@
 // T019 — Módulo de API de clientes, conversaciones y mensajes
 
 import { apiFetch } from './client';
+import type { CustomerSummary } from '../types/customer-summary';
 import type { CustomerCreate, CustomerOut, CustomerUpdate, ConversationOut, MessageOut } from '../types/api';
 
 // ── Customers ─────────────────────────────────────────────────────────────────
@@ -21,6 +22,11 @@ export async function listCustomers(workspaceId: string): Promise<CustomerOut[]>
 /** GET /workspaces/{workspaceId}/customers/{customerId} */
 export async function getCustomer(workspaceId: string, customerId: string): Promise<CustomerOut> {
   return apiFetch<CustomerOut>(`/workspaces/${workspaceId}/customers/${customerId}`);
+}
+
+/** GET /workspaces/{workspaceId}/customers/{customerId}/summary — citas, estadísticas y pagos (pagos solo manager+) */
+export async function getCustomerSummary(workspaceId: string, customerId: string): Promise<CustomerSummary> {
+  return apiFetch<CustomerSummary>(`/workspaces/${workspaceId}/customers/${customerId}/summary`);
 }
 
 /** PATCH /workspaces/{workspaceId}/customers/{customerId} */

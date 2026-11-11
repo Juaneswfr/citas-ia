@@ -23,6 +23,21 @@ log = logging.getLogger(__name__)
 router = APIRouter(tags=["appointments"])
 
 
+async def _create_sale_for_completed(db: AsyncSession, workspace_id: str, appointment_id: str) -> None:
+    """Crea la orden de venta de una cita completada (idempotente).
+
+    Best-effort: un fallo contable NO debe revertir ni romper el cambio de estado de la cita,
+    que ya quedó confirmado. Se registra el error para poder rehacerlo con el backfill.
+    """
+    from services import sales_service
+    try:
+        await sales_service.create_sale_from_appointment(db, workspace_id, appointment_id)
+    except Exception:
+        await db.rollback()
+        log.exception("[accounting] no se pudo crear la venta de la cita | workspace=%s | id=%s",
+                      workspace_id, appointment_id)
+
+
 # ── Citas ─────────────────────────────────────────────────────────────────────
 
 @router.get(
@@ -47,7 +62,7 @@ async def list_appointments(
         filters.append("start_at >= :from_date")
         params["from_date"] = from_date
     if to_date:
-        filters.append("start_at < :to_date::date + INTERVAL '1 day'")
+        filters.append("start_at < CAST(:to_date AS date) + INTERVAL '1 day'")
         params["to_date"] = to_date
 
     where = " AND ".join(filters)
@@ -307,6 +322,9 @@ async def update_appointment(
     )
     log.info("[appointments] updated | workspace=%s | id=%s | status=%s | by=%s",
              workspace_id, appointment_id, body.status, current_user.get("sub"))
+
+    if body.status == "completed":
+        await _create_sale_for_completed(db, workspace_id, appointment_id)
 
     # Notificar al cliente por WhatsApp (best-effort)
     notify_channel = current["channel_id"]

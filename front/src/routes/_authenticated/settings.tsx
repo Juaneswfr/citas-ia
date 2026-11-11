@@ -9,6 +9,7 @@ import { Button } from "@/components/hilo/primitives";
 import { listChannels, updateChannelStatus, listCalendars, createKapsoOnboardingLink, createSandboxSession, getSandboxSession, listSandboxSessions, type SandboxSession } from "@/lib/api/channels";
 import { getGoogleCalendarUrl } from "@/lib/api/auth";
 import { apiFetch } from "@/lib/api/client";
+import { roleLabel } from "@/lib/roles";
 import { getBusinessHours, updateBusinessHours, listMembers } from "@/lib/api/workspaces";
 import type { ChannelOut, CalendarOut, WorkspaceOut, BusinessHoursOut } from "@/lib/types/api";
 
@@ -521,10 +522,6 @@ function BusinessHoursSection({ workspaceId }: { workspaceId: string }) {
 
 // ── Página ────────────────────────────────────────────────────────────────────
 
-const roleLabel: Record<string, string> = {
-  workspace_owner: 'Propietario', manager: 'Manager', staff: 'Staff', viewer: 'Viewer',
-};
-
 function SettingsPage() {
   const { me } = useAuth();
   const qc = useQueryClient();
@@ -594,7 +591,7 @@ function SettingsPage() {
           {[
             { label: 'Nombre', value: displayName },
             { label: 'Correo', value: me?.email ?? '—' },
-            { label: 'Rol', value: roleLabel[me?.role ?? ''] ?? me?.role ?? '—' },
+            { label: 'Rol', value: me?.role ? roleLabel(me.role) : '—' },
           ].map(f => (
             <label key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={labelStyle}>{f.label}</span>

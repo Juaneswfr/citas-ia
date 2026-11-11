@@ -26,9 +26,13 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend-lang/.env
+    environment:
+      # Comprobantes de pago subidos por los usuarios. Persisten en el host (./uploads) entre redespliegues.
+      - UPLOADS_DIR=/app/uploads
     volumes:
       - ./backend-lang/src:/app/src:ro
       - ./backend-lang/.env:/app/.env:ro
+      - ./uploads:/app/uploads
     networks:
       - app
     healthcheck:

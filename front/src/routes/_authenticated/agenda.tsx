@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import { startOfWeek, endOfWeek, addDays, format } from 'date-fns';
+import { startOfWeek, endOfWeek, addDays, addWeeks, addMonths, format, isSameMonth, isSameWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '@/lib/auth-context';
 import { useQuery } from '@tanstack/react-query';
@@ -14,6 +14,7 @@ import { WeekCalendar } from '@/components/agenda/WeekCalendar';
 import { DayView } from '@/components/agenda/DayView';
 import { MonthView } from '@/components/agenda/MonthView';
 import { AppointmentDialog } from '@/components/agenda/AppointmentDialog';
+import { AppointmentDetail } from '@/components/agenda/AppointmentDetail';
 import styles from './agenda.module.css';
 
 export const Route = createFileRoute('/_authenticated/agenda')({
@@ -32,7 +33,8 @@ function AgendaPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [slotDate,   setSlotDate]   = useState<string | undefined>();
   const [slotTime,   setSlotTime]   = useState<string | undefined>();
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [anchor,     setAnchor]     = useState(() => new Date());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: team = [] } = useTeamMembers();
 
@@ -49,18 +51,27 @@ function AgendaPage() {
     staleTime: 60_000,
   });
 
-  const weekStart = useMemo(() => {
-    const base = startOfWeek(new Date(), { weekStartsOn: 1 });
-    return addDays(base, weekOffset * 7);
-  }, [weekOffset]);
+  const anchorKey = format(anchor, 'yyyy-MM-dd');
 
-  const weekEnd = useMemo(() => endOfWeek(weekStart, { weekStartsOn: 1 }), [weekStart]);
+  const weekStart = useMemo(() => startOfWeek(anchor, { weekStartsOn: 1 }), [anchorKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const weekEnd   = useMemo(() => endOfWeek(weekStart, { weekStartsOn: 1 }), [weekStart]);
 
-  const weekLabel = useMemo(() => {
-    const s = format(weekStart, 'd MMM', { locale: es });
-    const e = format(weekEnd,   'd MMM', { locale: es });
-    return `${s} – ${e}`;
-  }, [weekStart, weekEnd]);
+  // Título y navegación según la vista: ◀ ▶ mueven un día, una semana o un mes.
+  const title = useMemo(() => {
+    if (view === 'day')   return format(anchor, "EEEE d 'de' MMMM", { locale: es });
+    if (view === 'month') return format(anchor, 'MMMM yyyy', { locale: es });
+    return `${format(weekStart, 'd MMM', { locale: es })} – ${format(weekEnd, 'd MMM', { locale: es })}`;
+  }, [view, anchorKey, weekStart, weekEnd]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const shift = (dir: 1 | -1) =>
+    setAnchor(a => (view === 'day' ? addDays(a, dir) : view === 'week' ? addWeeks(a, dir) : addMonths(a, dir)));
+
+  const now = new Date();
+  const isCurrent = view === 'day'
+    ? anchorKey === format(now, 'yyyy-MM-dd')
+    : view === 'week' ? isSameWeek(anchor, now, { weekStartsOn: 1 }) : isSameMonth(anchor, now);
+
+  const openDay = (date: Date) => { setAnchor(date); setView('day'); };
 
   const { data: weekEvents = [], isLoading: weekLoading, isError: weekError } =
     useWeekAppointments({ weekStart, weekEnd });
@@ -88,13 +99,15 @@ function AgendaPage() {
         initialTime={slotTime}
       />
 
+      {selectedId && <AppointmentDetail appointmentId={selectedId} onClose={() => setSelectedId(null)} />}
+
       {/* ── Toolbar ── */}
       <div className={styles['agenda-page__toolbar']}>
         <div className={styles['agenda-page__nav']}>
-          <Button variant="secondary" size="sm" icon="chevL" style={{ padding: '8px' }} onClick={() => setWeekOffset(o => o - 1)} />
-          <h2 className={styles['agenda-page__title']}>{weekLabel}</h2>
-          <Button variant="secondary" size="sm" icon="chev" style={{ padding: '8px' }} onClick={() => setWeekOffset(o => o + 1)} />
-          <Button variant="ghost" size="sm" onClick={() => setWeekOffset(0)}>Hoy</Button>
+          <Button variant="secondary" size="sm" icon="chevL" aria-label="Anterior" onClick={() => shift(-1)} />
+          <h2 className={styles['agenda-page__title']}>{title}</h2>
+          <Button variant="secondary" size="sm" icon="chev" aria-label="Siguiente" onClick={() => shift(1)} />
+          <Button variant="ghost" size="sm" disabled={isCurrent} onClick={() => setAnchor(new Date())}>Hoy</Button>
         </div>
         <div className={styles['agenda-page__controls']}>
           <Segmented
@@ -139,17 +152,22 @@ function AgendaPage() {
       )}
 
       {/* ── Views ── */}
-      {view === 'day'   && <DayView onNewCita={() => openNewCita()} />}
-      {view === 'week'  && (
-        <WeekCalendar
-          weekStart={weekStart}
-          cols={6}
-          events={weekEvents}
-          isLoading={weekLoading}
-          onSlotClick={(date, time) => openNewCita(date, time)}
-        />
+      {view === 'day' && (
+        <DayView date={anchor} onNewCita={(date) => openNewCita(date)} onEventClick={setSelectedId} />
       )}
-      {view === 'month' && <MonthView onSlotClick={(date) => openNewCita(date)} />}
+      {view === 'week' && (
+        <div className={styles['agenda-page__scroll']}>
+          <WeekCalendar
+            weekStart={weekStart}
+            cols={7}
+            events={weekEvents}
+            isLoading={weekLoading}
+            onSlotClick={(date, time) => openNewCita(date, time)}
+            onEventClick={setSelectedId}
+          />
+        </div>
+      )}
+      {view === 'month' && <MonthView month={anchor} onDayClick={openDay} />}
     </div>
   );
 }

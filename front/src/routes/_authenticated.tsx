@@ -6,6 +6,7 @@ import { listChannels, listCalendars, listSandboxSessions } from '@/lib/api/chan
 import { listServices } from '@/lib/api/services';
 import { getAgentConfig, getAgentHours } from '@/lib/api/agent';
 import { countAgentAlerts } from '@/lib/api/alerts';
+import { usePendingReceiptCount } from '@/hooks/use-receipts';
 import type { AgentHoursOut } from '@/lib/types/api';
 import { PATH_TO_ID, TITLES } from '@/lib/nav';
 import { useIsMobile } from '@/hooks/use-is-mobile';
@@ -40,7 +41,7 @@ function PanelLayout() {
   const navigate = useNavigate();
   const { location } = useRouterState();
   const isMobile = useIsMobile(880);
-  const { me, logout } = useAuth();
+  const { me, logout, role } = useAuth();
 
   const activeId = PATH_TO_ID[location.pathname] || 'inicio';
   const isOnboarding = location.pathname === '/onboarding';
@@ -99,6 +100,7 @@ function PanelLayout() {
     refetchInterval: 60_000,
   });
   const alertCount = alertCountData?.count ?? 0;
+  const receiptCount = usePendingReceiptCount();
 
   const { data: rawSandbox } = useQuery({
     queryKey: ['sandbox-sessions', me?.workspace_id],
@@ -198,6 +200,8 @@ function PanelLayout() {
           ownerRole={ownerRole}
           onLogout={logout}
           alertCount={alertCount}
+          receiptCount={receiptCount}
+          userRole={role}
         />
       )}
       <div className={styles.panel__content}>

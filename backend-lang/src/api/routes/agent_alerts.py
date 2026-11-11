@@ -2,7 +2,7 @@
 Router /workspaces/{workspace_id}/agent-alerts — Alertas del agente de IA.
 """
 import logging
-from typing import Literal, Optional
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -23,6 +23,23 @@ class AgentAlertOut(BaseModel):
     reason: str
     resolved: bool
     created_at: str
+
+
+# /count DEBE ir antes de cualquier ruta con {alert_id} para evitar ambigüedad en FastAPI
+@router.get(
+    "/workspaces/{workspace_id}/agent-alerts/count",
+    summary="Conteo de alertas no resueltas",
+    dependencies=[Depends(require_workspace_access("staff"))],
+)
+async def count_agent_alerts(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    n = (await db.execute(
+        text("SELECT COUNT(*) FROM agent_alerts WHERE workspace_id=:workspace_id AND resolved=FALSE"),
+        {"workspace_id": workspace_id},
+    )).scalar_one_or_none()
+    return {"count": int(n or 0)}
 
 
 @router.get(
@@ -75,19 +92,3 @@ async def resolve_agent_alert(
         raise HTTPException(status_code=404, detail="Alerta no encontrada.")
     await db.commit()
     return dict(row)
-
-
-@router.get(
-    "/workspaces/{workspace_id}/agent-alerts/count",
-    summary="Conteo de alertas no resueltas",
-    dependencies=[Depends(require_workspace_access("staff"))],
-)
-async def count_agent_alerts(
-    workspace_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    n = (await db.execute(
-        text("SELECT COUNT(*) FROM agent_alerts WHERE workspace_id=:workspace_id AND resolved=FALSE"),
-        {"workspace_id": workspace_id},
-    )).scalar_one_or_none()
-    return {"count": n}

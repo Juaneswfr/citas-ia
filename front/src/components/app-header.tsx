@@ -22,12 +22,7 @@ const TITLES: Record<string, string> = {
   "/onboarding": "Configura tu negocio",
 };
 
-function roleLabel(role: string | null) {
-  if (role === 'workspace_owner') return 'Propietario';
-  if (role === 'manager') return 'Manager';
-  if (role === 'staff') return 'Staff';
-  return 'Usuario';
-}
+import { roleLabel } from "@/lib/roles";
 
 export function AppHeader() {
   const path = useRouterState({ select: (s) => s.location.pathname });

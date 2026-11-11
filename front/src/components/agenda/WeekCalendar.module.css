@@ -211,3 +211,11 @@
   0%, 100% { opacity: 0.35; }
   50%       { opacity: 0.6; }
 }
+
+/* Cita completada: se atenúa para distinguirla de las pendientes */
+.week-calendar__event--done { opacity: 0.72; }
+
+/* En pantallas angostas las 7 columnas se desplazan horizontalmente en vez de aplastarse. */
+@media (max-width: 879px) {
+  .week-calendar { min-width: 720px; }
+}

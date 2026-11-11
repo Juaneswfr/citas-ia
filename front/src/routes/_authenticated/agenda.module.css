@@ -30,10 +30,14 @@
 
 .agenda-page__title {
   margin: 0;
-  font: 400 22px/1 var(--font-serif);
+  font: 400 22px/1.1 var(--font-serif);
   color: var(--ink-1);
   min-width: 160px;
+  text-transform: capitalize;
 }
+
+
+.agenda-page__scroll { overflow-x: auto; }
 
 .agenda-page__controls {
   margin-left: auto;
@@ -63,6 +67,7 @@
 }
 
 .agenda-page__team-member {
+  font: inherit;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -70,10 +75,14 @@
   border-radius: var(--r-full);
   background: var(--surface);
   border: 1px solid var(--line);
-  cursor: pointer;
 }
 
 .agenda-page__team-name {
   font: 500 12.5px/1 var(--font-sans);
   color: var(--ink-1);
+}
+
+@media (max-width: 879px) {
+  .agenda-page__title { min-width: 0; font-size: 18px; }
+  .agenda-page__controls { margin-left: 0; width: 100%; justify-content: space-between; }
 }

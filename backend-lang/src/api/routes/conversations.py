@@ -10,10 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from core.database import get_db
-from core.security import require_workspace_access
+from core.security import ROLE_HIERARCHY, require_workspace_access
 from schemas.conversation import (
     ConversationOut, CustomerCreate, CustomerOut, CustomerUpdate, MessageOut
 )
+from schemas.customer_summary import CustomerSummaryOut
+from services import customer_summary_service
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["conversations", "customers"])
@@ -89,6 +91,21 @@ async def get_customer(
     if not row:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
     return dict(row)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/customers/{customer_id}/summary",
+    response_model=CustomerSummaryOut,
+    summary="Resumen del cliente: citas, estadísticas y pagos (pagos solo manager o superior)",
+)
+async def get_customer_summary(
+    workspace_id: str,
+    customer_id: str,
+    user: dict = Depends(require_workspace_access("staff")),
+    db: AsyncSession = Depends(get_db),
+):
+    can_see_finance = ROLE_HIERARCHY.get(user.get("role", "viewer"), -1) >= ROLE_HIERARCHY["manager"]
+    return await customer_summary_service.get_customer_summary(db, workspace_id, customer_id, can_see_finance)
 
 
 @router.patch(

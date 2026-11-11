@@ -1,5 +1,5 @@
 # CLAUDE.md — [Nombre del proyecto]
-# Plantilla canónica ATENEA — copiar y adaptar al proyecto
+# Plantilla canónica — copiar y adaptar al proyecto
 
 # ──────────────────────────────────────────
 # 1. ARCHIVOS DE CONSTITUCIÓN
@@ -10,12 +10,7 @@
 .constitution/front.md                 # Frontend React
 .constitution/backend.md               # Backend Express o FastAPI
 .constitution/database.md              # Base de datos / ORM / queries
-.constitution/auth/integration.md         # Autenticación / integracion
 .constitution/users.md                 # Usuarios internos (Clarity / Atlas)
-.constitution/users_external.md        # Usuarios externos (B2C / portal público)
-.constitution/areas.md                 # Áreas / departamentos
-.constitution/storage.md               # Archivos (PDFs, fotos, docs)
-.constitution/atlas.md                 # Consumo de APIs de Atlas
 
 # ──────────────────────────────────────────
 # 2. INICIO DE SESIÓN — CHECKLIST OBLIGATORIO

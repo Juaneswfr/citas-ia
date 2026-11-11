@@ -90,6 +90,10 @@ class Settings(BaseSettings):
                 raise ValueError("KAPSO_SECRETS_KEY no es una clave Fernet válida")
         return self
 
+    # ── Archivos subidos (comprobantes de pago) ────────────────────────────
+    # Carpeta en disco. En producción debe ser un volumen persistente (ver docker-compose.yml).
+    uploads_dir: str = Field(default="uploads", alias="UPLOADS_DIR")
+
     # ── Sentry ─────────────────────────────────────────────────────────────
     sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
 

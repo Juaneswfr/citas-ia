@@ -178,10 +178,23 @@
   flex-shrink: 0;
 }
 
-.sidebar__user-action {
+.sidebar__logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--ink-3);
+  font: 500 13px/1.2 var(--font-sans);
   cursor: pointer;
-  flex-shrink: 0;
+}
+
+.sidebar__logout:hover {
+  background: var(--line);
+  color: var(--ink-1);
 }
 
 /* ── User footer ── */

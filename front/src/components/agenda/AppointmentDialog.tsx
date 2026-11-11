@@ -8,6 +8,7 @@ import { useServices } from '@/hooks/use-services';
 import { listCalendars, listChannels } from '@/lib/api/channels';
 import { Button } from '@/components/hilo/primitives';
 import { fmtCOP } from '@/lib/hilo-data';
+import { Modal } from '@/components/finanzas/ui';
 import { CustomerSearch } from './CustomerSearch';
 import type { CustomerOut } from '@/lib/types/api';
 import styles from './AppointmentDialog.module.css';
@@ -83,19 +84,7 @@ export function AppointmentDialog({ open, onClose, initialDate, initialTime }: A
   if (!open) return null;
 
   return (
-    <div className={styles['apt-dialog-overlay']} onClick={onClose}>
-      <div
-        className={styles['apt-dialog-panel']}
-        onClick={e => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Nueva cita"
-      >
-        <div className={styles['apt-dialog-header']}>
-          <h2 className={styles['apt-dialog-title']}>Nueva cita</h2>
-          <button className={styles['apt-dialog-close']} type="button" onClick={onClose} aria-label="Cerrar">✕</button>
-        </div>
-
+    <Modal title="Nueva cita" onClose={onClose}>
         <form onSubmit={handleSubmit} className={styles['apt-dialog']}>
 
           {!activeCalendar && (
@@ -179,7 +168,6 @@ export function AppointmentDialog({ open, onClose, initialDate, initialTime }: A
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

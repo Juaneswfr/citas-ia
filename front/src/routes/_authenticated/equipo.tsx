@@ -1,11 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Avatar, Button } from "@/components/hilo/primitives";
 import { useAuth } from "@/lib/auth-context";
 import { listMembers, inviteMember, removeMember } from "@/lib/api/workspaces";
-import type { MemberOut } from "@/lib/types/api";
+import { CalendarDays, CalendarCheck } from "lucide-react";
+import { listCalendars } from "@/lib/api/channels";
+import { getGoogleCalendarUrl } from "@/lib/api/auth";
+import type { MemberOut, CalendarOut } from "@/lib/types/api";
+import { roleLabel } from "@/lib/roles";
+
 
 export const Route = createFileRoute("/_authenticated/equipo")({
   head: () => ({ meta: [{ title: "Equipo · Hilo" }] }),
@@ -14,13 +19,6 @@ export const Route = createFileRoute("/_authenticated/equipo")({
 
 const HUES = ['clay','wine','mustard','steel','sage','plum','teal'];
 const memberHue = (id: string) => HUES[id.charCodeAt(0) % HUES.length];
-
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'Propietario',
-  manager: 'Manager',
-  staff: 'Staff',
-  viewer: 'Observador',
-};
 
 const ROLES = ['staff', 'manager', 'viewer'] as const;
 
@@ -43,6 +41,36 @@ function EquipoPage() {
     enabled: !!workspaceId,
     staleTime: 60_000,
   });
+
+  const { data: calendars = [] } = useQuery<CalendarOut[]>({
+    queryKey: ['calendars', workspaceId],
+    queryFn: () => listCalendars(workspaceId!),
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+  });
+  const [connectingId, setConnectingId] = useState<string | null>(null);
+
+  const connectCalendar = async (memberId: string) => {
+    if (!workspaceId) return;
+    setConnectingId(memberId);
+    try {
+      const { url } = await getGoogleCalendarUrl(workspaceId, 'equipo', memberId);
+      window.location.href = url;
+    } catch {
+      toast.error('No se pudo iniciar la conexión con Google. Intenta de nuevo.');
+      setConnectingId(null);
+    }
+  };
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('calendar_connected')) {
+      toast.success('Google Calendar conectado');
+      qc.invalidateQueries({ queryKey: ['calendars', workspaceId] });
+    } else if (p.get('calendar_error')) {
+      toast.error('No se pudo conectar Google Calendar');
+    }
+  }, []);
 
   const invite = useMutation({
     mutationFn: () => inviteMember(workspaceId!, email.trim(), role),
@@ -93,7 +121,7 @@ function EquipoPage() {
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ font: '500 12px/1 var(--font-sans)', color: 'var(--ink-2)' }}>Rol</span>
             <select value={role} onChange={e => setRole(e.target.value)} style={inputStyle}>
-              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              {ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -141,15 +169,38 @@ function EquipoPage() {
                   </div>
                 )}
               </div>
+              {(() => {
+                const connected = calendars.some(c => c.member_id === m.id && c.sync_status === 'active');
+                return (
+                  <button
+                    onClick={() => !connected && connectCalendar(m.id)}
+                    disabled={connected || connectingId === m.id}
+                    title={connected ? 'Google Calendar conectado' : 'Conectar Google Calendar'}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      font: '500 12px/1 var(--font-sans)', padding: '6px 10px',
+                      borderRadius: 'var(--r-full)', cursor: connected ? 'default' : 'pointer',
+                      border: `1px solid ${connected ? '#1e8e3e' : 'var(--line-strong)'}`,
+                      background: connected ? '#e6f4ea' : 'var(--surface)',
+                      color: connected ? '#1e8e3e' : 'var(--ink-2)',
+                    }}
+                  >
+                    {connected
+                      ? <CalendarCheck size={16} strokeWidth={2.2} />
+                      : <CalendarDays size={16} strokeWidth={2.2} color="#4285F4" />}
+                    {connected ? 'Conectado ✓' : connectingId === m.id ? 'Conectando…' : 'Conectar'}
+                  </button>
+                );
+              })()}
               <span style={{
                 font: '500 11px/1 var(--font-sans)', padding: '3px 9px',
                 borderRadius: 'var(--r-full)', letterSpacing: '0.02em',
                 background: 'var(--surface-2)', color: 'var(--ink-2)',
                 border: '1px solid var(--line)',
               }}>
-                {ROLE_LABEL[m.member_role] ?? m.member_role}
+                {roleLabel(m.member_role)}
               </span>
-              {m.member_role !== 'owner' && (
+              {m.member_role !== 'workspace_owner' && (
                 <button
                   onClick={() => remove.mutate(m.user_id)}
                   disabled={remove.isPending}

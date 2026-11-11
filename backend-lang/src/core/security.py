@@ -7,6 +7,7 @@ operación fuera del alcance del rol.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import UUID
 
 import jwt
 from fastapi import Depends, HTTPException, Security, status
@@ -32,7 +33,11 @@ def create_access_token(payload: dict) -> str:
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.jwt_access_expire_minutes
     )
-    data = {**payload, "exp": expire}
+    # asyncpg devuelve UUID nativos; el JWT solo admite tipos JSON
+    data = {
+        **{k: (str(v) if isinstance(v, UUID) else v) for k, v in payload.items()},
+        "exp": expire,
+    }
     return jwt.encode(data, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

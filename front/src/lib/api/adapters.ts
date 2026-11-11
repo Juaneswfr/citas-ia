@@ -77,6 +77,7 @@ export function toHiloAppointment(
     home: apt.is_home_service,
     customerId: apt.customer_id,
     startAt: apt.start_at,
+    rawStatus: apt.status,
   };
 }
 

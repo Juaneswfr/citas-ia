@@ -1,83 +1,89 @@
-import { format, startOfMonth, endOfMonth, parseISO, getDate } from 'date-fns';
+import { useMemo } from 'react';
+import { format, startOfMonth, endOfMonth, parseISO, getDaysInMonth, isToday } from 'date-fns';
 import { useAppointments } from '@/hooks/use-appointments';
+import { Button } from '@/components/hilo/primitives';
 import styles from './MonthView.module.css';
 
 interface MonthViewProps {
-  onSlotClick: (date: string) => void;
+  /** Cualquier fecha del mes a mostrar. */
+  month: Date;
+  /** Clic en un día: la página lo abre en la vista Día. */
+  onDayClick: (date: Date) => void;
 }
 
-export function MonthView({ onSlotClick }: MonthViewProps) {
-  const now        = new Date();
-  const monthStart = startOfMonth(now);
-  const monthEnd   = endOfMonth(now);
-  const { data: appointments = [] } = useAppointments({
+const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const MAX_DOTS = 4;
+
+export function MonthView({ month, onDayClick }: MonthViewProps) {
+  const monthStart = startOfMonth(month);
+  const monthEnd = endOfMonth(month);
+  const { data: appointments = [], isLoading, isError, refetch } = useAppointments({
     from_date: format(monthStart, 'yyyy-MM-dd'),
-    to_date:   format(monthEnd,   'yyyy-MM-dd'),
+    to_date: format(monthEnd, 'yyyy-MM-dd'),
   });
 
-  const countByDay = new Map<number, number>();
-  for (const a of appointments) {
-    if (!a.startAt) continue;
-    const d = getDate(parseISO(a.startAt));
-    countByDay.set(d, (countByDay.get(d) ?? 0) + 1);
+  // Las canceladas y las no asistidas no ocupan agenda: no cuentan en el mes.
+  const countByDay = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const a of appointments) {
+      if (!a.startAt || a.rawStatus === 'cancelled' || a.rawStatus === 'noshow') continue;
+      const day = parseISO(a.startAt).getDate();
+      counts.set(day, (counts.get(day) ?? 0) + 1);
+    }
+    return counts;
+  }, [appointments]);
+
+  const daysInMonth = getDaysInMonth(month);
+  const offset = (monthStart.getDay() + 6) % 7; // lunes = columna 0
+  const cells = Array.from({ length: offset + daysInMonth }, (_, i) => i - offset + 1);
+
+  if (isError) {
+    return (
+      <div className={`card ${styles['month-view']}`}>
+        <div className={styles['month-view__state']}>
+          No se pudo cargar el mes.
+          <div><Button variant="secondary" size="sm" onClick={() => refetch()}>Reintentar</Button></div>
+        </div>
+      </div>
+    );
   }
 
-  const firstDow   = monthStart.getDay();
-  const daysInMonth = monthEnd.getDate();
-  const offset     = (firstDow + 6) % 7; // lunes = columna 0
-  const cells      = Array.from({ length: offset + daysInMonth }, (_, i) => i - offset + 1);
-
-  const todayNum = now.getDate();
-
   return (
-    <div className={`card ${styles['month-view']}`}>
+    <div className={`card ${styles['month-view']}`} aria-busy={isLoading}>
       <div className={styles['month-view__grid']}>
-        {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
+        {WEEKDAYS.map(d => (
           <div key={d} className={styles['month-view__header-cell']}>{d}</div>
         ))}
         {cells.map((n, i) => {
-          const valid   = n >= 1 && n <= daysInMonth;
-          const isToday = valid && n === todayNum;
-          const cnt     = valid ? (countByDay.get(n) ?? 0) : 0;
-          const dateStr = valid
-            ? format(new Date(now.getFullYear(), now.getMonth(), n), 'yyyy-MM-dd')
-            : '';
+          if (n < 1) return <div key={i} className={`${styles['month-view__cell']} ${styles['month-view__cell--empty']}`} />;
 
-          const cellClass = [
-            styles['month-view__cell'],
-            isToday ? styles['month-view__cell--today'] : '',
-            !valid  ? styles['month-view__cell--empty'] : '',
-          ].filter(Boolean).join(' ');
+          const date = new Date(month.getFullYear(), month.getMonth(), n);
+          const today = isToday(date);
+          const cnt = countByDay.get(n) ?? 0;
+          const label = `${format(date, 'd')}${cnt ? `, ${cnt} ${cnt === 1 ? 'cita' : 'citas'}` : ''}`;
 
           return (
-            <div
+            <button
               key={i}
-              className={cellClass}
-              onClick={() => valid && onSlotClick(dateStr)}
+              type="button"
+              aria-label={label}
+              className={`${styles['month-view__cell']} ${today ? styles['month-view__cell--today'] : ''}`}
+              onClick={() => onDayClick(date)}
             >
-              {valid && (
-                <>
-                  <div
-                    className={[
-                      `tnum ${styles['month-view__day-num']}`,
-                      isToday ? styles['month-view__day-num--today'] : '',
-                    ].filter(Boolean).join(' ')}
-                  >
-                    {n}
-                  </div>
-                  {cnt > 0 && (
-                    <div className={styles['month-view__dots']}>
-                      {Array.from({ length: Math.min(cnt, 5) }).map((_, k) => (
-                        <span key={k} className={styles['month-view__dot']} />
-                      ))}
-                      {cnt > 5 && (
-                        <span className={styles['month-view__dot-overflow']}>+{cnt - 5}</span>
-                      )}
-                    </div>
-                  )}
-                </>
+              <span className={`tnum ${styles['month-view__day-num']} ${today ? styles['month-view__day-num--today'] : ''}`}>
+                {n}
+              </span>
+              {cnt > 0 && (
+                <span className={styles['month-view__summary']}>
+                  <span className={styles['month-view__dots']}>
+                    {Array.from({ length: Math.min(cnt, MAX_DOTS) }).map((_, k) => (
+                      <span key={k} className={styles['month-view__dot']} />
+                    ))}
+                  </span>
+                  <span className={styles['month-view__count']}>{cnt} {cnt === 1 ? 'cita' : 'citas'}</span>
+                </span>
               )}
-            </div>
+            </button>
           );
         })}
       </div>

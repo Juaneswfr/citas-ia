@@ -160,12 +160,12 @@ async def update_service(
     "/workspaces/{workspace_id}/services/{service_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Desactivar servicio (soft delete).",
-    dependencies=[Depends(require_workspace_access("owner"))],
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def deactivate_service(
     workspace_id: str,
     service_id: str,
-    current_user: dict = Depends(require_workspace_access("owner")),
+    current_user: dict = Depends(require_workspace_access("workspace_owner")),
     db: AsyncSession = Depends(get_db),
 ):
     await db.execute(

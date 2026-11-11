@@ -5,7 +5,7 @@
 # CitasIA / Hilo
 
 SaaS multi-tenant de citas por WhatsApp para barberías y negocios de servicios.
-Backend FastAPI + LangGraph en `backend-lang/`, front TanStack Start en `front/`, datos en PostgreSQL (Supabase).
+Backend FastAPI + LangGraph en `backend-lang/`, front TanStack Start en `front/`, datos en PostgreSQL (servidor propio, sin Supabase).
 
 ## Desarrollo local
 
@@ -37,6 +37,7 @@ git pull && docker compose up --build -d
 
 - `backend-lang/.env` — DATABASE_URL, JWT_SECRET, KAPSO_*, ANTHROPIC_API_KEY, etc.
 - `front/.env` — DATABASE_URL, JWT_SECRET, VITE_API_URL, VITE_META_APP_ID, VITE_META_EMBEDDED_SIGNUP_CONFIG_ID
+- `UPLOADS_DIR` (opcional): ya la fija `docker-compose.yml` a `/app/uploads`; en local por defecto es `backend-lang/uploads`.
 
 ---
 
@@ -155,7 +156,56 @@ uv run python migrate.py           # aplica pendientes
 uv run python migrate.py --status  # ver estado
 ```
 
-Migración más reciente: `013_calendar_member.sql` — agrega `member_id` a `calendars` y reemplaza el UNIQUE constraint con índices parciales.
+Migración más reciente: `017_payment_receipts.sql`. **Todas (001–017) están aplicadas en la BD** (016 y 017 el 2026-11-11). El backend que las usa aún no está desplegado.
+
+Ojo con el runner (`core/migrations.py`): parte el archivo por `;` + salto de línea y envía cada trozo a la BD. Un comentario suelto al final del archivo llega como consulta vacía y lo hace fallar; los comentarios van antes de una sentencia.
+
+Qué agregan las últimas:
+- `015_payment_attachments.sql` — comprobantes adjuntos a movimientos (`movement_attachments`, se consulta al listar ventas y movimientos).
+- `016_followups.sql` — seguimiento por WhatsApp (`followup_settings`, `followup_templates`, `followup_sends`, `customers.marketing_opt_out`, `appointments.confirmed_by_customer_at`). Sin ella el worker de seguimientos falla en cada pasada.
+- `017_payment_receipts.sql` — comprobantes recibidos por WhatsApp (`payment_receipts`).
+
+---
+
+## Finanzas (módulo contable simple)
+
+Modelo de caja, sin partida doble. Detalle en `backend-lang/src/services/accounting_*.py` y `front/src/components/finanzas/`.
+
+- Fuente de verdad: tabla `movements` (ingresos/gastos, se anulan con `voided_at`, nunca se borran). Cuentas por cobrar/pagar = total de la orden − movimientos no anulados.
+- Cita `completed` → orden de venta automática (idempotente por `appointment_id`). Barbero = `calendars.member_id`.
+- Comisión: regla por miembro en `member_compensation` (`commission_bps`, 5000 = 50 %); se **congela en cada línea** al vender. Propinas: del barbero, no son ingreso del negocio.
+- Liquidaciones (`commission_payouts`): borrador reserva las líneas; al pagar genera el gasto (comisión + base) y, si hay alquiler de silla, el ingreso.
+- Rutas `/workspaces/{id}/accounting/*`: solo `manager` o superior.
+- Fuera de alcance: IVA/DIAN, factura electrónica, inventario, comisión escalonada, prestaciones sociales.
+- Fechas: todo corte por día usa `workspaces.timezone` (el servidor corre en UTC; de noche en Colombia ya es «mañana» en UTC). Usar `TODAY_SQL` / `local_date()` de `accounting_common.py`, nunca `CURRENT_DATE`.
+- Comprobantes de pago: archivos JPG/PNG/WebP/PDF (máx. 5 MB, 5 por movimiento) adjuntos a cada movimiento (`movement_attachments`). Se guardan en disco bajo `UPLOADS_DIR` (en producción `/app/uploads`, volumen `./uploads` del host en `docker-compose.yml`; **respaldar esa carpeta**). El tipo se decide por la firma del archivo, en disco solo `uuid.ext`, la descarga exige JWT.
+- Agenda: al hacer clic en una cita (vista semanal) se abre el detalle con servicio, «Marcar completada» y «Cobrar» (con comprobante opcional). Solo owner/manager.
+- Backfill de citas ya completadas: `cd backend-lang && uv run python backfill_sales.py [--mark-paid]`.
+
+---
+
+## Seguimiento por WhatsApp (plantillas)
+
+Cuatro seguimientos automáticos: recordatorio de cita, post-visita, cobro pendiente y reactivación.
+
+- Texto **fijo**, definido en `backend-lang/src/services/followup_templates.py`. Para cambiar un texto hay que subir el sufijo `_vN` del nombre: Meta no deja editar una plantilla ya enviada a revisión.
+- Meta aprueba las plantillas **por cuenta de WhatsApp (WABA)**: cada barbería las registra en la suya desde WhatsApp › Seguimiento automático › «Activar plantillas» (`followup_service.sync_templates`). Un seguimiento solo se envía cuando su plantilla está `approved`.
+- Worker: `workers/followup_worker.py` (sustituye a `reminder_worker.py`), cada 10 min, solo entre 8:00 y 20:00 hora del negocio, con candado en BD para que un solo proceso envíe. `followup_sends` garantiza un envío por cita/venta.
+- Número sandbox y canales que no son Kapso: no admiten plantillas; el seguimiento sale como texto libre (solo llega dentro de la ventana de 24 h).
+- Botones: «Confirmar» marca `appointments.confirmed_by_customer_at`; «Cancelar» y «Agendar» pasan al agente como texto; «No más mensajes» activa `customers.marketing_opt_out`.
+- Rutas `/workspaces/{id}/followups/*`: solo `manager` o superior.
+
+## Mensajes entrantes y comprobantes de pago
+
+`services/inbound_message_service.py` decide qué hacer con cada mensaje de Kapso según su tipo (el webhook solo verifica la firma y delega):
+
+- Texto → agente de citas. Botón de plantilla → acción directa o agente.
+- Imagen o documento → `receipt_service.ingest`: descarga por Kapso (máx. 5 MB), tipo por la firma del archivo, lectura con Claude Haiku (`services/receipt_ocr.py`, mismo `MODEL` del agente) y fila `pending` en `payment_receipts`. Un PDF se guarda sin leer.
+- Audio, video, sticker, ubicación → «por ahora solo leo texto».
+- **Nada se cobra solo.** Un manager revisa en Finanzas › Comprobantes: aprobar registra el cobro en la venta elegida (`sales_service.register_payment`) y adjunta el archivo al movimiento; rechazar exige `confirmed=true`.
+- El lector de imágenes **no** es una tool del agente: el agente de citas sigue recibiendo solo texto y no puede registrar pagos.
+- Los archivos viven en `UPLOADS_DIR/<workspace>/receipts/` (misma carpeta a respaldar).
+- Fuera de alcance: abonos antes de que la cita esté completada (no hay venta a la cual aplicarlos) y canales de Meta directo.
 
 ---
 
@@ -164,6 +214,6 @@ Migración más reciente: `013_calendar_member.sql` — agrega `member_id` a `ca
 - Sin RLS: aislamiento entre workspaces depende de JWT + `require_workspace_access`
 - PK surrogate en `kapso_customers`: PK(id) + UNIQUE(workspace_id)
 - `rate_limits`: PK (key, window_start), hits DEFAULT 0
-- T002 pendiente: guards `require_workspace_access("owner")` deben cambiar a `"workspace_owner"`
+- El rol `owner` no existe: usar siempre `workspace_owner` (guards y `member_role`). `tests/test_owner_guards.py` lo vigila.
 - Pendiente: rotar credencial DATABASE_URL que está en historial git
 - `KAPSO_SANDBOX_PHONE_NUMBER_ID`: valor por defecto `597907523413541` en config, sobreescribible en `.env`

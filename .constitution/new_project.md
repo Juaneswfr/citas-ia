@@ -164,21 +164,9 @@ Si el proyecto maneja cualquier tipo de archivo (fotos, PDFs, comprobantes, adju
 Variables de entorno mínimas para SharePoint:
 
 ```env
-# Credenciales del Service Principal compartido " - SharePoint"
-AZURE_TENANT_ID=b08e2e5a-2b75-45e7-9a7d-93be3921f296
-SHAREPOINT_CLIENT_ID=9190b28f-589b-4c91-a77f-f824aa4dbe48
-SHAREPOINT_CLIENT_SECRET=<solicitar al equipo de TI>
-SHAREPOINT_DRIVE_ID=b!MpRqNxwAlku17Vs3OfMInJllbixfy7lIuyej3yT4vr5nq5kR0KoMSZZ1MtM22KCn
-SHAREPOINT_SITE=beauty.sharepoint.com/sites/gestiondocumental
 
-# Herramienta con una carpeta destino:
-SHAREPOINT_CARPETA="02_BI/Proyectos docs/[Nombre del proyecto]/[Subcarpeta]"
-
-# Herramienta con múltiples módulos (igual que Clarity):
-# SHAREPOINT_BASE_PATH="02_BI/Proyectos docs/[Nombre del proyecto]"
 ```
 
-> El `SHAREPOINT_CLIENT_SECRET` nunca está en el código. Si no está en el `.env`, pedir al equipo de TI.
 
 ---
 

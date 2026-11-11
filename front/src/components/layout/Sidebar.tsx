@@ -1,6 +1,7 @@
 import { Icon, HiloMark } from '@/components/hilo/icons';
 import { Avatar } from '@/components/hilo/primitives';
-import { NAV } from '@/lib/nav';
+import { visibleNav } from '@/lib/nav';
+import { roleLabel } from '@/lib/roles';
 import styles from './Sidebar.module.css';
 
 interface SidebarProps {
@@ -14,6 +15,10 @@ interface SidebarProps {
   ownerRole?: string;
   onLogout?: () => void;
   alertCount?: number;
+  /** Comprobantes de WhatsApp por revisar (se muestra en Finanzas). */
+  receiptCount?: number;
+  /** Rol del usuario en el workspace; oculta secciones restringidas (finanzas). */
+  userRole?: string | null;
 }
 
 export function Sidebar({
@@ -27,6 +32,8 @@ export function Sidebar({
   ownerRole = '',
   onLogout,
   alertCount = 0,
+  receiptCount = 0,
+  userRole = null,
 }: SidebarProps) {
   return (
     <aside className={styles.sidebar}>
@@ -38,7 +45,7 @@ export function Sidebar({
         </div>
       </div>
 
-      {NAV.map(g => (
+      {visibleNav(userRole).map(g => (
         <div key={g.group} className={styles.sidebar__group}>
           <div className={`eyebrow ${styles['sidebar__group-label']}`}>{g.group}</div>
           <div className={styles['sidebar__group-items']}>
@@ -55,6 +62,9 @@ export function Sidebar({
                   <span className={styles['sidebar__item-label']}>{item.label}</span>
                   {item.id === 'alertas' && alertCount > 0 && (
                     <span className={styles['sidebar__item-count']}>{alertCount > 99 ? '99+' : alertCount}</span>
+                  )}
+                  {item.id === 'finanzas' && receiptCount > 0 && (
+                    <span className={styles['sidebar__item-count']}>{receiptCount > 99 ? '99+' : receiptCount}</span>
                   )}
                   {item.soon && (
                     <span className={styles['sidebar__item-badge']}>pronto</span>
@@ -82,16 +92,14 @@ export function Sidebar({
         <Avatar name={ownerName} initials={ownerInitials} hue="wine" size={32} />
         <div className={styles['sidebar__user-info']}>
           <div className={styles['sidebar__user-name']}>{ownerName}</div>
-          <div className={styles['sidebar__user-role']}>{ownerRole}</div>
+          <div className={styles['sidebar__user-role']}>{ownerRole ? roleLabel(ownerRole) : ''}</div>
         </div>
-        <Icon
-          name="dotsV"
-          size={16}
-          className={styles['sidebar__user-action']}
-          onClick={onLogout}
-          title="Cerrar sesión"
-        />
       </div>
+
+      <button type="button" className={styles.sidebar__logout} onClick={onLogout}>
+        <Icon name="logout" size={16} />
+        <span>Cerrar sesión</span>
+      </button>
     </aside>
   );
 }

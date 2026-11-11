@@ -5,11 +5,24 @@
   max-width: 760px;
 }
 
+.day-view__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0 6px;
+}
+
 .day-view__heading {
   margin: 0;
-  padding: 12px 0 6px;
-  font: 400 20px/1 var(--font-serif);
+  font: 400 20px/1.1 var(--font-serif);
   color: var(--ink-1);
+  text-transform: capitalize;
+}
+
+.day-view__count {
+  font: 500 12px/1 var(--font-sans);
+  color: var(--ink-3);
 }
 
 /* ── Skeleton ── */
@@ -103,12 +116,20 @@
   flex-shrink: 0;
 }
 
+.day-view__connector-dot--off { background: var(--line-strong); }
+
 /* ── Appointment card ── */
 .day-view__card-wrap {
   padding: 8px 0 12px;
 }
 
 .day-view__card {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color var(--dur-1), box-shadow var(--dur-1);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -119,17 +140,49 @@
   gap: 10px;
 }
 
+.day-view__card:hover { border-color: var(--wine-200); box-shadow: var(--shadow-sm); }
+.day-view__card:focus-visible { outline: 2px solid var(--wine); outline-offset: 2px; }
+.day-view__card--done { border-left-color: var(--success); }
+.day-view__card--off { opacity: 0.6; border-left-color: var(--line-strong); }
+.day-view__card--off .day-view__card-name { text-decoration: line-through; }
+
 .day-view__card-info {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .day-view__card-name {
+  display: block;
   font: 500 14px/1.2 var(--font-sans);
   color: var(--ink-1);
 }
 
 .day-view__card-svc {
+  display: block;
   font: 400 12px/1 var(--font-sans);
   color: var(--ink-3);
   margin-top: 3px;
+}
+
+/* ── Estado de la cita + WhatsApp ── */
+.day-view__status {
+  font: 500 11px/1 var(--font-sans);
+  padding: 4px 9px;
+  border-radius: var(--r-full);
+  background: var(--line-soft);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.day-view__status--completed { background: var(--wine-100); color: var(--success); }
+.day-view__status--pending, .day-view__status--confirmed { background: var(--warning-bg); color: var(--warning); }
+.day-view__status--cancelled, .day-view__status--noshow { background: var(--danger-bg); color: var(--danger); }
+.day-view__wa { color: var(--wa-ink); flex-shrink: 0; }
+
+@media (max-width: 879px) {
+  .day-view { max-width: none; padding: 6px 12px; }
+  .day-view__row, .day-view__skeleton-row { grid-template-columns: 50px 20px 1fr; }
+  .day-view__time-col { padding-right: 8px; }
+  .day-view__card { flex-wrap: wrap; }
 }

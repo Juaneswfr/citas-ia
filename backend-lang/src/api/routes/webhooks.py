@@ -410,32 +410,13 @@ async def _process_kapso_events(event: str, items: list):
         return
     if event != "whatsapp.message.received":
         return
-    from services.conversation_service import ConversationService
-    from services.agent_service import AgentService
+    # Texto, botones de plantilla, comprobantes (imagen/documento) y demás tipos: ver inbound_message_service.
+    from services.inbound_message_service import handle_kapso_message
 
     failed = False
     for item in items:
         try:
-            msg = item.get("message") or {}
-            customer_phone = msg.get("from")
-            text = (msg.get("text") or {}).get("body", "")
-            business_phone_number_id = item.get("phone_number_id")
-            if not customer_phone or not text or not business_phone_number_id:
-                continue
-            conversation = await ConversationService.find_or_create(
-                customer_phone=customer_phone, phone_number_id=business_phone_number_id
-            )
-            conversation["customer_phone"] = customer_phone
-            await ConversationService.save_message(
-                conversation_id=conversation["id"],
-                workspace_id=conversation["workspace_id"],
-                channel_id=conversation["channel_id"],
-                customer_id=conversation.get("customer_id"),
-                direction="inbound",
-                sender_type="customer",
-                content=text,
-            )
-            await AgentService.run(conversation=conversation, message=text)
+            await handle_kapso_message(item)
         except Exception as e:
             failed = True
             log.error("[webhooks/kapso] error procesando evento | err=%s", type(e).__name__, exc_info=False)

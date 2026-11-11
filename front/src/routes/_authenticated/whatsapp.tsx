@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { getAgentConfig, updateAgentConfig, getAgentHours, updateAgentHours } from "@/lib/api/agent";
 import type { AgentHoursOut } from "@/lib/types/api";
+import { canManageFinance } from "@/lib/nav";
+import { FollowupsSection } from "@/components/seguimiento/FollowupsSection";
 
 export const Route = createFileRoute("/_authenticated/whatsapp")({
   head: () => ({ meta: [{ title: "WhatsApp · Hilo" }] }),
@@ -126,7 +128,7 @@ function HoursStrip({ hours }: { hours: AgentHoursOut[] }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 function WhatsAppAgentPage() {
-  const { workspaceId } = useAuth();
+  const { workspaceId, role } = useAuth();
   const qc = useQueryClient();
 
   // ── Config (global toggle + OOH message) ────────────────────────────────────
@@ -333,6 +335,9 @@ function WhatsAppAgentPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Seguimiento automático (solo dueño o administrador; el backend exige manager) ── */}
+      {canManageFinance(role) && <FollowupsSection />}
 
     </div>
   );

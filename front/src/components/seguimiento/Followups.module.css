@@ -1,0 +1,73 @@
+/* Seguimiento por WhatsApp — BEM (bloque__elemento--modificador). Sin estilos inline. */
+
+.followups { display: flex; flex-direction: column; gap: 16px; }
+.followups__intro { margin: 8px 0 0; font: 400 13px/1.5 var(--font-sans); color: var(--ink-3); }
+.followups__notice {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  font: 400 13px/1.5 var(--font-sans); color: var(--ink-2);
+}
+.followups__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.followups__list { display: flex; flex-direction: column; gap: 12px; }
+.followups__save { display: flex; align-items: center; gap: 12px; }
+.followups__hint { font: 400 12px/1.3 var(--font-sans); color: var(--ink-4); }
+.followups__state { padding: 24px 16px; text-align: center; font: 400 14px/1.5 var(--font-sans); color: var(--ink-3); }
+
+/* Tarjeta de un tipo de seguimiento */
+.followup {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px 18px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+}
+.followup--off .followup__body, .followup--off .followup__buttons { opacity: 0.55; }
+.followup__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.followup__title { font: 600 14px/1.2 var(--font-sans); color: var(--ink-1); }
+.followup__description { margin-top: 4px; font: 400 12.5px/1.4 var(--font-sans); color: var(--ink-3); }
+.followup__body {
+  margin: 0; padding: 11px 13px; border-radius: var(--r-sm); background: var(--surface-2);
+  border: 1px solid var(--line-soft); font: 400 13px/1.55 var(--font-sans); color: var(--ink-2);
+}
+.followup__param {
+  padding: 1px 6px; border-radius: 99px; background: var(--wine-100); color: var(--wine);
+  font-weight: 500; white-space: nowrap;
+}
+.followup__buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.followup__button {
+  padding: 5px 12px; border-radius: 99px; border: 1px solid var(--line-strong);
+  font: 500 12px/1 var(--font-sans); color: var(--ink-2);
+}
+.followup__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* Interruptor: el checkbox real queda oculto pero enfocable */
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; flex-shrink: 0; }
+.switch__input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch__track {
+  position: relative; width: 38px; height: 22px; border-radius: 99px; background: var(--line-strong);
+  transition: background var(--dur-2) var(--ease-std);
+}
+.switch__track::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform var(--dur-2) var(--ease-std);
+}
+.switch__input:checked + .switch__track { background: var(--wine); }
+.switch__input:checked + .switch__track::after { transform: translateX(16px); }
+.switch__input:focus-visible + .switch__track { outline: 2px solid var(--wine); outline-offset: 2px; }
+.switch__label { min-width: 54px; font: 500 12px/1 var(--font-sans); color: var(--ink-2); }
+
+/* Tiempo del envío */
+.timing { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/1 var(--font-sans); color: var(--ink-2); }
+.timing__input {
+  width: 68px; padding: 7px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-strong);
+  background: var(--surface-2); font: 500 13px/1 var(--font-sans); color: var(--ink-1); outline: none;
+}
+.timing__input:focus { border-color: var(--wine); }
+.timing__input:disabled { opacity: 0.5; }
+
+/* Estado de la plantilla en WhatsApp */
+.status { padding: 4px 10px; border-radius: 99px; font: 500 11px/1.2 var(--font-sans); background: var(--line-soft); color: var(--ink-2); }
+.status--ok { background: var(--wine-100); color: var(--success); }
+.status--pending { background: var(--warning-bg); color: var(--warning); }
+.status--error { background: var(--danger-bg); color: var(--danger); }
+
+@media (max-width: 640px) {
+  .followup__head { flex-direction: column; }
+}

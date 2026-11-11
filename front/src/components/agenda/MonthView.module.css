@@ -22,6 +22,14 @@
 
 /* ── Day cells ── */
 .month-view__cell {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  font: inherit;
+  border-top: 0;
+  border-right: 0;
   min-height: 88px;
   padding: 8px;
   border-left: 1px solid var(--line-soft);
@@ -35,12 +43,16 @@
   border-left: none;
 }
 
+.month-view__cell:not(.month-view__cell--empty):hover { background: var(--surface-2); }
+.month-view__cell:focus-visible { outline: 2px solid var(--wine); outline-offset: -2px; }
+
 .month-view__cell--today {
   background: var(--wine-50);
 }
 
 .month-view__cell--empty {
   cursor: default;
+  background: var(--surface-tint);
 }
 
 /* ── Day number ── */
@@ -76,7 +88,22 @@
   background: var(--wine-300);
 }
 
-.month-view__dot-overflow {
-  font: 400 10px/1 var(--font-mono);
+.month-view__summary { display: flex; flex-direction: column; gap: 4px; }
+
+.month-view__count {
+  font: 500 11px/1 var(--font-sans);
+  color: var(--wine);
+}
+
+.month-view__state {
+  padding: 32px 16px;
+  text-align: center;
+  font: 400 14px/1.5 var(--font-sans);
   color: var(--ink-3);
+}
+
+@media (max-width: 879px) {
+  .month-view__cell { min-height: 58px; padding: 5px; }
+  .month-view__count { display: none; }
+  .month-view__header-cell { padding: 8px 2px; letter-spacing: 0.02em; }
 }

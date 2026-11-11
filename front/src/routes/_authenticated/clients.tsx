@@ -1,16 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
-import { Button, Avatar, Tag } from "@/components/hilo/primitives";
-import { fmtCOP, hueVar } from "@/lib/hilo-data";
+import { Button, Avatar } from "@/components/hilo/primitives";
 import type { HiloClient } from "@/lib/hilo-data";
-import { useCustomers, useUpdateCustomer } from "@/hooks/use-customers";
-import { useAppointments } from "@/hooks/use-appointments";
-import { useConversations, useMessages } from "@/hooks/use-conversations";
+import { useCustomers } from "@/hooks/use-customers";
+import { ClientDetail } from "@/components/clientes/ClientDetail";
 import { createCustomer } from "@/lib/api/conversations";
 import { useAuth } from "@/lib/auth-context";
 
@@ -46,179 +42,6 @@ function ClientRow({ c, active, onClick }: { c: HiloClient; active: boolean; onC
       </div>
       <span className="tnum" style={{ font:'400 11px/1 var(--font-mono)', color:'var(--ink-4)' }}>{c.visits}</span>
     </button>
-  );
-}
-
-function StatBox({ k, v, hue }: { k: string; v: string; hue?: string }) {
-  return (
-    <div style={{ flex:1, padding:'12px 14px', background:'var(--surface)', border:'1px solid var(--line)', borderRadius:'var(--r-md)' }}>
-      <div className="tnum" style={{ font:'500 20px/1 var(--font-sans)', color: hue||'var(--ink-1)' }}>{v}</div>
-      <div style={{ font:'400 11.5px/1 var(--font-sans)', color:'var(--ink-3)', marginTop:5 }}>{k}</div>
-    </div>
-  );
-}
-
-function ClientDetail({ c, isMobile, onBack }: { c: HiloClient; isMobile: boolean; onBack: () => void }) {
-  const [note, setNote] = useState(c.note);
-  const [noteSaved, setNoteSaved] = useState(true);
-  const [editingName, setEditingName] = useState(false);
-  const [name, setName] = useState(c.name);
-  const [botOn, setBotOn] = useState(c.agent_enabled);
-  const updateCustomer = useUpdateCustomer(c.id);
-
-  const handleNoteSave = () => {
-    updateCustomer.mutate({ notes: note }, { onSuccess: () => setNoteSaved(true) });
-  };
-  const handleNameSave = () => {
-    if (!name.trim()) return;
-    updateCustomer.mutate({ name: name.trim() }, { onSuccess: () => setEditingName(false) });
-  };
-
-  const { data: allApts = [] } = useAppointments();
-  const history = allApts
-    .filter(a => a.customerId === c.id)
-    .sort((a, b) => (b.startAt ?? '').localeCompare(a.startAt ?? ''))
-    .slice(0, 8);
-
-  const { data: convs = [] } = useConversations();
-  const conv = convs.find(cv => cv.customer_id === c.id);
-  const { data: messages = [] } = useMessages(conv?.id ?? '');
-  const lastMsgs = [...messages]
-    .sort((a, b) => (a.sent_at ?? a.received_at ?? a.created_at).localeCompare(b.sent_at ?? b.received_at ?? b.created_at))
-    .slice(-5);
-
-  return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflowY:'auto' }}>
-      <div style={{ padding:'20px 22px', borderBottom:'1px solid var(--line)', display:'flex', alignItems:'center', gap:14 }}>
-        {isMobile && <Button variant="ghost" size="sm" icon="chevL" onClick={onBack} style={{ padding:'7px' }}/>}
-        <Avatar name={name} hue={STATUS_HUE[c.status] as any} size={52}/>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:9 }}>
-            {editingName ? (
-              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <input
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  autoFocus
-                  onKeyDown={e => { if (e.key==='Enter') handleNameSave(); if (e.key==='Escape') setEditingName(false); }}
-                  style={{ font:'500 18px/1.1 var(--font-sans)', color:'var(--ink-1)', border:'1px solid var(--wine)', borderRadius:'var(--r-sm)', padding:'3px 8px', outline:'none', background:'var(--surface)' }}
-                />
-                <Button variant="primary" size="sm" onClick={handleNameSave} disabled={updateCustomer.isPending}>Ok</Button>
-                <Button variant="ghost" size="sm" onClick={() => { setEditingName(false); setName(c.name); }}>×</Button>
-              </div>
-            ) : (
-              <button onClick={() => setEditingName(true)} style={{ background:'none', border:'none', cursor:'pointer', padding:0, display:'flex', alignItems:'center', gap:6 }}>
-                <h2 style={{ margin:0, font:'500 21px/1.1 var(--font-sans)', color:'var(--ink-1)' }}>{name}</h2>
-                <Icon name="edit" size={13} style={{ color:'var(--ink-4)' }}/>
-              </button>
-            )}
-            <Tag hue={STATUS_HUE[c.status]} style={{ fontSize:11 }}>{c.status}</Tag>
-          </div>
-          <div className="tnum" style={{ font:'400 13px/1 var(--font-sans)', color:'var(--ink-3)', marginTop:5 }}>{c.phone}</div>
-        </div>
-        <Button variant="secondary" size="sm" icon="whatsapp" style={{ color:'var(--wa-ink)' }}>
-          {!isMobile && 'Escribir'}
-        </Button>
-      </div>
-
-      <div style={{ padding:'20px 22px', display:'flex', flexDirection:'column', gap:20 }}>
-        <div style={{ display:'flex', gap:10 }}>
-          <StatBox k="Visitas" v={String(c.visits)}/>
-          <StatBox k="Gasto total" v={fmtCOP(c.spend)} hue="var(--clay)"/>
-          <StatBox k="Próxima" v={c.next==='—'?'—':c.next.replace('Hoy · ','')} hue="var(--wine)"/>
-        </div>
-
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px',
-          background:'var(--surface)', border:'1px solid var(--line)', borderRadius:'var(--r-md)' }}>
-          <div>
-            <div style={{ font:'500 13.5px/1.2 var(--font-sans)', color:'var(--ink-1)' }}>Bot activo</div>
-            <div style={{ font:'400 12px/1.3 var(--font-sans)', color:'var(--ink-3)', marginTop:3 }}>
-              El agente responde automáticamente a este cliente
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => { const next = !botOn; setBotOn(next); updateCustomer.mutate({ agent_enabled: next }); }}
-            style={{ width:44, height:26, borderRadius:13, border:0, cursor:'pointer',
-              background: botOn ? 'var(--wine)' : 'var(--line-strong)',
-              transition:'background var(--dur-2) var(--ease-std)', position:'relative', flexShrink:0 }}>
-            <span style={{ position:'absolute', top:3, left: botOn ? 21 : 3, width:20, height:20,
-              borderRadius:'50%', background:'white',
-              transition:'left var(--dur-2) var(--ease-std)',
-              boxShadow:'0 1px 4px rgba(0,0,0,0.2)' }}/>
-          </button>
-        </div>
-
-        <div>
-          <div className="eyebrow" style={{ marginBottom:8 }}>Nota interna</div>
-          <textarea
-            value={note}
-            onChange={e => { setNote(e.target.value); setNoteSaved(false); }}
-            placeholder="Preferencias, alergias, recordatorios…"
-            style={{ width:'100%', minHeight:60, padding:'11px 13px', borderRadius:'var(--r-md)', resize:'vertical',
-              border:'1px solid var(--line)', background:'var(--surface-tint)', color:'var(--ink-1)',
-              font:'400 13.5px/1.5 var(--font-sans)', outline:'none' }}/>
-          {!noteSaved && (
-            <Button variant="primary" size="sm" style={{ marginTop:8 }} onClick={handleNoteSave} disabled={updateCustomer.isPending}>
-              {updateCustomer.isPending ? 'Guardando…' : 'Guardar nota'}
-            </Button>
-          )}
-        </div>
-
-        <div>
-          <div className="eyebrow" style={{ marginBottom:10 }}>Historial de citas</div>
-          {history.length === 0 ? (
-            <div style={{ font:'400 13px/1.4 var(--font-sans)', color:'var(--ink-4)' }}>Sin citas registradas.</div>
-          ) : (
-            <div style={{ display:'flex', flexDirection:'column' }}>
-              {history.map((h, i) => {
-                const SVC_HUES = ['wine','clay','mustard','steel','sage','plum'];
-                const hue = hueVar(SVC_HUES[history.indexOf(h) % SVC_HUES.length] ?? 'wine');
-                const dateLabel = h.startAt ? format(parseISO(h.startAt), "d MMM · HH:mm", { locale: es }) : h.time;
-                return (
-                  <div key={h.id} style={{ display:'grid', gridTemplateColumns:'18px 1fr', gap:12 }}>
-                    <div style={{ position:'relative', display:'flex', justifyContent:'center' }}>
-                      {i < history.length-1 && <span style={{ position:'absolute', top:12, bottom:-8, width:2, background:'var(--line)' }}/>}
-                      <span style={{ marginTop:6, width:9, height:9, borderRadius:'50%', background:hue, zIndex:1, flexShrink:0 }}/>
-                    </div>
-                    <div style={{ paddingBottom:14 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        <span style={{ font:'500 13.5px/1.2 var(--font-sans)', color:'var(--ink-1)' }}>{h.svc}</span>
-                        <Icon name="whatsapp" size={13} style={{ color:'var(--wa-ink)' }}/>
-                      </div>
-                      <div className="tnum" style={{ font:'400 12px/1.3 var(--font-sans)', color:'var(--ink-3)', marginTop:2 }}>{dateLabel}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {conv && (
-          <div>
-            <div className="eyebrow" style={{ marginBottom:10 }}>Últimos mensajes</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {lastMsgs.length === 0 ? (
-                <div style={{ font:'400 13px/1.4 var(--font-sans)', color:'var(--ink-4)' }}>Sin mensajes aún.</div>
-              ) : lastMsgs.map(m => {
-                const isAgent = m.direction === 'outbound';
-                return (
-                  <div key={m.id} style={{ alignSelf: isAgent ? 'flex-end' : 'flex-start', maxWidth:'85%',
-                    padding:'8px 12px', borderRadius: isAgent ? '13px 13px 4px 13px' : '13px 13px 13px 4px',
-                    background: isAgent ? 'var(--wine)' : 'var(--surface-2)',
-                    color: isAgent ? 'var(--wine-fg)' : 'var(--ink-1)',
-                    border: isAgent ? '0' : '1px solid var(--line)',
-                    font:'400 13px/1.4 var(--font-sans)' }}>
-                    {m.content ?? '[media]'}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 

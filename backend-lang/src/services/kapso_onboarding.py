@@ -66,6 +66,19 @@ class KapsoPlatformClient:
             "DELETE", f"/whatsapp/phone_numbers/{phone_number_id}/webhooks/{webhook_id}"
         )
 
+    async def get_business_account_id(self, phone_number_id: str) -> Optional[str]:
+        """ID de la cuenta de WhatsApp (WABA) dueña del número; las plantillas viven en ella.
+
+        GET /whatsapp/phone_numbers/{phone_number_id} → data.business_account_id (docs.kapso.ai).
+        """
+        resp = await self._request("GET", f"/whatsapp/phone_numbers/{phone_number_id}")
+        try:
+            data = resp.json().get("data") or {}
+        except (ValueError, AttributeError):
+            return None
+        value = data.get("business_account_id") if isinstance(data, dict) else None
+        return str(value) if value else None
+
     async def create_customer(self, *, name: str, external_customer_id: str) -> dict:
         return await self._post(
             "/customers",

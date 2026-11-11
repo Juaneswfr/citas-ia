@@ -83,7 +83,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         await db.execute(
             text("""
             INSERT INTO workspace_members (workspace_id, user_id, member_role, status)
-            VALUES (:workspace_id, :user_id, 'owner', 'active')
+            VALUES (:workspace_id, :user_id, 'workspace_owner', 'active')
             """),
             {"workspace_id": workspace_id, "user_id": user_id},
         )
@@ -130,9 +130,9 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not row["is_active"]:
         raise invalid
 
-    workspace_id = row["workspace_id"] or ""
+    workspace_id = str(row["workspace_id"]) if row["workspace_id"] else ""
     token = create_access_token({
-        "sub": row["id"],
+        "sub": str(row["id"]),
         "email": row["email"],
         "role": row["role"] or "viewer",
         "workspace_id": workspace_id,
@@ -243,8 +243,8 @@ async def google_oauth_callback(
     frontend = settings.frontend_url
 
     def error_redirect():
-        if return_to == "settings":
-            return RedirectResponse(url=f"{frontend}/settings?calendar_error=1", status_code=302)
+        if return_to in ("settings", "equipo"):
+            return RedirectResponse(url=f"{frontend}/{'equipo' if return_to == 'equipo' else 'settings'}?calendar_error=1", status_code=302)
         return RedirectResponse(url=f"{frontend}/onboarding?step=2&calendar_error=1", status_code=302)
 
     result = await exchange_oauth_code(code)
@@ -292,6 +292,6 @@ async def google_oauth_callback(
             log.error("[auth] Error guardando calendario | workspace=%s | err=%s", workspace_id, e)
             return error_redirect()
 
-    if return_to == "settings":
-        return RedirectResponse(url=f"{frontend}/settings?calendar_connected=1", status_code=302)
+    if return_to in ("settings", "equipo"):
+        return RedirectResponse(url=f"{frontend}/{'equipo' if return_to == 'equipo' else 'settings'}?calendar_connected=1", status_code=302)
     return RedirectResponse(url=f"{frontend}/onboarding?step=2&calendar_connected=1", status_code=302)

@@ -34,13 +34,16 @@ _CLAIMS_CONFIRMED = re.compile(r"confirmad|agendad|reservad|qued[óo] list", re.
 
 _SYSTEM = (
     "Eres el asistente de citas de {workspace}. Responde siempre en español, breve y amable. "
-    "Flujo para agendar: 1) llama listar_barberos para ver los barberos disponibles; "
-    "si hay uno solo selecciónalo automáticamente, si hay varios pregunta cuál prefiere el cliente. "
-    "2) llama listar_servicios, 3) consultar_disponibilidad con el calendar_id del barbero elegido, "
-    "4) crear_cita con el mismo calendar_id. "
+    "Fecha de hoy: {today} (zona {tz}).\n\n"
+    "SERVICIOS ACTUALES (usa estos datos, no los del historial):\n{services}\n\n"
+    "BARBEROS DISPONIBLES (usa estos datos, no los del historial):\n{barberos}\n\n"
+    "Flujo para agendar: "
+    "1) Si hay varios barberos pregunta cuál prefiere el cliente, si hay uno solo selecciónalo. "
+    "2) consultar_disponibilidad con el calendar_id del barbero y el service_id del servicio elegido, "
+    "3) crear_cita con el mismo calendar_id y service_id. "
     "También puedes listar y cancelar citas del cliente. "
     "Nunca afirmes que una cita está confirmada: el sistema te dirá si se creó. "
-    "No inventes servicios ni horarios. Fecha de hoy: {today} (zona {tz}).\n"
+    "No inventes servicios ni horarios.\n"
     "FORMATO: solo texto plano de WhatsApp. "
     "Usa *texto* para negrita, _texto_ para cursiva, ~texto~ para tachado. "
     "NO uses markdown (#, **, ```, [], ![]). NO uses listas con guiones. "
@@ -293,6 +296,7 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
     tools = build_tools(ctx, state)
     by_name = {t.name: t for t in tools}
     bound = llm.bind_tools(tools)
+    ws = ctx["workspace_id"]
     async with AsyncSessionLocal() as session:
         hist = (await session.execute(
             text(
@@ -301,10 +305,37 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
             ),
             {"conversation_id": ctx["conversation_id"], "workspace_id": ctx["workspace_id"], "limit": HISTORY},
         )).mappings().fetchall()
+        services_rows = (await session.execute(
+            text("SELECT id,name,duration_minutes,price_cop FROM services WHERE workspace_id=:ws AND is_active=TRUE"),
+            {"ws": ws},
+        )).mappings().fetchall()
+        barberos_rows = (await session.execute(
+            text("""
+            SELECT c.id AS calendar_id, COALESCE(u.name, c.name) AS nombre
+            FROM calendars c
+            LEFT JOIN workspace_members wm ON wm.id = c.member_id
+            LEFT JOIN users u ON u.id = wm.user_id
+            WHERE c.workspace_id = :ws AND c.sync_status = 'active'
+            ORDER BY c.created_at
+            """),
+            {"ws": ws},
+        )).mappings().fetchall()
+
+    services_txt = "\n".join(
+        f"{r['id']} | {r['name']} | {r['duration_minutes']} min | ${r['price_cop']} COP"
+        for r in services_rows
+    ) or "Sin servicios activos."
+    barberos_txt = "\n".join(
+        f"{r['calendar_id']} | {r['nombre']}" for r in barberos_rows
+    ) or "Sin barberos disponibles."
+
     msgs = [SystemMessage(_SYSTEM.format(
         workspace=ctx.get("workspace", {}).get("name", ""),
         tz=ctx.get("workspace", {}).get("timezone") or "America/Bogota",
-        today=datetime.now(ZoneInfo(ctx.get("workspace", {}).get("timezone") or "America/Bogota")).date()))]
+        today=datetime.now(ZoneInfo(ctx.get("workspace", {}).get("timezone") or "America/Bogota")).date(),
+        services=services_txt,
+        barberos=barberos_txt,
+    ))]
     msgs += [(HumanMessage if r["direction"] == "inbound" else AIMessage)(r["content"])
              for r in reversed(list(hist))]
     if not hist or hist[0]["content"] != message:  # el inbound ya se guarda antes de correr el agente

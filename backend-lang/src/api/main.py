@@ -25,6 +25,10 @@ from api.routes.webhooks import router as webhooks_router
 from api.routes.kapso import router as kapso_router
 from api.routes.agent_config import router as agent_config_router
 from api.routes.agent_alerts import router as agent_alerts_router
+from api.routes.accounting import router as accounting_router
+from api.routes.accounting_files import router as accounting_files_router
+from api.routes.receipts import router as receipts_router
+from api.routes.followups import router as followups_router
 
 log = logging.getLogger(__name__)
 
@@ -41,9 +45,9 @@ async def lifespan(app: FastAPI):
     await init_db()
     log.info("[startup] Pool PostgreSQL creado")
 
-    # T038: Iniciar scheduler de recordatorios en background
-    from workers.reminder_worker import start_reminder_scheduler
-    reminder_task = start_reminder_scheduler()
+    # Seguimientos por WhatsApp (recordatorio, post-visita, cobro pendiente, reactivación) en background
+    from workers.followup_worker import start_followup_scheduler
+    reminder_task = start_followup_scheduler()
 
     yield
 
@@ -87,6 +91,10 @@ app.include_router(webhooks_router)
 app.include_router(kapso_router)
 app.include_router(agent_config_router)
 app.include_router(agent_alerts_router)
+app.include_router(accounting_router)
+app.include_router(accounting_files_router)
+app.include_router(receipts_router)
+app.include_router(followups_router)
 
 
 @app.get("/", tags=["health"])

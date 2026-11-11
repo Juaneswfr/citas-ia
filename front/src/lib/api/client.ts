@@ -67,21 +67,58 @@ export async function apiFetch<T>(path: string, options?: ApiFetchOptions): Prom
     throw new ApiError(401, 'Sesión expirada, inicia sesión de nuevo');
   }
 
-  if (!response.ok) {
-    let detail = 'Error desconocido';
-    try {
-      const body = await response.json();
-      if (typeof body?.detail === 'string') {
-        detail = body.detail;
-      } else if (Array.isArray(body?.detail) && body.detail[0]?.msg) {
-        detail = body.detail[0].msg;
-      } else if (typeof body?.message === 'string') {
-        detail = body.message;
-      }
-    } catch { /* ignore parse errors */ }
-    throw new ApiError(response.status, detail);
-  }
+  if (!response.ok) throw await toApiError(response);
 
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+/** Convierte una respuesta HTTP de error en ApiError, extrayendo el detalle del backend. */
+async function toApiError(response: Response): Promise<ApiError> {
+  let detail = 'Error desconocido';
+  try {
+    const body = await response.json();
+    if (typeof body?.detail === 'string') {
+      detail = body.detail;
+    } else if (Array.isArray(body?.detail) && body.detail[0]?.msg) {
+      detail = body.detail[0].msg;
+    } else if (typeof body?.message === 'string') {
+      detail = body.message;
+    }
+  } catch { /* ignore parse errors */ }
+  return new ApiError(response.status, detail);
+}
+
+/** fetch autenticado para respuestas no-JSON (subidas multipart y descargas). */
+async function authedFetch(path: string, init: RequestInit): Promise<Response> {
+  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000';
+  const headers: Record<string, string> = {};
+  if (_apiToken) headers['Authorization'] = `Bearer ${_apiToken}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, { ...init, headers });
+  } catch {
+    throw new ApiError(0, 'Sin conexión, verifica tu red');
+  }
+  if (response.status === 401) {
+    _onUnauthorized?.();
+    throw new ApiError(401, 'Sesión expirada, inicia sesión de nuevo');
+  }
+  if (!response.ok) throw await toApiError(response);
+  return response;
+}
+
+/** Sube un archivo como multipart/form-data (el navegador fija el Content-Type con su boundary). */
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await authedFetch(path, { method: 'POST', body: form });
+  return response.json() as Promise<T>;
+}
+
+/** Descarga un archivo protegido con el JWT y lo devuelve como Blob. */
+export async function apiDownload(path: string): Promise<Blob> {
+  const response = await authedFetch(path, { method: 'GET' });
+  return response.blob();
 }

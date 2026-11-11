@@ -21,6 +21,7 @@ import { Route as AuthenticatedAlertasRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEquipoRouteImport } from './routes/_authenticated/equipo'
+import { Route as AuthenticatedFinanzasRouteImport } from './routes/_authenticated/finanzas'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticated/services'
@@ -87,6 +88,11 @@ const AuthenticatedEquipoRoute = AuthenticatedEquipoRouteImport.update({
   path: '/equipo',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedFinanzasRoute = AuthenticatedFinanzasRouteImport.update({
+  id: '/finanzas',
+  path: '/finanzas',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMessagesRoute = AuthenticatedMessagesRouteImport.update({
   id: '/messages',
   path: '/messages',
@@ -130,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/clients': typeof AuthenticatedClientsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/equipo': typeof AuthenticatedEquipoRoute
+  '/finanzas': typeof AuthenticatedFinanzasRoute
   '/messages': typeof AuthenticatedMessagesRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/services': typeof AuthenticatedServicesRoute
@@ -149,6 +156,7 @@ export interface FileRoutesByTo {
   '/clients': typeof AuthenticatedClientsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/equipo': typeof AuthenticatedEquipoRoute
+  '/finanzas': typeof AuthenticatedFinanzasRoute
   '/messages': typeof AuthenticatedMessagesRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/services': typeof AuthenticatedServicesRoute
@@ -170,6 +178,7 @@ export interface FileRoutesById {
   '/_authenticated/clients': typeof AuthenticatedClientsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/equipo': typeof AuthenticatedEquipoRoute
+  '/_authenticated/finanzas': typeof AuthenticatedFinanzasRoute
   '/_authenticated/messages': typeof AuthenticatedMessagesRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/services': typeof AuthenticatedServicesRoute
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/dashboard'
     | '/equipo'
+    | '/finanzas'
     | '/messages'
     | '/onboarding'
     | '/services'
@@ -210,6 +220,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/dashboard'
     | '/equipo'
+    | '/finanzas'
     | '/messages'
     | '/onboarding'
     | '/services'
@@ -230,6 +241,7 @@ export interface FileRouteTypes {
     | '/_authenticated/clients'
     | '/_authenticated/dashboard'
     | '/_authenticated/equipo'
+    | '/_authenticated/finanzas'
     | '/_authenticated/messages'
     | '/_authenticated/onboarding'
     | '/_authenticated/services'
@@ -335,6 +347,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEquipoRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/finanzas': {
+      id: '/_authenticated/finanzas'
+      path: '/finanzas'
+      fullPath: '/finanzas'
+      preLoaderRoute: typeof AuthenticatedFinanzasRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/messages': {
       id: '/_authenticated/messages'
       path: '/messages'
@@ -386,6 +405,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEquipoRoute: typeof AuthenticatedEquipoRoute
+  AuthenticatedFinanzasRoute: typeof AuthenticatedFinanzasRoute
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
@@ -399,6 +419,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedClientsRoute: AuthenticatedClientsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEquipoRoute: AuthenticatedEquipoRoute,
+  AuthenticatedFinanzasRoute: AuthenticatedFinanzasRoute,
   AuthenticatedMessagesRoute: AuthenticatedMessagesRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedServicesRoute: AuthenticatedServicesRoute,

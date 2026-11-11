@@ -5,12 +5,7 @@ import { inviteMember, removeMember } from '@/lib/api/workspaces';
 import type { MemberOut } from '@/lib/types/api';
 import s from './onboarding.module.css';
 
-const ROLE_LABELS: Record<string, string> = {
-  workspace_owner: 'Dueño',
-  manager: 'Manager',
-  staff: 'Staff',
-  viewer: 'Lector',
-};
+import { roleLabel } from '@/lib/roles';
 
 interface StepTeamProps {
   members: MemberOut[];
@@ -72,7 +67,7 @@ export function StepTeam({ members, workspaceId, currentUserId, onChanged }: Ste
                     <div className={s['team__member-email']}>{m.email}</div>
                   )}
                 </div>
-                <Tag>{ROLE_LABELS[m.member_role] ?? m.member_role}</Tag>
+                <Tag>{roleLabel(m.member_role)}</Tag>
                 {!isMe && (
                   <Button
                     variant="ghost" size="sm"
@@ -112,9 +107,9 @@ export function StepTeam({ members, workspaceId, currentUserId, onChanged }: Ste
                 value={role}
                 onChange={e => setRole(e.target.value)}
               >
-                <option value="manager">Manager</option>
-                <option value="staff">Staff</option>
-                <option value="viewer">Lector</option>
+                <option value="manager">{roleLabel('manager')}</option>
+                <option value="staff">{roleLabel('staff')}</option>
+                <option value="viewer">{roleLabel('viewer')}</option>
               </select>
             </label>
             <Button

@@ -66,3 +66,7 @@ desktop.ini
 
 # ── MCP local (contiene credenciales) ──
 .mcp.json
+
+# ── Archivos subidos por usuarios (comprobantes de pago) ─────────────────────
+uploads/
+backend-lang/uploads/

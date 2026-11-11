@@ -18,6 +18,8 @@ interface WeekCalendarProps {
   events: CalendarEvent[];
   isLoading?: boolean;
   onSlotClick: (date: string, time: string) => void;
+  /** Se llama con el id de la cita al hacer clic (o Enter) sobre un evento. */
+  onEventClick?: (appointmentId: string) => void;
 }
 
 function yToTime(offsetY: number): { hour: number; min: number } {
@@ -39,7 +41,7 @@ function fmt12(hour: number, min: number): string {
   return `${h}:${String(min).padStart(2, '0')} ${suffix}`;
 }
 
-export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, onSlotClick }: WeekCalendarProps) {
+export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, onSlotClick, onEventClick }: WeekCalendarProps) {
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
 
@@ -181,7 +183,9 @@ export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, o
                 return (
                   <div
                     key={i}
-                    className={styles['week-calendar__event']}
+                    className={`${styles['week-calendar__event']} ${ev.status === 'completed' ? styles['week-calendar__event--done'] : ''}`}
+                    role="button"
+                    tabIndex={0}
                     style={{
                       top: topPx,
                       height: heightPx,
@@ -189,9 +193,10 @@ export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, o
                       background: `color-mix(in srgb, ${hue} 11%, var(--surface))`,
                     }}
                     title={`${ev.client} · ${ev.svc}`}
-                    onClick={e => e.stopPropagation()}
+                    onClick={e => { e.stopPropagation(); onEventClick?.(ev.id); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); onEventClick?.(ev.id); } }}
                   >
-                    <div className={styles['week-calendar__event-client']}>{ev.client}</div>
+                    <div className={styles['week-calendar__event-client']}>{ev.status === 'completed' ? '✓ ' : ''}{ev.client}</div>
                     {ev.m >= 30 && (
                       <div className={styles['week-calendar__event-time']}>
                         {fmt12(ev.s, 0)} – {fmt12(endH, endM)}

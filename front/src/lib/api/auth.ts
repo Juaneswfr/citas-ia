@@ -35,7 +35,7 @@ export async function getMe(): Promise<MeResponse> {
  */
 export async function getGoogleCalendarUrl(
   workspaceId: string,
-  returnTo: 'onboarding' | 'settings' = 'onboarding',
+  returnTo: 'onboarding' | 'settings' | 'equipo' = 'onboarding',
   memberId?: string,
 ): Promise<{ url: string }> {
   const params = new URLSearchParams({ workspace_id: workspaceId, return_to: returnTo });

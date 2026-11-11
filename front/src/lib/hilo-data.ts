@@ -116,6 +116,7 @@ export interface HiloAppointment {
   via: 'wa' | 'manual'; phone: string; home?: boolean;
   customerId?: string;
   startAt?: string; // ISO — para historial en CRM
+  rawStatus?: string; // estado real de la cita (pending|confirmed|completed|cancelled|noshow|rescheduled)
 }
 
 export interface HiloClient {
