@@ -1,6 +1,21 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-11]
+**Corregido — archivos duplicados por mayúsculas (preparación del despliegue)**
+- claude.md, backend-lang/readme.md — eliminados del repo. Git tenía `CLAUDE.md` + `claude.md` y `backend-lang/README.md` + `backend-lang/readme.md` como archivos distintos; Windows guarda uno solo por par, así que siempre aparecía uno «modificado», y en el servidor (Linux) el `CLAUDE.md` vigente era el viejo que hablaba de Supabase.
+- CLAUDE.md — queda con el contenido actual (el que estaba en `claude.md`).
+- backend-lang/README.md — un solo archivo: configuración, Kapso y tests de la versión del 27 de octubre, más webhooks (incluye sandbox), flujo de mensajes entrantes, migraciones y `UPLOADS_DIR`. Se quitó lo que ya no era cierto («Pool asyncpg», «3 tools»).
+
+**Verificación**
+- Backend: 323 pasan, 5 omitidos, 19 fallan (los mismos tests antiguos de asyncpg). `tests/test_appointment_agent.py` se excluyó: falta `tzdata` en Windows.
+- Front: `tsc` solo reporta los 2 errores antiguos de `src/lib/api/example.functions.ts` (archivo del 27 de octubre; `npm run build` no ejecuta `tsc`).
+- Confirmado en `followup_service.send_followup`: en un canal Kapso real, sin plantilla `approved` el seguimiento no se envía (`skipped`) y se reintenta en la siguiente pasada. Esas barberías no recibirán recordatorio hasta activar las plantillas y que Meta las apruebe.
+
+**Pendiente / no verificado**
+- No se pudo consultar la BD desde esta sesión (lectura de producción bloqueada): falta contar las citas con `reminder_sent=TRUE` que aún no ocurren y sembrarlas en `followup_sends` antes de arrancar el backend nuevo, para que no reciban un segundo recordatorio.
+- Sin push ni despliegue todavía.
+
+### [AGENTE: claude] [FECHA: 2026-11-11]
 **Aplicado — migraciones 016 y 017 en la BD (pedido por el usuario)**
 - `migrate.py`: 016_followups y 017_payment_receipts aplicadas y registradas en `schema_migrations`. La 015 ya estaba aplicada desde el 2026-11-10.
 - Verificado por catálogo: las 4 tablas nuevas, `customers.marketing_opt_out`, `appointments.confirmed_by_customer_at` y los 12 índices existen.
