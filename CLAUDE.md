@@ -191,6 +191,9 @@ Cuatro seguimientos automáticos: recordatorio de cita, post-visita, cobro pendi
 - Texto **fijo**, definido en `backend-lang/src/services/followup_templates.py`. Para cambiar un texto hay que subir el sufijo `_vN` del nombre: Meta no deja editar una plantilla ya enviada a revisión.
 - Meta aprueba las plantillas **por cuenta de WhatsApp (WABA)**: cada barbería las registra en la suya desde WhatsApp › Seguimiento automático › «Activar plantillas» (`followup_service.sync_templates`). Un seguimiento solo se envía cuando su plantilla está `approved`.
 - Worker: `workers/followup_worker.py` (sustituye a `reminder_worker.py`), cada 10 min, solo entre 8:00 y 20:00 hora del negocio, con candado en BD para que un solo proceso envíe. `followup_sends` garantiza un envío por cita/venta.
+- «Activar plantillas» y «Actualizar estado» consultan primero el número en Kapso (`followup_service._verify_connection`): si ya no existe o Meta lo reporta desconectado, responden 409 y no se crea nada. De paso guardan la cuenta de WhatsApp y si el número está en coexistencia (`channels.coexistence_enabled`, `connection_type`). El worker no hace esa consulta en cada envío.
+- Sin ningún número conectado, la pantalla de seguimiento queda deshabilitada (`connected=false` en `GET /followups/templates`) con enlace a Ajustes.
+- Cobros de Meta: el enlace de conexión usa `meta_billing_mode: "partner_managed"`, así que Kapso paga a Meta y lo descuenta de los créditos del proyecto. El saldo se recarga y se consulta en Kapso; Hilo no lleva billetera ni consumo.
 - Número sandbox y canales que no son Kapso: no admiten plantillas; el seguimiento sale como texto libre (solo llega dentro de la ventana de 24 h).
 - Botones: «Confirmar» marca `appointments.confirmed_by_customer_at`; «Cancelar» y «Agendar» pasan al agente como texto; «No más mensajes» activa `customers.marketing_opt_out`.
 - Rutas `/workspaces/{id}/followups/*`: solo `manager` o superior.

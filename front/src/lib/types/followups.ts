@@ -26,6 +26,8 @@ export interface FollowupTemplateOut {
 }
 
 export interface FollowupTemplatesOut {
+  /** Hay un número de WhatsApp activo; sin él no se envía ningún seguimiento. */
+  connected: boolean;
   can_activate: boolean;
   /** Por qué no se pueden activar las plantillas (sin canal, número de pruebas...). */
   reason: string | null;

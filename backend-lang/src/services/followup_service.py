@@ -23,6 +23,9 @@ _SETTINGS_COLUMNS = ", ".join(FollowupSettings.model_fields)
 _STATUS_FROM_META = {"APPROVED": "approved", "PENDING": "pending", "REJECTED": "rejected", "DISABLED": "disabled"}
 # Errores pasajeros: se libera el envío para reintentar en la siguiente pasada del worker.
 _TRANSIENT = ("timeout", "network_error", "http_429", "http_500", "http_502", "http_503", "http_504")
+# Estados de Meta en los que el número no puede enviar. Kapso solo documenta "CONNECTED"; el resto
+# (FLAGGED, RESTRICTED...) se deja pasar porque el número sigue operando.
+_DISCONNECTED_STATES = frozenset({"DISCONNECTED", "DELETED", "BANNED", "MIGRATED"})
 
 
 def _provider() -> KapsoProvider:
@@ -94,7 +97,8 @@ async def list_templates(db: AsyncSession, workspace_id: str) -> dict:
         {"w": workspace_id},
     )).mappings().fetchall()
     by_kind = {r["kind"]: r for r in rows}
-    reason = _blocked_reason(await _kapso_channel(db, workspace_id))
+    channel = await _kapso_channel(db, workspace_id)
+    reason = _blocked_reason(channel)
     templates = []
     for kind in ft.KINDS:
         tpl, row = ft.TEMPLATES[kind], by_kind.get(kind)
@@ -105,29 +109,57 @@ async def list_templates(db: AsyncSession, workspace_id: str) -> dict:
             "detail": row["detail"] if row else None,
             "synced_at": row["synced_at"] if row else None,
         })
-    return {"can_activate": reason is None, "reason": reason, "templates": templates}
+    return {"connected": channel is not None, "can_activate": reason is None, "reason": reason,
+            "templates": templates}
 
 
-async def _business_account_id(db: AsyncSession, channel: dict) -> str:
-    """ID de la cuenta de WhatsApp del canal; la primera vez se consulta a Kapso y se guarda."""
-    if channel.get("external_account_id"):
-        return str(channel["external_account_id"])
-    from services.kapso_onboarding import KapsoError, KapsoPlatformClient
+def _platform_client():
+    from services.kapso_onboarding import KapsoPlatformClient
     s = get_settings()
+    return KapsoPlatformClient(s.kapso_api_key, s.kapso_base_url)
+
+
+async def _verify_connection(db: AsyncSession, channel: dict) -> str:
+    """Comprueba en Kapso que el número sigue conectado y devuelve el ID de su cuenta de WhatsApp.
+
+    La tabla `channels` solo sabe lo que pasó al conectar; un número retirado después seguiría
+    figurando activo. De paso guarda la cuenta y si el número está en coexistencia.
+    """
+    from services.kapso_onboarding import KapsoError
+    not_connected = HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Este número ya no está conectado en Kapso. Vuelve a conectar WhatsApp.")
+    unavailable = HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="No se pudo consultar la cuenta de WhatsApp del número. Intenta de nuevo.")
     try:
-        waba = await KapsoPlatformClient(s.kapso_api_key, s.kapso_base_url).get_business_account_id(
-            channel["phone_number_id"])
+        number = await _platform_client().get_phone_number(channel["phone_number_id"])
     except KapsoError as e:
-        log.error("[followups] no se pudo consultar la cuenta de WhatsApp | err=%s", e)
-        waba = None
+        log.error("[followups] no se pudo consultar el número en Kapso | err=%s", e)
+        raise (not_connected if str(e) == "http_404" else unavailable) from None
+
+    state = str(number.get("status") or "").upper()
+    if state in _DISCONNECTED_STATES:
+        log.warning("[followups] número no conectado | channel=%s | status=%s", channel["id"], state)
+        raise not_connected
+    waba = number.get("business_account_id")
     if not waba:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail="No se pudo consultar la cuenta de WhatsApp del número. Intenta de nuevo.")
+        raise unavailable
+
+    coexistence = number.get("is_coexistence")
     await db.execute(
-        text("UPDATE channels SET external_account_id = :waba, updated_at = NOW() WHERE id = :id"),
-        {"waba": waba, "id": channel["id"]},
+        text("""
+            UPDATE channels SET external_account_id = :waba,
+                coexistence_enabled = COALESCE(:coex, coexistence_enabled),
+                connection_type = COALESCE(:conn_type, connection_type),
+                updated_at = NOW()
+            WHERE id = :id
+        """),
+        {"waba": str(waba), "id": channel["id"],
+         "coex": coexistence if isinstance(coexistence, bool) else None,
+         "conn_type": ("coexistence" if coexistence else "dedicated") if isinstance(coexistence, bool) else None},
     )
-    return waba
+    return str(waba)
 
 
 async def sync_templates(db: AsyncSession, workspace_id: str, create_missing: bool) -> dict:
@@ -139,7 +171,7 @@ async def sync_templates(db: AsyncSession, workspace_id: str, create_missing: bo
     reason = _blocked_reason(channel)
     if reason:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=reason)
-    waba = await _business_account_id(db, channel)
+    waba = await _verify_connection(db, channel)
     provider = _provider()
     try:
         existing = {t.get("name"): t for t in await provider.list_templates(waba) if isinstance(t, dict)}

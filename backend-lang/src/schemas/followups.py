@@ -33,6 +33,7 @@ class FollowupTemplateOut(BaseModel):
 
 class FollowupTemplatesOut(BaseModel):
     """Estado de las plantillas en la cuenta de WhatsApp del negocio."""
+    connected: bool  # hay un número de WhatsApp activo; sin él no se envía ningún seguimiento
     can_activate: bool
     reason: Optional[str] = None  # por qué no se pueden activar (sin canal, número de pruebas...)
     templates: list[FollowupTemplateOut]

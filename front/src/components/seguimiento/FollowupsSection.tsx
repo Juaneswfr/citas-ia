@@ -3,6 +3,7 @@
 // si WhatsApp ya las aprobó en la cuenta del negocio.
 
 import { useEffect, useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/hilo/primitives';
 import {
   useFollowupSettings, useFollowupTemplateAction, useFollowupTemplates, useUpdateFollowupSettings,
@@ -68,10 +69,12 @@ function TemplateBody({ body }: { body: string }) {
 interface FollowupCardProps {
   template: FollowupTemplateOut;
   settings: FollowupSettings;
+  /** Sin número de WhatsApp conectado no se puede configurar nada. */
+  disabled: boolean;
   onChange: (patch: Partial<FollowupSettings>) => void;
 }
 
-function FollowupCard({ template, settings, onChange }: FollowupCardProps) {
+function FollowupCard({ template, settings, disabled, onChange }: FollowupCardProps) {
   const config = KINDS[template.kind];
   const enabled = settings[config.enabledKey];
   const status = STATUS[template.status];
@@ -83,8 +86,8 @@ function FollowupCard({ template, settings, onChange }: FollowupCardProps) {
           <div className={styles.followup__title}>{config.title}</div>
           <div className={styles.followup__description}>{config.description}</div>
         </div>
-        <label className={styles.switch}>
-          <input type="checkbox" className={styles.switch__input} checked={enabled}
+        <label className={`${styles.switch} ${disabled ? styles['switch--disabled'] : ''}`}>
+          <input type="checkbox" className={styles.switch__input} checked={enabled} disabled={disabled}
                  onChange={(e) => onChange({ [config.enabledKey]: e.target.checked })} />
           <span className={styles.switch__track} aria-hidden="true" />
           <span className={styles.switch__label}>{enabled ? 'Activo' : 'Apagado'}</span>
@@ -102,7 +105,7 @@ function FollowupCard({ template, settings, onChange }: FollowupCardProps) {
         <label className={styles.timing}>
           <span>{config.timingLabel}</span>
           <input type="number" className={styles.timing__input} min={config.min} max={config.max}
-                 value={settings[config.timingKey]} disabled={!enabled}
+                 value={settings[config.timingKey]} disabled={disabled || !enabled}
                  onChange={(e) => onChange({ [config.timingKey]: Number(e.target.value) })} />
           <span>{config.unit}</span>
         </label>
@@ -149,7 +152,7 @@ export function FollowupsSection() {
     );
   }
 
-  const { templates, can_activate: canActivate, reason } = templatesQuery.data;
+  const { templates, connected, can_activate: canActivate, reason } = templatesQuery.data;
   const byKind = new Map(templates.map((t) => [t.kind, t]));
   const missing = templates.some((t) => t.status === 'not_created' || t.status === 'error');
   const waiting = templates.some((t) => t.status === 'pending');
@@ -179,7 +182,12 @@ export function FollowupsSection() {
       </div>
 
       <div className={styles.followups__notice}>
-        {reason ? <span>{reason}</span> : (
+        {!connected ? (
+          <span>
+            Los seguimientos se activan cuando conectas el número de WhatsApp del negocio.{' '}
+            <Link to="/settings" className={styles.followups__link}>Conectar WhatsApp</Link>
+          </span>
+        ) : reason ? <span>{reason}</span> : (
           <span>
             {missing ? 'Las plantillas aún no están en tu cuenta de WhatsApp. Envíalas a revisión: Meta suele aprobarlas en menos de 24 horas.'
               : waiting ? 'WhatsApp está revisando tus plantillas. Cada seguimiento empieza a enviarse cuando su plantilla queda aprobada.'
@@ -203,15 +211,15 @@ export function FollowupsSection() {
       <div className={styles.followups__list}>
         {ORDER.map((kind) => {
           const template = byKind.get(kind);
-          return template ? <FollowupCard key={kind} template={template} settings={draft} onChange={handleChange} /> : null;
+          return template ? <FollowupCard key={kind} template={template} settings={draft} disabled={!connected} onChange={handleChange} /> : null;
         })}
       </div>
 
       <div className={styles.followups__save}>
-        <Button disabled={!dirty || !isValid(draft) || save.isPending} onClick={handleSave}>
+        <Button disabled={!connected || !dirty || !isValid(draft) || save.isPending} onClick={handleSave}>
           {save.isPending ? 'Guardando…' : 'Guardar seguimiento'}
         </Button>
-        {!dirty && <span className={styles.followups__hint}>Sin cambios</span>}
+        {connected && !dirty && <span className={styles.followups__hint}>Sin cambios</span>}
         {dirty && !isValid(draft) && <span className={styles.followups__hint}>Revisa los tiempos: hay un valor fuera de rango.</span>}
       </div>
     </section>

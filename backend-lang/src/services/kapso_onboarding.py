@@ -66,17 +66,22 @@ class KapsoPlatformClient:
             "DELETE", f"/whatsapp/phone_numbers/{phone_number_id}/webhooks/{webhook_id}"
         )
 
-    async def get_business_account_id(self, phone_number_id: str) -> Optional[str]:
-        """ID de la cuenta de WhatsApp (WABA) dueña del número; las plantillas viven en ella.
+    async def get_phone_number(self, phone_number_id: str) -> dict:
+        """Estado del número en Kapso: `business_account_id`, `is_coexistence`, `status` (docs.kapso.ai).
 
-        GET /whatsapp/phone_numbers/{phone_number_id} → data.business_account_id (docs.kapso.ai).
+        GET /whatsapp/phone_numbers/{phone_number_id} → data. Un número que ya no existe da
+        KapsoError("http_404"). Respuesta sin `data` → {}.
         """
         resp = await self._request("GET", f"/whatsapp/phone_numbers/{phone_number_id}")
         try:
-            data = resp.json().get("data") or {}
+            data = resp.json().get("data")
         except (ValueError, AttributeError):
-            return None
-        value = data.get("business_account_id") if isinstance(data, dict) else None
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    async def get_business_account_id(self, phone_number_id: str) -> Optional[str]:
+        """ID de la cuenta de WhatsApp (WABA) dueña del número; las plantillas viven en ella."""
+        value = (await self.get_phone_number(phone_number_id)).get("business_account_id")
         return str(value) if value else None
 
     async def create_customer(self, *, name: str, external_customer_id: str) -> dict:

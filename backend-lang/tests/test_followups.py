@@ -284,3 +284,89 @@ async def test_followups_role_matrix(role, ws, allowed, method, path, body):
     async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
         code = (await client.request(method, path, json=body)).status_code
     assert (code != 403) == allowed, (role, ws, method, path, code)
+
+
+# ── Verificación del número en Kapso antes de activar plantillas ──────────────
+
+class _Db:
+    """BD falsa: registra los UPDATE y devuelve listas vacías en las lecturas."""
+
+    def __init__(self):
+        self.writes = []
+
+    async def execute(self, _sql, params=None):
+        self.writes.append(params or {})
+        return SimpleNamespace(mappings=lambda: SimpleNamespace(fetchall=lambda: []))
+
+
+def _kapso_number(monkeypatch, handler):
+    from services.kapso_onboarding import KapsoPlatformClient
+    monkeypatch.setattr(
+        followup_service, "_platform_client",
+        lambda: KapsoPlatformClient("key-secreta", BASE, transport=httpx.MockTransport(handler)))
+
+
+CHANNEL = {"id": "ch", "phone_number_id": "PID", "provider": "kapso", "external_account_id": None}
+
+
+async def test_get_phone_number_request_and_unwrap():
+    from services.kapso_onboarding import KapsoPlatformClient
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, json={"data": {"business_account_id": "W1", "is_coexistence": True}})
+
+    client = KapsoPlatformClient("key-secreta", BASE, transport=httpx.MockTransport(handler))
+    assert await client.get_phone_number("PID") == {"business_account_id": "W1", "is_coexistence": True}
+    assert await client.get_business_account_id("PID") == "W1"
+    assert seen[0].method == "GET"
+    assert str(seen[0].url) == f"{BASE}/platform/v1/whatsapp/phone_numbers/PID"
+    assert seen[0].headers["X-API-Key"] == "key-secreta"
+
+
+@pytest.mark.parametrize("number,coex,conn_type", [
+    ({"business_account_id": "W1", "status": "CONNECTED", "is_coexistence": True}, True, "coexistence"),
+    ({"business_account_id": "W1", "status": "CONNECTED", "is_coexistence": False}, False, "dedicated"),
+    ({"business_account_id": "W1", "status": None, "is_coexistence": None}, None, None),  # no pisa lo guardado
+    ({"business_account_id": "W1", "status": "FLAGGED"}, None, None),  # sigue operando
+])
+async def test_verify_connection_saves_account_and_coexistence(monkeypatch, number, coex, conn_type):
+    _kapso_number(monkeypatch, lambda _: httpx.Response(200, json={"data": number}))
+    db = _Db()
+    assert await followup_service._verify_connection(db, CHANNEL) == "W1"
+    assert db.writes == [{"waba": "W1", "id": "ch", "coex": coex, "conn_type": conn_type}]
+
+
+@pytest.mark.parametrize("response,code", [
+    (httpx.Response(404, json={"error": "Resource not found"}), 409),
+    (httpx.Response(200, json={"data": {"business_account_id": "W1", "status": "DISCONNECTED"}}), 409),
+    (httpx.Response(200, json={"data": {"business_account_id": "W1", "status": "banned"}}), 409),
+    (httpx.Response(200, json={"data": {"status": "CONNECTED"}}), 502),  # sin cuenta de WhatsApp
+    (httpx.Response(500, json={"error": "boom"}), 502),
+])
+async def test_verify_connection_blocks_number_not_connected(monkeypatch, response, code):
+    from fastapi import HTTPException
+    _kapso_number(monkeypatch, lambda _: response)
+    db = _Db()
+    with pytest.raises(HTTPException) as err:
+        await followup_service._verify_connection(db, CHANNEL)
+    assert err.value.status_code == code
+    assert db.writes == []
+
+
+@pytest.mark.parametrize("channel,connected,can_activate", [
+    (None, False, False),
+    ({**CHANNEL, "phone_number_id": "SANDBOX"}, True, False),  # número de pruebas: se envía como texto
+    (CHANNEL, True, True),
+])
+async def test_list_templates_reports_connection(monkeypatch, channel, connected, can_activate):
+    async def fake_channel(_db, _w):
+        return channel
+
+    monkeypatch.setattr(followup_service, "_kapso_channel", fake_channel)
+    monkeypatch.setattr(followup_service, "get_settings",
+                        lambda: SimpleNamespace(kapso_sandbox_phone_number_id="SANDBOX"))
+    out = await followup_service.list_templates(_Db(), "ws-1")
+    assert (out["connected"], out["can_activate"]) == (connected, can_activate)
+    assert len(out["templates"]) == 4

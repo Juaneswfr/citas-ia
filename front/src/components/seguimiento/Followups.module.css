@@ -8,6 +8,7 @@
   font: 400 13px/1.5 var(--font-sans); color: var(--ink-2);
 }
 .followups__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.followups__link { font-weight: 600; color: var(--wine); text-decoration: underline; }
 .followups__list { display: flex; flex-direction: column; gap: 12px; }
 .followups__save { display: flex; align-items: center; gap: 12px; }
 .followups__hint { font: 400 12px/1.3 var(--font-sans); color: var(--ink-4); }
@@ -52,6 +53,7 @@
 .switch__input:checked + .switch__track::after { transform: translateX(16px); }
 .switch__input:focus-visible + .switch__track { outline: 2px solid var(--wine); outline-offset: 2px; }
 .switch__label { min-width: 54px; font: 500 12px/1 var(--font-sans); color: var(--ink-2); }
+.switch--disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* Tiempo del envío */
 .timing { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/1 var(--font-sans); color: var(--ink-2); }

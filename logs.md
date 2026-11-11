@@ -1,6 +1,24 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-11]
+**Agregado — plantillas solo con el número realmente conectado**
+- backend-lang/src/services/kapso_onboarding.py — `KapsoPlatformClient.get_phone_number` (estado del número en Kapso); `get_business_account_id` lo reutiliza.
+- backend-lang/src/services/followup_service.py — `_verify_connection` sustituye a `_business_account_id`: «Activar plantillas» y «Actualizar estado» consultan siempre el número en Kapso. 404 o estado `DISCONNECTED`/`DELETED`/`BANNED`/`MIGRATED` → 409 «Este número ya no está conectado en Kapso»; antes solo se confiaba en la tabla `channels`. Guarda la cuenta de WhatsApp y si el número está en coexistencia.
+- backend-lang/src/schemas/followups.py, front/src/lib/types/followups.ts — `connected` en la respuesta de plantillas.
+- front/src/components/seguimiento/FollowupsSection.tsx, Followups.module.css — sin número conectado, interruptores, tiempos y «Guardar» quedan deshabilitados, con enlace a Ajustes. Con el número de pruebas la pantalla sigue editable (ahí los seguimientos salen como texto).
+- CLAUDE.md — verificación en Kapso, bloqueo de pantalla y que la billetera de Meta se maneja en Kapso (`partner_managed`), no en Hilo.
+
+**Verificación**
+- backend-lang/tests/test_followups.py: 13 casos nuevos (petición a Kapso, estados que bloquean, coexistencia guardada, `connected`). Suite: 336 pasan, 19 fallan (los antiguos de asyncpg).
+- Front: `tsc` sin errores nuevos; eslint solo marca formato, igual que antes.
+
+**Pendiente / no verificado**
+- La pantalla no se abrió en el navegador.
+- Respuesta real de Kapso para un número en coexistencia: los estados que bloquean vienen de los estados de Meta; la documentación de Kapso solo menciona `CONNECTED`. Confirmar con la primera barbería real.
+- Confirmar con Kapso que el plan contratado incluye la facturación centralizada de Meta.
+- Sin commit ni despliegue.
+
+### [AGENTE: claude] [FECHA: 2026-11-11]
 **Corregido — archivos duplicados por mayúsculas (preparación del despliegue)**
 - claude.md, backend-lang/readme.md — eliminados del repo. Git tenía `CLAUDE.md` + `claude.md` y `backend-lang/README.md` + `backend-lang/readme.md` como archivos distintos; Windows guarda uno solo por par, así que siempre aparecía uno «modificado», y en el servidor (Linux) el `CLAUDE.md` vigente era el viejo que hablaba de Supabase.
 - CLAUDE.md — queda con el contenido actual (el que estaba en `claude.md`).
