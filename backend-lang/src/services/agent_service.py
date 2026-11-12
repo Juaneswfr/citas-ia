@@ -58,9 +58,13 @@ class AgentService:
 
             # 3. Horario del agente (separado del horario de citas)
             ws = (await db.execute(
-                text("SELECT timezone FROM workspaces WHERE id=:workspace_id"),
+                text("SELECT timezone, is_active FROM workspaces WHERE id=:workspace_id"),
                 {"workspace_id": workspace_id},
             )).mappings().fetchone()
+            if ws and ws["is_active"] is False:
+                # Negocio suspendido desde el panel de plataforma: el agente no responde.
+                log.info("[agent] skip: negocio suspendido (workspace=%s)", workspace_id)
+                return None
             if ws:
                 from zoneinfo import ZoneInfo
                 from datetime import datetime as _dt
@@ -239,7 +243,7 @@ class AgentService:
                 {"workspace_id": workspace_id},
             )).mappings().fetchall()
             workspace = (await db.execute(
-                text("SELECT name,timezone FROM workspaces WHERE id=:workspace_id"),
+                text("SELECT name,timezone,business_type FROM workspaces WHERE id=:workspace_id"),
                 {"workspace_id": workspace_id},
             )).mappings().fetchone()
 

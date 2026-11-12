@@ -6,7 +6,10 @@
 .fin__tab {
   padding: 10px 14px; border: 0; background: transparent; cursor: pointer; white-space: nowrap;
   font: 500 14px/1 var(--font-sans); color: var(--ink-3); border-bottom: 2px solid transparent;
+  transition: color var(--dur-2) var(--ease-std), border-color var(--dur-2) var(--ease-std);
 }
+/* Contenido de la pestaña activa: conserva la separación vertical que antes daba .fin */
+.fin__view { display: flex; flex-direction: column; gap: 20px; }
 .fin__tab:hover { color: var(--ink-1); }
 .fin__tab--active { color: var(--wine); border-bottom-color: var(--wine); }
 
@@ -17,7 +20,11 @@
 
 /* Tarjetas KPI */
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.kpi { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; }
+.kpi {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px;
+  transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out);
+}
+.kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .kpi__label { font: 500 12px/1 var(--font-sans); color: var(--ink-3); margin-bottom: 8px; }
 .kpi__value { font: 600 24px/1.1 var(--font-sans); color: var(--ink-1); }
 .kpi__value--positive { color: var(--success); }
@@ -26,7 +33,11 @@
 
 /* Listas tipo tabla */
 .list { display: flex; flex-direction: column; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
-.row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap; }
+.row {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap;
+  transition: background var(--dur-2) var(--ease-std), opacity var(--dur-2) var(--ease-std);
+}
+.row:hover { background: var(--surface-tint); }
 .row:last-child { border-bottom: 0; }
 .row--void { opacity: 0.5; }
 .row__main { flex: 1 1 220px; min-width: 0; }
@@ -41,7 +52,7 @@
 .bars { display: flex; flex-direction: column; gap: 10px; }
 .bar { display: grid; grid-template-columns: 140px 1fr 100px; gap: 10px; align-items: center; font: 400 13px/1.2 var(--font-sans); color: var(--ink-2); }
 .bar__track { height: 10px; background: var(--line-soft); border-radius: 99px; overflow: hidden; }
-.bar__fill { height: 100%; border-radius: 99px; background: var(--success); }
+.bar__fill { height: 100%; border-radius: 99px; background: var(--success); transition: width var(--dur-4) var(--ease-out); }
 .bar__fill--expense { background: var(--danger); }
 .bar__value { text-align: right; color: var(--ink-1); font-weight: 500; }
 
@@ -69,6 +80,7 @@
 .chip {
   padding: 7px 12px; border-radius: 99px; border: 1px solid var(--line-strong); background: var(--surface-2);
   font: 500 13px/1 var(--font-sans); color: var(--ink-2); cursor: pointer;
+  transition: background var(--dur-2) var(--ease-std), border-color var(--dur-2) var(--ease-std), color var(--dur-2) var(--ease-std);
 }
 .chip:hover { border-color: var(--wine); }
 .chip--active { background: var(--wine); border-color: var(--wine); color: var(--wine-fg); }
@@ -90,7 +102,7 @@
   padding: 22px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto;
   display: flex; flex-direction: column; gap: 14px; animation: modal-rise var(--dur-3) var(--ease-out);
 }
-@keyframes modal-rise { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes modal-rise { from { transform: translateY(12px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 .modal__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .modal__close {
   appearance: none; background: none; border: 0; padding: 4px 8px; cursor: pointer; font-size: 14px;
@@ -109,7 +121,7 @@
   width: 100%; padding: 9px 11px; border-radius: var(--r-sm); border: 1px solid var(--line-strong);
   background: var(--surface-2); font: 400 14px/1.3 var(--font-sans); color: var(--ink-1); outline: none;
 }
-.field__input:focus { border-color: var(--wine); }
+.field__input:focus { border-color: var(--wine); box-shadow: var(--ring); }
 .field__hint { font: 400 11px/1.3 var(--font-sans); color: var(--ink-3); }
 
 .summary-line { display: flex; justify-content: space-between; font: 400 14px/1.4 var(--font-sans); color: var(--ink-2); padding: 4px 0; }

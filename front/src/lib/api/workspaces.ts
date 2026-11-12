@@ -1,13 +1,18 @@
 // API helpers para workspaces
 
 import { apiFetch } from './client';
-import type { MemberOut, BusinessHoursOut, WorkspaceStats } from '../types/api';
+import type { MemberOut, BusinessHoursOut, WorkspaceOut, WorkspaceStats } from '../types/api';
 
 export interface WorkspacePatch {
   name?: string;
   business_type?: string;
   primary_phone?: string;
   timezone?: string;
+}
+
+/** GET /workspaces/{id} — datos del negocio (nombre, tipo de negocio, zona horaria) */
+export async function getWorkspace(workspaceId: string): Promise<WorkspaceOut> {
+  return apiFetch<WorkspaceOut>(`/workspaces/${workspaceId}`);
 }
 
 /** PATCH /workspaces/{id} — actualiza datos del workspace */

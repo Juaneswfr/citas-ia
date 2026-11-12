@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/hilo/primitives';
-import { BUSINESS_PRESETS, BUSINESS_TYPES, type BusinessTypeId } from '@/lib/hilo-data';
+import { getBusinessPreset, getBusinessType, type BusinessTypeId } from '@/lib/business-types';
 import { createService } from '@/lib/api/services';
 import type { ServiceOut } from '@/lib/types/api';
 import s from './onboarding.module.css';
@@ -14,9 +14,9 @@ interface StepServicesProps {
 }
 
 export function StepServices({ businessType, services, workspaceId, onCreated }: StepServicesProps) {
-  const typeId: BusinessTypeId = businessType ?? 'barberia';
-  const preset = BUSINESS_PRESETS[typeId];
-  const typeLabel = BUSINESS_TYPES.find(bt => bt.id === typeId)?.label ?? 'tu negocio';
+  const typeId: BusinessTypeId = businessType ?? 'otro';
+  const preset = getBusinessPreset(typeId);
+  const typeLabel = businessType ? getBusinessType(typeId).label.toLowerCase() : 'tu negocio';
   const [creating, setCreating] = useState(false);
 
   const handleCreatePreset = async () => {

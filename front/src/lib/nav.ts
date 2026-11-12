@@ -8,6 +8,8 @@ export interface NavItem {
   soon?: true;
   /** Solo visible para dueño y administrador (staff/viewer no ven finanzas). */
   managerOnly?: true;
+  /** Solo visible para el equipo de Hilo (panel de toda la plataforma). */
+  superAdminOnly?: true;
 }
 
 const FINANCE_ROLES = ['super_admin', 'workspace_owner', 'manager'];
@@ -17,10 +19,20 @@ export function canManageFinance(role: string | null | undefined): boolean {
   return !!role && FINANCE_ROLES.includes(role);
 }
 
+/** true si el usuario administra toda la plataforma (espejo de require_role("super_admin")). */
+export function isPlatformAdmin(role: string | null | undefined): boolean {
+  return role === 'super_admin';
+}
+
+function canSee(item: NavItem, role: string | null | undefined): boolean {
+  if (item.superAdminOnly) return isPlatformAdmin(role);
+  return !item.managerOnly || canManageFinance(role);
+}
+
 /** Navegación filtrada por rol. */
 export function visibleNav(role: string | null | undefined): NavGroup[] {
   return NAV
-    .map(g => ({ ...g, items: g.items.filter(i => !i.managerOnly || canManageFinance(role)) }))
+    .map(g => ({ ...g, items: g.items.filter(i => canSee(i, role)) }))
     .filter(g => g.items.length > 0);
 }
 
@@ -48,6 +60,9 @@ export const NAV: NavGroup[] = [
     { id: 'equipo',      path: '/equipo',   icon: 'user', label: 'Equipo' },
     { id: 'config',      path: '/settings', icon: 'gear', label: 'Configuración' },
   ]},
+  { group: 'Hilo', items: [
+    { id: 'plataforma', path: '/admin', icon: 'shield', label: 'Plataforma', superAdminOnly: true },
+  ]},
 ];
 
 export const PATH_TO_ID: Record<string, string> = {
@@ -62,6 +77,7 @@ export const PATH_TO_ID: Record<string, string> = {
   '/whatsapp':  'whatsapp',
   '/equipo':    'equipo',
   '/settings':  'config',
+  '/admin':     'plataforma',
 };
 
 export const TITLES: Record<string, string> = {
@@ -76,4 +92,5 @@ export const TITLES: Record<string, string> = {
   whatsapp:       'WhatsApp · Agente',
   equipo:         'Equipo',
   config:         'Ajustes',
+  plataforma:     'Plataforma',
 };

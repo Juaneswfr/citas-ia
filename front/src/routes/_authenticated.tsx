@@ -1,19 +1,18 @@
 import { createFileRoute, Outlet, redirect, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
-import { apiFetch } from '@/lib/api/client';
 import { listChannels, listCalendars, listSandboxSessions } from '@/lib/api/channels';
 import { listServices } from '@/lib/api/services';
 import { getAgentConfig, getAgentHours } from '@/lib/api/agent';
 import { countAgentAlerts } from '@/lib/api/alerts';
 import { usePendingReceiptCount } from '@/hooks/use-receipts';
+import { useWorkspace } from '@/hooks/use-workspace';
 import type { AgentHoursOut } from '@/lib/types/api';
 import { PATH_TO_ID, TITLES } from '@/lib/nav';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { BottomTabs } from '@/components/layout/BottomTabs';
-import type { WorkspaceOut } from '@/lib/types/api';
 import styles from '@/components/layout/PanelLayout.module.css';
 
 const JWT_KEY = 'hilo_jwt';
@@ -47,15 +46,7 @@ function PanelLayout() {
   const isOnboarding = location.pathname === '/onboarding';
   const title = TITLES[activeId] || 'Hilo';
 
-  const { data: workspace } = useQuery<WorkspaceOut | null>({
-    queryKey: ['workspace', me?.workspace_id],
-    queryFn: async () => {
-      try { return await apiFetch<WorkspaceOut>(`/workspaces/${me!.workspace_id}`); }
-      catch { return null; }
-    },
-    enabled: !!me?.workspace_id,
-    staleTime: 60_000,
-  });
+  const { data: workspace } = useWorkspace();
 
   const { data: channels = [] } = useQuery({
     queryKey: ['channels', me?.workspace_id],
@@ -158,7 +149,7 @@ function PanelLayout() {
   const statusChips = [waChip, calChip, agentChip].filter(Boolean) as NonNullable<typeof waChip>[];
 
   const stepsDone = [
-    !!(workspace?.name && (workspace as any)?.business_type),
+    !!(workspace?.name && workspace.business_type),
     channels.some((c: any) => c.status === 'active'),
     calendars.some((c: any) => c.sync_status === 'active'),
     services.length > 0,

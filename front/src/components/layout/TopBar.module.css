@@ -34,6 +34,11 @@
   max-width: 360px;
   cursor: pointer;
   text-align: left;
+  transition: background var(--dur-2) var(--ease-std), border-color var(--dur-2) var(--ease-std);
+}
+
+.topbar__search:hover {
+  border-color: var(--line-strong);
 }
 
 .topbar__search-placeholder {

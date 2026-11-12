@@ -11,6 +11,7 @@ import { METHOD_LABEL, PayStateTag } from '@/components/finanzas/ui';
 import { useCustomerSummary } from '@/hooks/use-customer-summary';
 import { useUpdateCustomer } from '@/hooks/use-customers';
 import { useConversations, useMessages } from '@/hooks/use-conversations';
+import { useBusinessTerms } from '@/hooks/use-workspace';
 import { fmtCOP } from '@/lib/hilo-data';
 import type { HiloClient } from '@/lib/hilo-data';
 import type { CustomerPayment, CustomerSummary } from '@/lib/types/customer-summary';
@@ -49,6 +50,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 function SummaryTab({ c, summary }: { c: HiloClient; summary: CustomerSummary }) {
   const updateCustomer = useUpdateCustomer(c.id);
+  const terms = useBusinessTerms();
   const [note, setNote] = useState(c.note);
   const [noteSaved, setNoteSaved] = useState(true);
   const [botOn, setBotOn] = useState(c.agent_enabled);
@@ -67,7 +69,7 @@ function SummaryTab({ c, summary }: { c: HiloClient; summary: CustomerSummary })
         <Fact label="Próxima cita" value={stats.next_appointment ? dateTime(stats.next_appointment) : '—'} />
         <Fact label="Última visita" value={dateOnly(stats.last_visit)} />
         <Fact label="Servicio favorito" value={stats.favorite_service ?? '—'} />
-        <Fact label="Barbero favorito" value={stats.favorite_barber ?? '—'} />
+        <Fact label={`${terms.Staff} favorito`} value={stats.favorite_barber ?? '—'} />
         <Fact label="Canceladas / no asistió" value={`${stats.cancelled} / ${stats.no_show}`} />
         <Fact label="Cliente desde" value={dateOnly(summary.created_at)} />
         <Fact label="Correo" value={summary.email ?? '—'} />

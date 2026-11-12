@@ -158,7 +158,7 @@ function SignupPage() {
                 <label htmlFor="biz">Nombre del negocio</label>
                 <input
                   id="biz" type="text" required
-                  placeholder="ej: Barbería Juanes"
+                  placeholder="ej: Estudio Juanes"
                   value={businessName}
                   onChange={e => setBusinessName(e.target.value)}
                 />

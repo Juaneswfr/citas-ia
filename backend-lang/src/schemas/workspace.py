@@ -1,14 +1,18 @@
 """Schemas Pydantic para Workspace y WorkspaceMember."""
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
+
+from core.business_types import BUSINESS_TYPE_IDS, validate_business_type
+
+_BUSINESS_TYPE_DOC = "Tipo de negocio: " + " | ".join(BUSINESS_TYPE_IDS)
 
 
 class WorkspaceCreate(BaseModel):
     name: str = Field(..., description="Nombre comercial del negocio")
     legal_name: Optional[str] = Field(None, description="Razón social o nombre legal")
     slug: str = Field(..., description="Identificador único URL-friendly")
-    business_type: Optional[str] = Field(None, description="Tipo de negocio: barberia | salon | manicure | spa | otro")
+    business_type: Optional[str] = Field(None, description=_BUSINESS_TYPE_DOC)
     country: str = Field(default="CO", description="Código ISO del país")
     timezone: str = Field(..., description="Zona horaria IANA, ej: America/Bogota")
     primary_phone: Optional[str] = Field(None, description="Teléfono principal de contacto")
@@ -16,17 +20,27 @@ class WorkspaceCreate(BaseModel):
     brand_color: Optional[str] = Field(None, description="Color hex del branding, ej: #1A1A1A")
     logo_url: Optional[str] = Field(None, description="URL del logo del negocio")
 
+    @field_validator("business_type")
+    @classmethod
+    def _check_business_type(cls, value: Optional[str]) -> Optional[str]:
+        return validate_business_type(value)
+
 
 class WorkspaceUpdate(BaseModel):
     name: Optional[str] = Field(None, description="Nombre comercial del negocio")
     legal_name: Optional[str] = None
-    business_type: Optional[str] = None
+    business_type: Optional[str] = Field(None, description=_BUSINESS_TYPE_DOC)
     timezone: Optional[str] = None
     primary_phone: Optional[str] = None
     primary_email: Optional[EmailStr] = None
     brand_color: Optional[str] = None
     logo_url: Optional[str] = None
-    is_active: Optional[bool] = None
+    # `is_active` no se edita aquí: suspender o reactivar un negocio es del panel de plataforma (/admin).
+
+    @field_validator("business_type")
+    @classmethod
+    def _check_business_type(cls, value: Optional[str]) -> Optional[str]:
+        return validate_business_type(value)
 
 
 class WorkspaceOut(BaseModel):

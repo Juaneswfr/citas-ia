@@ -17,7 +17,7 @@ import { StepServices } from '@/components/onboarding/StepServices';
 import { StepTeam } from '@/components/onboarding/StepTeam';
 import { StepTest } from '@/components/onboarding/StepTest';
 import type { WorkspaceOut, ChannelOut, CalendarOut, ServiceOut, MemberOut, BusinessHoursOut } from '@/lib/types/api';
-import type { BusinessTypeId } from '@/lib/hilo-data';
+import type { BusinessTypeId } from '@/lib/business-types';
 import s from '@/components/onboarding/onboarding.module.css';
 
 export const Route = createFileRoute('/_authenticated/onboarding')({

@@ -7,6 +7,7 @@ import { Button } from '@/components/hilo/primitives';
 import { fmtCOP } from '@/lib/hilo-data';
 import { usePayWithReceipt, useVoidMovement } from '@/hooks/use-accounting';
 import { useAppointmentDetail } from '@/hooks/use-appointment-detail';
+import { useBusinessTerms } from '@/hooks/use-workspace';
 import { PaymentDialog } from '@/components/finanzas/PaymentDialog';
 import { PaymentsList } from '@/components/finanzas/PaymentsList';
 import { AsyncState, Modal, PaymentProgress, PaymentStatusTag } from '@/components/finanzas/ui';
@@ -82,7 +83,8 @@ export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailP
     }
   };
 
-  const barber = order?.lines.map((l) => l.member_name).find(Boolean) ?? 'Sin asignar';
+  const terms = useBusinessTerms();
+  const staffName = order?.lines.map((l) => l.member_name).find(Boolean) ?? 'Sin asignar';
   const price = apt ? apt.price_cop + apt.home_service_price_cop : 0;
 
   return (
@@ -105,7 +107,7 @@ export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailP
               <Item label="Fecha" value={format(parseISO(apt.start_at), "EEEE d 'de' MMMM", { locale: es })} />
               <Item label="Hora" value={`${format(parseISO(apt.start_at), 'h:mm a')} – ${format(parseISO(apt.end_at), 'h:mm a')}`} />
               {service && <Item label="Duración" value={`${service.duration_minutes} min`} />}
-              {canManage && isCompleted && <Item label="Barbero" value={barber} />}
+              {canManage && isCompleted && <Item label={terms.Staff} value={staffName} />}
               {apt.is_home_service && <Item wide label="Domicilio" value={apt.home_address ?? 'Sin dirección'} />}
               {service?.description && <Item wide label="Descripción del servicio" value={service.description} />}
             </div>

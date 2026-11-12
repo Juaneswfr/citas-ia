@@ -1,4 +1,4 @@
-// Órdenes de venta: lista, cobro, anulación y venta manual (con barbero y propina).
+// Órdenes de venta: lista, cobro, anulación y venta manual (con quien atendió y propina).
 
 import { useState } from 'react';
 import { Button } from '@/components/hilo/primitives';
@@ -6,6 +6,7 @@ import { fmtCOP } from '@/lib/hilo-data';
 import {
   useCompensation, useCreateSalesOrder, usePayWithReceipt, useSalesOrders, useThirdParties, useVoidSalesOrder,
 } from '@/hooks/use-accounting';
+import { useBusinessTerms } from '@/hooks/use-workspace';
 import type { SalesOrderOut } from '@/lib/types/accounting';
 import { PaymentDialog } from './PaymentDialog';
 import { PaymentsList } from './PaymentsList';
@@ -14,6 +15,7 @@ import styles from './Finanzas.module.css';
 
 function NewSaleDialog({ onClose }: { onClose: () => void }) {
   const create = useCreateSalesOrder();
+  const terms = useBusinessTerms();
   const { data: members = [] } = useCompensation();
   const { data: parties = [] } = useThirdParties();
   const [description, setDescription] = useState('');
@@ -45,11 +47,11 @@ function NewSaleDialog({ onClose }: { onClose: () => void }) {
         </Field>
         <div className={styles.form__grid}>
           <Field label="Precio"><input className={styles.field__input} inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} /></Field>
-          <Field label="Propina" hint="Va al barbero, no es ingreso del negocio">
+          <Field label="Propina" hint={`Va al ${terms.staff}, no es ingreso del negocio`}>
             <input className={styles.field__input} inputMode="numeric" value={tip} onChange={(e) => setTip(e.target.value)} />
           </Field>
         </div>
-        <Field label="Barbero">
+        <Field label={terms.Staff}>
           <select className={styles.field__input} value={memberId} onChange={(e) => setMemberId(e.target.value)}>
             <option value="">Sin asignar</option>
             {members.map((m) => <option key={m.member_id} value={m.member_id}>{m.member_name ?? 'Sin nombre'}</option>)}
@@ -71,10 +73,10 @@ function NewSaleDialog({ onClose }: { onClose: () => void }) {
 }
 
 function orderMeta(order: SalesOrderOut): string {
-  const barbers = [...new Set(order.lines.map((l) => l.member_name).filter(Boolean))].join(', ');
+  const staffNames = [...new Set(order.lines.map((l) => l.member_name).filter(Boolean))].join(', ');
   const commission = order.lines.reduce((sum, l) => sum + l.commission_cop, 0);
   const parts = [new Date(order.issued_at).toLocaleDateString('es-CO'), order.third_party_name ?? 'Sin cliente'];
-  if (barbers) parts.push(barbers);
+  if (staffNames) parts.push(staffNames);
   if (commission > 0) parts.push(`comisión ${fmtCOP(commission)}`);
   return parts.join(' · ');
 }

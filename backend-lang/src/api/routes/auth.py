@@ -108,10 +108,11 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     row = (await db.execute(
         text("""
         SELECT u.id, u.email, u.password_hash, u.role, u.is_active,
-               wm.workspace_id
+               wm.workspace_id, w.is_active AS workspace_active
         FROM users u
         LEFT JOIN workspace_members wm
             ON wm.user_id = u.id AND wm.status = 'active'
+        LEFT JOIN workspaces w ON w.id = wm.workspace_id
         WHERE u.email = :email
         LIMIT 1
         """),
@@ -129,6 +130,12 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise invalid
     if not row["is_active"]:
         raise invalid
+    # Negocio suspendido desde el panel de plataforma: solo el super_admin sigue entrando.
+    if row["workspace_active"] is False and row["role"] != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este negocio está suspendido. Escríbenos para reactivarlo.",
+        )
 
     workspace_id = str(row["workspace_id"]) if row["workspace_id"] else ""
     token = create_access_token({

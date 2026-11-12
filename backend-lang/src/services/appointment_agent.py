@@ -1,5 +1,9 @@
 """
-Agente de citas: LLM + 3 herramientas ejecutadas por el backend.
+Agente de citas: LLM + herramientas ejecutadas por el backend.
+
+El vocabulario depende del tipo de negocio del workspace (`core/business_types.py`): en una
+barbería quien atiende es un «barbero», en un consultorio un «doctor». Los nombres de las
+herramientas son neutros (`listar_profesionales`) para que sirvan a cualquier industria.
 
 El modelo nunca elige workspace_id, cliente, canal ni calendario: salen del contexto de la
 conversación y las herramientas los cierran por closure. La confirmación al cliente la
@@ -18,6 +22,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, field_validator
 
+from core.business_types import BusinessProfile, get_profile
 from core.database import AsyncSessionLocal
 from sqlalchemy import text
 
@@ -33,22 +38,65 @@ NOT_BOOKED = "No pude agendar la cita en este momento. Un asesor te contactará 
 _CLAIMS_CONFIRMED = re.compile(r"confirmad|agendad|reservad|qued[óo] list", re.I)
 
 _SYSTEM = (
-    "Eres el asistente de citas de {workspace}. Responde siempre en español, breve y amable. "
+    "Eres el asistente de citas de {workspace} ({business_label}). Responde siempre en español, breve y amable. "
     "Fecha de hoy: {today} (zona {tz}).\n\n"
     "SERVICIOS ACTUALES (usa estos datos, no los del historial):\n{services}\n\n"
-    "BARBEROS DISPONIBLES (usa estos datos, no los del historial):\n{barberos}\n\n"
+    "{staff_heading} DISPONIBLES (usa estos datos, no los del historial):\n{staff}\n\n"
+    "Quien atiende en este negocio es un {staff_singular}: usa esa palabra al hablar con el cliente.\n"
     "Flujo para agendar: "
-    "1) Si hay varios barberos pregunta cuál prefiere el cliente, si hay uno solo selecciónalo. "
-    "2) consultar_disponibilidad con el calendar_id del barbero y el service_id del servicio elegido, "
+    "1) Si hay varios {staff_plural} pregunta cuál prefiere el cliente, si hay uno solo selecciónalo. "
+    "2) consultar_disponibilidad con el calendar_id del {staff_singular} y el service_id del servicio elegido, "
     "3) crear_cita con el mismo calendar_id y service_id. "
     "También puedes listar y cancelar citas del cliente. "
     "Nunca afirmes que una cita está confirmada: el sistema te dirá si se creó. "
     "No inventes servicios ni horarios.\n"
+    "{agent_note}"
     "FORMATO: solo texto plano de WhatsApp. "
     "Usa *texto* para negrita, _texto_ para cursiva, ~texto~ para tachado. "
     "NO uses markdown (#, **, ```, [], ![]). NO uses listas con guiones. "
     "Separa con saltos de línea, no con símbolos raros."
 )
+
+
+_STAFF_SQL = text("""
+    SELECT c.id AS calendar_id, COALESCE(u.name, c.name) AS nombre
+    FROM calendars c
+    LEFT JOIN workspace_members wm ON wm.id = c.member_id
+    LEFT JOIN users u ON u.id = wm.user_id
+    WHERE c.workspace_id = :workspace_id AND c.sync_status = 'active'
+    ORDER BY c.created_at
+""")
+
+
+def _profile(ctx: dict) -> BusinessProfile:
+    """Perfil de industria del workspace de la conversación (genérico si no tiene tipo)."""
+    return get_profile(ctx.get("workspace", {}).get("business_type"))
+
+
+async def _staff_text(session, workspace_id: str, profile: BusinessProfile) -> str:
+    """Quienes atienden (un calendario activo por persona), como `calendar_id | nombre`."""
+    rows = (await session.execute(_STAFF_SQL, {"workspace_id": workspace_id})).mappings().fetchall()
+    return ("\n".join(f"{r['calendar_id']} | {r['nombre']}" for r in rows)
+            or f"Sin {profile.staff_plural} disponibles.")
+
+
+def build_system_prompt(ctx: dict, services_txt: str, staff_txt: str) -> str:
+    """Prompt de sistema con el vocabulario y las advertencias de la industria del negocio."""
+    workspace = ctx.get("workspace", {})
+    profile = _profile(ctx)
+    tz = workspace.get("timezone") or "America/Bogota"
+    return _SYSTEM.format(
+        workspace=workspace.get("name", ""),
+        business_label=profile.label,
+        tz=tz,
+        today=datetime.now(ZoneInfo(tz)).date(),
+        services=services_txt,
+        staff=staff_txt,
+        staff_heading=profile.staff_plural.upper(),
+        staff_singular=profile.staff_singular,
+        staff_plural=profile.staff_plural,
+        agent_note=f"{profile.agent_note}\n" if profile.agent_note else "",
+    )
 
 
 def _get_llm():
@@ -69,7 +117,7 @@ def _validate_service_uuid(v: str) -> str:
 
 
 class _AvailIn(BaseModel):
-    calendar_id: str = Field(description="ID del calendario del barbero (de listar_barberos)")
+    calendar_id: str = Field(description="ID del calendario del profesional (de listar_profesionales)")
     service_id: str = Field(description="ID del servicio (de listar_servicios)")
     fecha: str = Field(description="Fecha YYYY-MM-DD")
     horas: list[str] = Field(description="Horas candidatas HH:MM (máx. 8)", max_length=8)
@@ -81,7 +129,7 @@ class _AvailIn(BaseModel):
 
 
 class _CreateIn(BaseModel):
-    calendar_id: str = Field(description="ID del calendario del barbero (de listar_barberos)")
+    calendar_id: str = Field(description="ID del calendario del profesional (de listar_profesionales)")
     service_id: str
     fecha: str = Field(description="Fecha YYYY-MM-DD")
     hora: str = Field(description="Hora HH:MM")
@@ -112,6 +160,7 @@ def build_tools(ctx: dict, state: dict) -> list[StructuredTool]:
     """Herramientas atadas al contexto. `state["booked"]` solo se llena con la fila de la BD."""
     ws = ctx["workspace_id"]
     tz = ZoneInfo(ctx.get("workspace", {}).get("timezone") or "America/Bogota")
+    profile = _profile(ctx)
 
     async def _service(session, service_id):
         return (await session.execute(
@@ -142,20 +191,9 @@ def build_tools(ctx: dict, state: dict) -> list[StructuredTool]:
         return "\n".join(f"{r['id']} | {r['name']} | {r['duration_minutes']} min | ${r['price_cop']} COP"
                          for r in rows) or "Sin servicios activos."
 
-    async def listar_barberos() -> str:
+    async def listar_profesionales() -> str:
         async with AsyncSessionLocal() as session:
-            rows = (await session.execute(
-                text("""
-                SELECT c.id AS calendar_id, COALESCE(u.name, c.name) AS nombre
-                FROM calendars c
-                LEFT JOIN workspace_members wm ON wm.id = c.member_id
-                LEFT JOIN users u ON u.id = wm.user_id
-                WHERE c.workspace_id = :workspace_id AND c.sync_status = 'active'
-                ORDER BY c.created_at
-                """),
-                {"workspace_id": ws},
-            )).mappings().fetchall()
-        return "\n".join(f"{r['calendar_id']} | {r['nombre']}" for r in rows) or "Sin barberos disponibles."
+            return await _staff_text(session, ws, profile)
 
     async def consultar_disponibilidad(calendar_id: str, service_id: str, fecha: str, horas: list[str]) -> str:
         from services.calendar_service import CalendarService
@@ -273,16 +311,18 @@ def build_tools(ctx: dict, state: dict) -> list[StructuredTool]:
             return "ERROR: no se pudo cancelar la cita."
 
     return [
-        StructuredTool.from_function(coroutine=listar_barberos, name="listar_barberos",
-                                     description="Lista los barberos disponibles con su calendar_id. Llama primero antes de consultar disponibilidad.",
+        StructuredTool.from_function(coroutine=listar_profesionales, name="listar_profesionales",
+                                     description=f"Lista los {profile.staff_plural} disponibles con su calendar_id. "
+                                                 "Llama primero antes de consultar disponibilidad.",
                                      args_schema=_ListIn),
         StructuredTool.from_function(coroutine=listar_servicios, name="listar_servicios",
                                      description="Lista los servicios activos.", args_schema=_ListIn),
         StructuredTool.from_function(coroutine=consultar_disponibilidad, name="consultar_disponibilidad",
-                                     description="Indica si horas candidatas de una fecha están libres para el barbero elegido.",
+                                     description=f"Indica si horas candidatas de una fecha están libres para el {profile.staff_singular} elegido.",
                                      args_schema=_AvailIn),
         StructuredTool.from_function(coroutine=crear_cita, name="crear_cita",
-                                     description="Crea la cita en un horario libre con el barbero elegido.", args_schema=_CreateIn),
+                                     description=f"Crea la cita en un horario libre con el {profile.staff_singular} elegido.",
+                                     args_schema=_CreateIn),
         StructuredTool.from_function(coroutine=listar_mis_citas, name="listar_mis_citas",
                                      description="Lista las citas próximas del cliente en esta conversación.",
                                      args_schema=_ListMisIn),
@@ -309,33 +349,14 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
             text("SELECT id,name,duration_minutes,price_cop FROM services WHERE workspace_id=:ws AND is_active=TRUE"),
             {"ws": ws},
         )).mappings().fetchall()
-        barberos_rows = (await session.execute(
-            text("""
-            SELECT c.id AS calendar_id, COALESCE(u.name, c.name) AS nombre
-            FROM calendars c
-            LEFT JOIN workspace_members wm ON wm.id = c.member_id
-            LEFT JOIN users u ON u.id = wm.user_id
-            WHERE c.workspace_id = :ws AND c.sync_status = 'active'
-            ORDER BY c.created_at
-            """),
-            {"ws": ws},
-        )).mappings().fetchall()
+        staff_txt = await _staff_text(session, ws, _profile(ctx))
 
     services_txt = "\n".join(
         f"{r['id']} | {r['name']} | {r['duration_minutes']} min | ${r['price_cop']} COP"
         for r in services_rows
     ) or "Sin servicios activos."
-    barberos_txt = "\n".join(
-        f"{r['calendar_id']} | {r['nombre']}" for r in barberos_rows
-    ) or "Sin barberos disponibles."
 
-    msgs = [SystemMessage(_SYSTEM.format(
-        workspace=ctx.get("workspace", {}).get("name", ""),
-        tz=ctx.get("workspace", {}).get("timezone") or "America/Bogota",
-        today=datetime.now(ZoneInfo(ctx.get("workspace", {}).get("timezone") or "America/Bogota")).date(),
-        services=services_txt,
-        barberos=barberos_txt,
-    ))]
+    msgs = [SystemMessage(build_system_prompt(ctx, services_txt, staff_txt))]
     msgs += [(HumanMessage if r["direction"] == "inbound" else AIMessage)(r["content"])
              for r in reversed(list(hist))]
     if not hist or hist[0]["content"] != message:  # el inbound ya se guarda antes de correr el agente

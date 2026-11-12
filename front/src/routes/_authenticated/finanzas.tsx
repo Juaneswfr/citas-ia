@@ -50,7 +50,7 @@ function FinanzasPage() {
   }
 
   return (
-    <div className={styles.fin}>
+    <div className={`${styles.fin} page-enter`}>
       <nav className={styles.fin__tabs} aria-label="Secciones de finanzas">
         {TABS.map((item) => (
           <button key={item.id} type="button" onClick={() => setTab(item.id)}
@@ -62,7 +62,8 @@ function FinanzasPage() {
           </button>
         ))}
       </nav>
-      {TAB_CONTENT[tab]()}
+      {/* key: al cambiar de pestaña el contenido vuelve a entrar con la transición suave */}
+      <div key={tab} className={`${styles.fin__view} tab-enter`}>{TAB_CONTENT[tab]()}</div>
     </div>
   );
 }

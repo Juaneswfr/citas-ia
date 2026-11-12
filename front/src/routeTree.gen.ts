@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PoliticasDePrivacidadRouteImport } from './routes/politicas-de-privacidad'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAgendaRouteImport } from './routes/_authenticated/agenda'
 import { Route as AuthenticatedAlertasRouteImport } from './routes/_authenticated/alertas'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
@@ -62,6 +63,11 @@ const VerifyEmailRoute = VerifyEmailRouteImport.update({
   id: '/verify-email',
   path: '/verify-email',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedAgendaRoute = AuthenticatedAgendaRouteImport.update({
   id: '/agenda',
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/politicas-de-privacidad': typeof PoliticasDePrivacidadRoute
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/agenda': typeof AuthenticatedAgendaRoute
   '/alertas': typeof AuthenticatedAlertasRoute
   '/clients': typeof AuthenticatedClientsRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByTo {
   '/politicas-de-privacidad': typeof PoliticasDePrivacidadRoute
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/agenda': typeof AuthenticatedAgendaRoute
   '/alertas': typeof AuthenticatedAlertasRoute
   '/clients': typeof AuthenticatedClientsRoute
@@ -173,6 +181,7 @@ export interface FileRoutesById {
   '/politicas-de-privacidad': typeof PoliticasDePrivacidadRoute
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/agenda': typeof AuthenticatedAgendaRoute
   '/_authenticated/alertas': typeof AuthenticatedAlertasRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRoute
@@ -195,6 +204,7 @@ export interface FileRouteTypes {
     | '/politicas-de-privacidad'
     | '/signup'
     | '/verify-email'
+    | '/admin'
     | '/agenda'
     | '/alertas'
     | '/clients'
@@ -215,6 +225,7 @@ export interface FileRouteTypes {
     | '/politicas-de-privacidad'
     | '/signup'
     | '/verify-email'
+    | '/admin'
     | '/agenda'
     | '/alertas'
     | '/clients'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/politicas-de-privacidad'
     | '/signup'
     | '/verify-email'
+    | '/_authenticated/admin'
     | '/_authenticated/agenda'
     | '/_authenticated/alertas'
     | '/_authenticated/clients'
@@ -311,6 +323,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/verify-email'
       preLoaderRoute: typeof VerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/agenda': {
       id: '/_authenticated/agenda'
@@ -400,6 +419,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedAgendaRoute: typeof AuthenticatedAgendaRoute
   AuthenticatedAlertasRoute: typeof AuthenticatedAlertasRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRoute
@@ -414,6 +434,7 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedAgendaRoute: AuthenticatedAgendaRoute,
   AuthenticatedAlertasRoute: AuthenticatedAlertasRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRoute,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '@/components/hilo/icons';
-import { BUSINESS_TYPES, type BusinessTypeId } from '@/lib/hilo-data';
+import { BUSINESS_TYPES, type BusinessTypeId } from '@/lib/business-types';
 import type { BusinessHoursOut } from '@/lib/types/api';
 import s from './onboarding.module.css';
 
@@ -39,7 +39,7 @@ export function StepBusiness({
             className={s['business__input']}
             value={businessName}
             onChange={e => setBusinessName(e.target.value)}
-            placeholder="ej: Barbería El Patrón"
+            placeholder="ej: Estudio El Patrón"
           />
         </label>
         <label className={s['business__label']}>

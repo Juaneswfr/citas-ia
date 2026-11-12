@@ -53,7 +53,7 @@ class Workspace(Base):
     primary_email = Column(Text)
     brand_color = Column(Text)
     logo_url = Column(Text)
-    business_type = Column(Text, comment="Tipo de negocio: barberia | salon | manicure | spa | otro")
+    business_type = Column(Text, comment="Tipo de negocio: ver core/business_types.py")
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=NOW)

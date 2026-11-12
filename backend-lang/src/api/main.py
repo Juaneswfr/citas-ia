@@ -29,6 +29,7 @@ from api.routes.accounting import router as accounting_router
 from api.routes.accounting_files import router as accounting_files_router
 from api.routes.receipts import router as receipts_router
 from api.routes.followups import router as followups_router
+from api.routes.admin import router as admin_router
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ app.include_router(accounting_router)
 app.include_router(accounting_files_router)
 app.include_router(receipts_router)
 app.include_router(followups_router)
+app.include_router(admin_router)
 
 
 @app.get("/", tags=["health"])

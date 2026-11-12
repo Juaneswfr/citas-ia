@@ -24,7 +24,11 @@
   cursor: pointer;
   padding: 4px 0;
   color: var(--ink-3);
-  transition: color var(--dur-2) var(--ease-std);
+  transition: color var(--dur-2) var(--ease-std), transform var(--dur-2) var(--ease-out);
+}
+
+.bottom-tabs__item:active {
+  transform: scale(0.94);
 }
 
 .bottom-tabs__item--active {

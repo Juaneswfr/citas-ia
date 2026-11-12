@@ -1,6 +1,41 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-11]
+**Agregado — tipos de negocio (la app deja de ser solo para barberías)**
+- backend-lang/src/core/business_types.py — catálogo de 13 industrias: etiqueta, cómo se llama quien atiende y nota del agente para salud/veterinaria (no dar diagnósticos).
+- backend-lang/src/schemas/workspace.py — `business_type` validado contra el catálogo. Se quita `is_active` de `WorkspaceUpdate` (un manager podía reactivar su propio negocio).
+- backend-lang/src/services/appointment_agent.py — el prompt usa el vocabulario del negocio (`build_system_prompt`); la tool `listar_barberos` pasa a `listar_profesionales`; la consulta del equipo deja de estar duplicada.
+- backend-lang/src/services/agent_service.py — el contexto del agente incluye `business_type`; el agente no responde si el negocio está suspendido.
+- front/src/lib/business-types.ts — espejo del catálogo con iconos y servicios/horarios sugeridos por industria (sale de `hilo-data.ts`).
+- front/src/hooks/use-workspace.ts — `useWorkspace` y `useBusinessTerms`.
+- front: AppointmentDetail, ClientDetail, TeamTab, PayoutsPanel, SalesTab, StepBusiness, StepServices, signup — «Barbero» fijo reemplazado por el término del negocio.
+
+**Agregado — panel de plataforma (`/admin`, solo super_admin)**
+- backend-lang/src/api/routes/admin.py, services/admin_service.py, schemas/admin.py — resumen, negocios (filtros, ficha, suspender/reactivar, corregir tipo) y usuarios (bloquear/desbloquear). Acciones auditadas en `audit_logs`.
+- backend-lang/src/api/routes/auth.py — login responde 403 si el negocio está suspendido (salvo super_admin).
+- front/src/routes/_authenticated/admin.tsx, components/admin/*, hooks/use-admin.ts, lib/api/admin.ts, lib/types/admin.ts — pantalla con pestañas Resumen, Negocios y Usuarios.
+- front/src/lib/nav.ts — ítem «Plataforma», visible solo para super_admin.
+
+**Agregado — capa de animaciones**
+- front/src/styles.css — sección «Movimiento»: `page-enter`, `tab-enter`, `stagger`, `card--interactive`, `skeleton`, respuesta al toque en botones, transición de foco en campos, `prefers-reduced-motion` ampliado.
+- front: Finanzas (pestañas, filas, KPIs, barras), Sidebar, TopBar, BottomTabs, botón primitivo (`hilo-btn`).
+
+**Corregido (regla de corrección proactiva)**
+- front/src/routes/_authenticated.tsx — el layout hacía `apiFetch` directo y usaba `as any` para `business_type`; ahora usa `useWorkspace`.
+
+**Verificación**
+- backend: 62 tests nuevos (`test_business_types.py`, `test_admin.py`), todos pasan. Suite: 398 pasan, 19 fallan + 5 errores (los antiguos de asyncpg, iguales que antes de este cambio).
+- front: `tsc` solo muestra los 2 errores previos de `example.functions.ts`.
+
+**Pendiente / no verificado**
+- Nada se abrió en el navegador: ni el panel, ni las animaciones, ni el onboarding con 13 tipos.
+- `npm run build` falla en este equipo con «Could not resolve entry module index.html», también sin estos cambios; el build real es el del Dockerfile.
+- Las consultas de `/admin` no se ejecutaron contra PostgreSQL (los tests usan una sesión falsa).
+- El agente no se probó con el modelo real en una industria distinta de barbería.
+- Suspender no corta sesiones abiertas: duran hasta que venza el JWT.
+- Sin despliegue.
+
+### [AGENTE: claude] [FECHA: 2026-11-11]
 **Agregado — plantillas solo con el número realmente conectado**
 - backend-lang/src/services/kapso_onboarding.py — `KapsoPlatformClient.get_phone_number` (estado del número en Kapso); `get_business_account_id` lo reutiliza.
 - backend-lang/src/services/followup_service.py — `_verify_connection` sustituye a `_business_account_id`: «Activar plantillas» y «Actualizar estado» consultan siempre el número en Kapso. 404 o estado `DISCONNECTED`/`DELETED`/`BANNED`/`MIGRATED` → 409 «Este número ya no está conectado en Kapso»; antes solo se confiaba en la tabla `channels`. Guarda la cuenta de WhatsApp y si el número está en coexistencia.

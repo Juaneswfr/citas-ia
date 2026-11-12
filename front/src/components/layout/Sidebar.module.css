@@ -89,6 +89,13 @@
   height: 20px;
   border-radius: 0 3px 3px 0;
   background: var(--wine);
+  transform-origin: center;
+  animation: sidebar-indicator-in var(--dur-3) var(--ease-out);
+}
+
+@keyframes sidebar-indicator-in {
+  from { transform: translateY(-50%) scaleY(0.2); opacity: 0; }
+  to { transform: translateY(-50%) scaleY(1); opacity: 1; }
 }
 
 .sidebar__item-label {
@@ -165,6 +172,7 @@
   height: 100%;
   background: var(--wine);
   border-radius: 99px;
+  transition: width var(--dur-4) var(--ease-out);
   /* width set via inline style — dynamic runtime value */
 }
 
@@ -190,6 +198,7 @@
   color: var(--ink-3);
   font: 500 13px/1.2 var(--font-sans);
   cursor: pointer;
+  transition: background var(--dur-2) var(--ease-std), color var(--dur-2) var(--ease-std);
 }
 
 .sidebar__logout:hover {

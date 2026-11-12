@@ -113,8 +113,50 @@ body{
 @keyframes hilo-fade-up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes hilo-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 @keyframes hilo-typing{0%{transform:translateY(0)}30%{transform:translateY(-3px)}60%{transform:translateY(0)}}
+@keyframes hilo-fade{from{opacity:0}to{opacity:1}}
+@keyframes hilo-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* ===== Movimiento: una sola capa para toda la app =====
+   Reglas: entradas con --ease-out, estados (hover/focus) con --ease-std, nada por encima de --dur-4.
+   Los selectores usan :where() (especificidad 0) para que cualquier regla de componente gane. */
+
+/* Entrada de una página y de una pestaña */
+.page-enter{animation:hilo-fade-up var(--dur-3) var(--ease-out) both}
+.tab-enter{animation:hilo-fade var(--dur-2) var(--ease-std) both}
+
+/* Entrada escalonada de los hijos (tarjetas KPI, listas cortas) */
+.stagger>*{animation:hilo-fade-up var(--dur-3) var(--ease-out) both}
+.stagger>:nth-child(2){animation-delay:40ms}
+.stagger>:nth-child(3){animation-delay:80ms}
+.stagger>:nth-child(4){animation-delay:120ms}
+.stagger>:nth-child(5){animation-delay:160ms}
+.stagger>:nth-child(6){animation-delay:200ms}
+.stagger>:nth-child(n+7){animation-delay:240ms}
+
+/* Respuesta al toque: todo botón cede un poco al presionarlo */
+:where(button,[role="button"]):not(:disabled){-webkit-tap-highlight-color:transparent}
+:where(button,[role="button"]):not(:disabled):active{transform:scale(0.98)}
+.hilo-btn:not(:disabled):active{transform:scale(0.97)}
+.hilo-btn:disabled{opacity:0.55;cursor:not-allowed}
+
+/* Campos: el borde y el anillo de foco aparecen con transición */
+:where(input,select,textarea){transition:border-color var(--dur-2) var(--ease-std),box-shadow var(--dur-2) var(--ease-std),background-color var(--dur-2) var(--ease-std)}
+:where(a){transition:color var(--dur-2) var(--ease-std)}
+
+/* Tarjeta que reacciona al cursor */
+.card--interactive{transition:transform var(--dur-2) var(--ease-out),box-shadow var(--dur-2) var(--ease-out),border-color var(--dur-2) var(--ease-std)}
+.card--interactive:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);border-color:var(--line-strong)}
+
+/* Esqueleto de carga */
+.skeleton{border-radius:var(--r-xs);background:linear-gradient(90deg,var(--line-soft) 25%,var(--line) 37%,var(--line-soft) 63%);background-size:200% 100%;animation:hilo-shimmer 1.4s linear infinite}
+
+@media (prefers-reduced-motion:no-preference){
+  html{scroll-behavior:smooth}
+}
 @media (prefers-reduced-motion:reduce){
-  *{animation-duration:0.01ms !important;transition-duration:0.01ms !important}
+  *{animation-duration:0.01ms !important;animation-delay:0s !important;animation-iteration-count:1 !important;transition-duration:0.01ms !important}
+  :where(button,[role="button"]):not(:disabled):active,.hilo-btn:not(:disabled):active{transform:none}
+  .card--interactive:hover{transform:none}
 }
 
 /* ===== Landing ===== */

@@ -14,7 +14,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children?: React.ReactNode;
 }
 
-export function Button({ variant = 'primary', size = 'md', icon, iconRight, children, style, ...p }: ButtonProps) {
+export function Button({ variant = 'primary', size = 'md', icon, iconRight, children, style, className, ...p }: ButtonProps) {
   const pad = size === 'sm' ? '7px 12px' : size === 'lg' ? '12px 20px' : '9px 15px';
   const fs = size === 'sm' ? 13 : size === 'lg' ? 16 : 14;
   const skins: Record<ButtonVariant, React.CSSProperties> = {
@@ -35,6 +35,7 @@ export function Button({ variant = 'primary', size = 'md', icon, iconRight, chil
   return (
     <button
       {...p}
+      className={className ? `hilo-btn ${className}` : 'hilo-btn'}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       style={{

@@ -4,7 +4,7 @@
 
 # CitasIA / Hilo
 
-SaaS multi-tenant de citas por WhatsApp para barberías y negocios de servicios.
+SaaS multi-tenant de citas por WhatsApp para cualquier negocio que atienda con cita: barberías, salones, spas, consultorios, veterinarias, etc. (ver «Tipos de negocio»).
 Backend FastAPI + LangGraph en `backend-lang/`, front TanStack Start en `front/`, datos en PostgreSQL (servidor propio, sin Supabase).
 
 ## Desarrollo local
@@ -89,14 +89,14 @@ El agente de citas (`backend-lang/src/services/appointment_agent.py`) usa Claude
 
 | Tool | Función |
 |------|---------|
-| `listar_barberos` | Lista barberos disponibles con su `calendar_id` (un calendario por miembro del equipo) |
+| `listar_profesionales` | Lista quienes atienden (barberos, doctores… según el tipo de negocio) con su `calendar_id` (un calendario por miembro del equipo) |
 | `listar_servicios` | Lista servicios activos del workspace con precio y duración |
-| `consultar_disponibilidad` | Revisa Google Calendar del barbero elegido si horas candidatas están libres |
-| `crear_cita` | Valida disponibilidad, inserta cita en BD, crea evento en Google Calendar del barbero |
+| `consultar_disponibilidad` | Revisa Google Calendar del profesional elegido si horas candidatas están libres |
+| `crear_cita` | Valida disponibilidad, inserta cita en BD, crea evento en Google Calendar del profesional |
 | `listar_mis_citas` | Lista citas próximas del cliente en la conversación |
 | `cancelar_cita` | Cancela una cita del cliente por su ID |
 
-Flujo agente: `listar_barberos` → (si varios, preguntar cuál prefiere el cliente) → `listar_servicios` → `consultar_disponibilidad(calendar_id, ...)` → `crear_cita(calendar_id, ...)`.
+Flujo agente: `listar_profesionales` → (si varios, preguntar cuál prefiere el cliente) → `listar_servicios` → `consultar_disponibilidad(calendar_id, ...)` → `crear_cita(calendar_id, ...)`.
 
 Flujo sistema: WhatsApp → webhook → `ConversationService.find_or_create` → `AgentService.run` → `appointment_agent.run_agent` → respuesta por WhatsApp.
 
@@ -111,12 +111,43 @@ Sin calendario conectado, el agente solo lista servicios pero no puede agendar.
 
 Cada calendario puede estar ligado a un `workspace_member` vía `calendars.member_id` (FK → `workspace_members.id`).
 
-- Un miembro = un calendario = un barbero/agente.
-- El agente expone los barberos disponibles mediante la tool `listar_barberos`.
+- Un miembro = un calendario = una persona que atiende.
+- El agente expone a quienes atienden mediante la tool `listar_profesionales`.
 - Restricciones de unicidad en BD: `UNIQUE(workspace_id, google_calendar_id) WHERE member_id IS NULL` y `UNIQUE(workspace_id, member_id) WHERE member_id IS NOT NULL`.
 - El flujo OAuth pasa `member_id` en el `state` JSON → el callback lo usa al insertar el calendario.
 
 ---
+
+## Tipos de negocio (industrias)
+
+`workspaces.business_type` decide el vocabulario de toda la plataforma. El modelo de datos es el mismo para todas las industrias; solo cambian las palabras y las advertencias del agente.
+
+- Catálogo y única fuente de verdad en el backend: `backend-lang/src/core/business_types.py` (`barberia`, `salon`, `manicure`, `spa`, `estetica`, `tatuajes`, `consultorio`, `odontologia`, `psicologia`, `fisioterapia`, `veterinaria`, `fitness`, `otro`). Cada perfil define cómo se llama quien atiende (barbero, estilista, doctor…) y, en salud y veterinaria, una nota que prohíbe al agente dar diagnósticos.
+- Espejo en el front: `front/src/lib/business-types.ts` (iconos y servicios sugeridos del onboarding). `tests/test_business_types.py` falla si los `id` no coinciden.
+- **Agregar una industria**: una línea en cada archivo. No requiere migración.
+- `business_type` se valida contra el catálogo en `WorkspaceCreate`/`WorkspaceUpdate`. Vacío o desconocido = perfil genérico («profesional»).
+- Agente: el prompt se arma con `appointment_agent.build_system_prompt` y las tools tienen nombres neutros. No escribir «barbero» fijo en prompts ni etiquetas.
+- Front: usar `useBusinessTerms()` (`hooks/use-workspace.ts`) para cualquier etiqueta que nombre a quien atiende.
+- Sigue siendo de barbería/salón: alquiler de silla y propinas en Finanzas (los demás negocios simplemente no los usan) y el texto de ejemplo de las plantillas de WhatsApp.
+
+## Panel de plataforma (`/admin`)
+
+Vista de toda la plataforma para el equipo de Hilo. Solo `super_admin` (guard a nivel de router en `api/routes/admin.py`; en el front, ítem «Plataforma» del menú).
+
+- Resumen (negocios, usuarios, canales, citas y mensajes de 30 días, reparto por tipo y por suscripción, altas por semana), lista de negocios con filtros y ficha, lista de usuarios.
+- Acciones: corregir el tipo de un negocio, suspenderlo o reactivarlo (`workspaces.is_active`) y bloquear o desbloquear un usuario (`users.is_active`). Todas quedan en `audit_logs`.
+- Negocio suspendido: su equipo no puede iniciar sesión (403 en `/auth/login`) y el agente no responde. **Las sesiones ya abiertas siguen vivas hasta que venza el JWT** (el refresh no consulta la BD).
+- `is_active` ya no se puede cambiar desde `PATCH /workspaces/{id}`: un negocio no puede reactivarse solo.
+- Es el único código que lee datos de todos los workspaces. Fuera de alcance por ahora: entrar como otro negocio, cambiar plan o estado de suscripción desde el panel (existe `PATCH /billing/workspaces/{id}/subscription/status`).
+
+## Animaciones e interacción
+
+Una sola capa de movimiento en `front/src/styles.css` (sección «Movimiento»), con los tokens `--dur-*` y `--ease-*`:
+
+- `page-enter` (entrada de página), `tab-enter` (cambio de pestaña), `stagger` (hijos escalonados), `card--interactive` (tarjeta que se eleva), `skeleton` (carga).
+- Todo botón cede al presionarlo y los campos animan borde y foco, vía `:where()` (especificidad 0: cualquier regla de componente gana).
+- Entradas con `--ease-out`, estados con `--ease-std`, nada por encima de `--dur-4`. `prefers-reduced-motion` lo apaga todo.
+- No agregar librerías de animación ni `animation:` inline: usar estas clases.
 
 ## WhatsApp vía Kapso
 
@@ -173,7 +204,7 @@ Modelo de caja, sin partida doble. Detalle en `backend-lang/src/services/account
 
 - Fuente de verdad: tabla `movements` (ingresos/gastos, se anulan con `voided_at`, nunca se borran). Cuentas por cobrar/pagar = total de la orden − movimientos no anulados.
 - Cita `completed` → orden de venta automática (idempotente por `appointment_id`). Barbero = `calendars.member_id`.
-- Comisión: regla por miembro en `member_compensation` (`commission_bps`, 5000 = 50 %); se **congela en cada línea** al vender. Propinas: del barbero, no son ingreso del negocio.
+- Comisión: regla por miembro en `member_compensation` (`commission_bps`, 5000 = 50 %); se **congela en cada línea** al vender. Propinas: de quien atendió, no son ingreso del negocio.
 - Liquidaciones (`commission_payouts`): borrador reserva las líneas; al pagar genera el gasto (comisión + base) y, si hay alquiler de silla, el ingreso.
 - Rutas `/workspaces/{id}/accounting/*`: solo `manager` o superior.
 - Fuera de alcance: IVA/DIAN, factura electrónica, inventario, comisión escalonada, prestaciones sociales.

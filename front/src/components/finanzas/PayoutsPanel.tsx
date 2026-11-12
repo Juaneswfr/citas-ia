@@ -1,4 +1,4 @@
-// Liquidaciones de barberos: vista previa del periodo, creación en borrador, pago y cancelación.
+// Liquidaciones del equipo: vista previa del periodo, creación en borrador, pago y cancelación.
 
 import { useState } from 'react';
 import { Button } from '@/components/hilo/primitives';
@@ -6,12 +6,14 @@ import { fmtCOP } from '@/lib/hilo-data';
 import {
   useCancelPayout, useCompensation, useCreatePayout, usePayPayout, usePayoutPreview, usePayouts,
 } from '@/hooks/use-accounting';
+import { useBusinessTerms } from '@/hooks/use-workspace';
 import type { PaymentMethod, PayoutOut } from '@/lib/types/accounting';
 import { AsyncState, Field, MethodSelect, Modal, StatusTag, todayISO } from './ui';
 import styles from './Finanzas.module.css';
 
 function PayPayoutDialog({ payout, onClose }: { payout: PayoutOut; onClose: () => void }) {
   const pay = usePayPayout();
+  const terms = useBusinessTerms();
   const [method, setMethod] = useState<PaymentMethod>('cash');
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -25,7 +27,7 @@ function PayPayoutDialog({ payout, onClose }: { payout: PayoutOut; onClose: () =
   };
 
   return (
-    <Modal title={`Pagar a ${payout.member_name ?? 'barbero'}`} onClose={onClose}>
+    <Modal title={`Pagar a ${payout.member_name ?? terms.staff}`} onClose={onClose}>
       <form className={styles.form} onSubmit={handleSubmit}>
         <div className={`${styles['summary-line']} ${styles['summary-line--total']}`}>
           <span>Entregar</span><span>{fmtCOP(payout.net_cop)}</span>
@@ -61,6 +63,7 @@ export function PayoutsPanel() {
   const payouts = usePayouts();
   const create = useCreatePayout();
   const cancel = useCancelPayout();
+  const terms = useBusinessTerms();
   const [memberId, setMemberId] = useState('');
   const [start, setStart] = useState(monthStartISO());
   const [end, setEnd] = useState(todayISO());
@@ -77,12 +80,12 @@ export function PayoutsPanel() {
 
   return (
     <section className={styles.panel}>
-      <h3 className={styles.panel__title}>Liquidar a un barbero</h3>
+      <h3 className={styles.panel__title}>Liquidar a un {terms.staff}</h3>
       <div className={styles.form}>
         <div className={styles.form__grid}>
-          <Field label="Barbero">
+          <Field label={terms.Staff}>
             <select className={styles.field__input} value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-              <option value="">Elige un barbero</option>
+              <option value="">Elige un {terms.staff}</option>
               {members.map((m) => <option key={m.member_id} value={m.member_id}>{m.member_name ?? 'Sin nombre'}</option>)}
             </select>
           </Field>
@@ -107,7 +110,7 @@ export function PayoutsPanel() {
           {(payouts.data ?? []).map((p) => (
             <div key={p.id} className={`${styles.row} ${p.status === 'cancelled' ? styles['row--void'] : ''}`}>
               <div className={styles.row__main}>
-                <div className={styles.row__title}>{p.member_name ?? 'Barbero'}</div>
+                <div className={styles.row__title}>{p.member_name ?? terms.Staff}</div>
                 <div className={styles.row__meta}>{p.period_start} → {p.period_end} · {p.lines_count} ventas</div>
               </div>
               <StatusTag status={p.status} />

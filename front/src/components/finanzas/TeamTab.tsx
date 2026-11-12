@@ -1,9 +1,10 @@
-// Equipo: regla de pago por barbero, reporte de comisiones y liquidaciones.
+// Equipo: regla de pago por persona del equipo, reporte de comisiones y liquidaciones.
 
 import { useState } from 'react';
 import { Button } from '@/components/hilo/primitives';
 import { fmtCOP } from '@/lib/hilo-data';
 import { useCommissions, useCompensation, useSaveCompensation } from '@/hooks/use-accounting';
+import { useBusinessTerms } from '@/hooks/use-workspace';
 import type { CompensationModel, CompensationOut } from '@/lib/types/accounting';
 import { PayoutsPanel } from './PayoutsPanel';
 import { AsyncState, Field, Modal, parseCOP } from './ui';
@@ -24,6 +25,11 @@ function describeRule(rule: CompensationOut): string {
 
 function RuleDialog({ rule, onClose }: { rule: CompensationOut; onClose: () => void }) {
   const save = useSaveCompensation();
+  const terms = useBusinessTerms();
+  // El rango 40–60 % es costumbre de barberías y salones; en otras industrias no aplica.
+  const commissionHint = terms.typeId === 'barberia' || terms.typeId === 'salon'
+    ? 'Lo habitual en este tipo de negocio es entre 40 % y 60 % del servicio.'
+    : `Porcentaje de cada servicio que recibe el ${terms.staff}.`;
   const [model, setModel] = useState<CompensationModel>(rule.model);
   const [percent, setPercent] = useState(String(rule.commission_bps / 100));
   const [base, setBase] = useState(String(rule.base_salary_cop));
@@ -53,7 +59,7 @@ function RuleDialog({ rule, onClose }: { rule: CompensationOut; onClose: () => v
   };
 
   return (
-    <Modal title={`Regla de pago · ${rule.member_name ?? 'Barbero'}`} onClose={onClose}>
+    <Modal title={`Regla de pago · ${rule.member_name ?? terms.Staff}`} onClose={onClose}>
       <form className={styles.form} onSubmit={handleSubmit}>
         <Field label="Modelo" hint="Solo afecta ventas nuevas; las anteriores conservan su comisión.">
           <select className={styles.field__input} value={model} onChange={(e) => setModel(e.target.value as CompensationModel)}>
@@ -61,7 +67,7 @@ function RuleDialog({ rule, onClose }: { rule: CompensationOut; onClose: () => v
           </select>
         </Field>
         {showCommission && (
-          <Field label="Comisión (%)" hint="Lo habitual en barberías es entre 40 % y 60 % del servicio.">
+          <Field label="Comisión (%)" hint={commissionHint}>
             <input className={styles.field__input} inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} />
           </Field>
         )}
