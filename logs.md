@@ -23,16 +23,22 @@
 **Corregido (regla de corrección proactiva)**
 - front/src/routes/_authenticated.tsx — el layout hacía `apiFetch` directo y usaba `as any` para `business_type`; ahora usa `useWorkspace`.
 
+**Corregido — tests antiguos que fallaban desde el cambio a SQLAlchemy**
+- backend-lang/tests/fake_session.py — sesión falsa común (`execute(text, params)` → `.mappings()`, `.scalar_one_or_none()`).
+- backend-lang/tests/test_appointment_agent.py, test_channels_roles.py, test_kapso_onboarding.py, test_kapso_number_webhooks.py, test_kapso_outbound.py — los simuladores imitaban asyncpg (`fetchrow`, `_pool`, argumentos posicionales). Ahora usan la sesión falsa con parámetros con nombre; los del agente pasan `calendar_id` y un UUID de servicio, como exige hoy la herramienta. Las aserciones no se relajaron.
+
 **Verificación**
-- backend: 62 tests nuevos (`test_business_types.py`, `test_admin.py`), todos pasan. Suite: 398 pasan, 19 fallan + 5 errores (los antiguos de asyncpg, iguales que antes de este cambio).
+- backend: suite completa **422 pasan, 0 fallan**, 5 omitidos (integración con BD). Antes: 19 fallos + 5 errores. En Windows: `DATABASE_URL=postgresql://u:p@localhost/x uv run --with tzdata pytest` (sin `tzdata` no existe `America/Bogota`).
+- front, build de producción: copia limpia + `bun install` + `bun run build` (lo mismo que el Dockerfile) termina bien e incluye la ruta `/admin`.
+- front, navegador: Edge headless contra una API simulada local. Panel de plataforma (menú, resumen, lista, ficha, cambio de tipo, usuarios), Finanzas en un negocio tipo consultorio («Liquidar a un doctor») y onboarding con los 13 tipos. Sin errores de consola. Animaciones activas (`page-enter`, `stagger`).
 - front: `tsc` solo muestra los 2 errores previos de `example.functions.ts`.
 
 **Pendiente / no verificado**
-- Nada se abrió en el navegador: ni el panel, ni las animaciones, ni el onboarding con 13 tipos.
-- `npm run build` falla en este equipo con «Could not resolve entry module index.html», también sin estos cambios; el build real es el del Dockerfile.
-- Las consultas de `/admin` no se ejecutaron contra PostgreSQL (los tests usan una sesión falsa).
+- Las consultas de `/admin` no se ejecutaron contra PostgreSQL real: la BD local apunta a producción y no se tocó. Probarlas al desplegar (abrir Plataforma › Resumen, Negocios y Usuarios).
 - El agente no se probó con el modelo real en una industria distinta de barbería.
 - Suspender no corta sesiones abiertas: duran hasta que venza el JWT.
+- `npm run build` falla en este equipo porque `node_modules` se instaló con npm y trae versiones de TanStack más nuevas que `bun.lock`; con bun compila. `bun.lock` está desfasado de `package.json` (falta quitar `@supabase/supabase-js`); el Dockerfile lo tolera porque no usa `--frozen-lockfile`.
+- No se levantó el backend en local: su `.env` apunta a producción y arrancaría el worker de seguimientos.
 - Sin despliegue.
 
 ### [AGENTE: claude] [FECHA: 2026-11-11]

@@ -10,12 +10,16 @@ from services import agent_service, appointment_agent
 from services.agent_service import AgentService
 from services.whatsapp_provider import SendResult
 from services.whatsapp_service import WhatsAppService
+from fake_session import FakeSession
 
 pytestmark = pytest.mark.asyncio
 
 WS = "ws-1"
 OTHER_WS = "ws-OTRO"
 DAY = (datetime.now(ZoneInfo("America/Bogota")) + timedelta(days=2)).date().isoformat()
+SID = "11111111-1111-1111-1111-111111111111"  # el agente exige un UUID de servicio
+CAL = "cal1"
+BOOK = {"calendar_id": CAL, "service_id": SID, "fecha": DAY, "hora": "15:00"}
 
 
 def call(name, args, i="1"):
@@ -25,7 +29,7 @@ def call(name, args, i="1"):
 class FakeLLM:
     def __init__(self, script): self.script, self.n = list(script), 0
     def bind_tools(self, tools): return self
-    async def ainvoke(self, msgs):
+    async def ainvoke(self, msgs, config=None):
         self.n += 1
         item = self.script.pop(0) if len(self.script) > 1 else self.script[0]
         if isinstance(item, Exception):
@@ -33,35 +37,33 @@ class FakeLLM:
         return item
 
 
-class FakeDB:
+SERVICE = {"id": SID, "name": "Corte", "duration_minutes": 30, "buffer_minutes": 0, "price_cop": 20000}
+CALENDAR = {"id": CAL, "calendar_id": CAL, "nombre": "Ana", "google_calendar_id": "g",
+            "oauth_refresh_token_encrypted": "x"}
+
+
+class FakeDB(FakeSession):
+    """Guarda cada consulta en st["sql"] y las escrituras en st["exec"]."""
+
     def __init__(self, st): self.st = st
-    async def __aenter__(self): return self
-    async def __aexit__(self, *a): pass
 
-    async def fetchrow(self, sql, *a):
-        self.st["sql"].append((sql, a))
+    def handle(self, sql, p):
+        self.st["sql"].append((sql, p))
+        if not sql.lstrip().upper().startswith("SELECT"):
+            self.st["exec"].append(sql)
         if "INSERT INTO agent_runs" in sql: return {"id": "run1"}
-        if "FROM services" in sql: return {"id": "s1", "name": "Corte", "duration_minutes": 30, "price_cop": 20000}
-        if "FROM calendars" in sql: return {"id": "cal1", "google_calendar_id": "g", "oauth_refresh_token_encrypted": "x"}
         if "INSERT INTO appointments" in sql:
-            if self.st.get("insert_fails"): return None
-            return {"id": "ap1", "workspace_id": a[0]}
-        return None
-
-    async def fetch(self, sql, *a):
-        self.st["sql"].append((sql, a))
-        if "FROM services" in sql: return [{"id": "s1", "name": "Corte", "duration_minutes": 30, "price_cop": 20000}]
+            return None if self.st.get("insert_fails") else {"id": "ap1", "workspace_id": p["workspace_id"]}
+        if "FROM services" in sql: return [SERVICE]
+        if "FROM calendars" in sql: return [CALENDAR]
         return []
-
-    async def execute(self, sql, *a): self.st["exec"].append(sql)
 
 
 @pytest.fixture
 def env(monkeypatch):
     st = {"sql": [], "exec": [], "sent": [], "saved": []}
-    pool = SimpleNamespace(acquire=lambda: FakeDB(st))
-    monkeypatch.setattr(appointment_agent, "_pool", pool)
-    monkeypatch.setattr(agent_service, "_pool", pool)
+    monkeypatch.setattr(appointment_agent, "AsyncSessionLocal", lambda: FakeDB(st))
+    monkeypatch.setattr(agent_service, "AsyncSessionLocal", lambda: FakeDB(st))
 
     class Cal:
         def __init__(self, d): pass
@@ -102,17 +104,18 @@ def inserts(st): return [a for q, a in st["sql"] if "INSERT INTO appointments" i
 
 
 async def test_lista_y_crea_cita_envia_confirmacion(env, monkeypatch):
-    use_llm(monkeypatch, call("listar_servicios", {}), call("crear_cita", {"service_id": "s1", "fecha": DAY, "hora": "15:00"}, "2"),
+    use_llm(monkeypatch, call("listar_servicios", {}), call("crear_cita", BOOK, "2"),
             AIMessage(content="Listo, confirmada!"))
     out = await run()
-    assert len(inserts(env)) == 1 and inserts(env)[0][0] == WS
+    assert len(inserts(env)) == 1 and inserts(env)[0]["workspace_id"] == WS
+    assert inserts(env)[0]["calendar_id"] == CAL
     assert "quedó confirmada" in env["sent"][0] and out["action_type"] == "create_appointment"
     assert any("status='completed'" in q for q in env["exec"])
 
 
 async def test_fallo_en_bd_no_confirma(env, monkeypatch):
     env["insert_fails"] = True
-    use_llm(monkeypatch, call("crear_cita", {"service_id": "s1", "fecha": DAY, "hora": "15:00"}),
+    use_llm(monkeypatch, call("crear_cita", BOOK),
             AIMessage(content="Tu cita quedó confirmada"))
     await run()
     assert len(env["sent"]) == 1 and "confirmada" not in env["sent"][0].lower()
@@ -123,20 +126,20 @@ async def test_fallo_en_bd_no_confirma(env, monkeypatch):
 async def test_limite_de_5_herramientas(env, monkeypatch):
     llm = use_llm(monkeypatch, call("listar_servicios", {}))  # pide herramienta para siempre
     out = await run()
-    listados = [1 for q, _ in env["sql"] if "FROM services" in q]
+    # Solo las llamadas a la herramienta: el prompt también lee los servicios una vez (parámetro `ws`).
+    listados = [1 for q, p in env["sql"] if "FROM services" in q and "workspace_id" in p]
     assert len(listados) == 5 and llm.n == 6
     assert "No pude agendar" in env["sent"][0] and out["needs_review"]
 
 
 async def test_workspace_id_no_sobrescribible(env, monkeypatch):
     use_llm(monkeypatch, call("listar_servicios", {"workspace_id": OTHER_WS}),
-            call("crear_cita", {"service_id": "s1", "fecha": DAY, "hora": "15:00", "workspace_id": OTHER_WS,
-                                "channel_id": "otro", "customer_id": "otro"}, "2"),
+            call("crear_cita", {**BOOK, "workspace_id": OTHER_WS, "channel_id": "otro", "customer_id": "otro"}, "2"),
             AIMessage(content="ok"))
     await run()
     assert OTHER_WS not in repr(env["sql"])
     ins = inserts(env)[0]
-    assert ins[0] == WS and ins[1] == "cu1" and ins[3] == "ch1"
+    assert ins["workspace_id"] == WS and ins["customer_id"] == "cu1" and ins["channel_id"] == "ch1"
 
 
 async def test_llm_no_disponible_fallback_y_alerta(env, monkeypatch):

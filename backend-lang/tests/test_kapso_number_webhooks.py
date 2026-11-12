@@ -13,6 +13,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from api.routes import webhooks
+from fake_session import FakeSession
 from services.kapso_onboarding import (
     KapsoPlatformClient, decrypt_secret, deprovision_number_webhook, provision_number_webhook,
 )
@@ -43,25 +44,24 @@ class Kapso:
         return KapsoPlatformClient(API_KEY, transport=httpx.MockTransport(handler))
 
 
-class FakeDB:
+class FakeDB(FakeSession):
     def __init__(self):
         self.ch = {"id": 1, "phone_number_id": PID, "webhook_token": None,
                    "kapso_webhook_id": None, "webhook_secret_encrypted": None}
 
-    async def fetchval(self, sql, pid, token, enc):
-        if self.ch["webhook_token"] is not None:
-            return None
-        self.ch.update(webhook_token=token, webhook_secret_encrypted=enc)
-        return 1
-
-    async def fetchrow(self, sql, pid):
-        return self.ch
-
-    async def execute(self, sql, *a):
-        if "SET kapso_webhook_id" in sql:
-            self.ch["kapso_webhook_id"] = a[1]
+    def handle(self, sql, p):
+        if "SET webhook_token=:token" in sql:  # reclamo: solo si nadie lo tiene
+            if self.ch["webhook_token"] is not None:
+                return None
+            self.ch.update(webhook_token=p["token"], webhook_secret_encrypted=p["secret"])
+            return 1
+        if "SELECT id, kapso_webhook_id" in sql:
+            return dict(self.ch)
+        if "SET kapso_webhook_id=:webhook_id" in sql:
+            self.ch["kapso_webhook_id"] = p["webhook_id"]
         else:  # liberar reclamo o limpiar en delete
             self.ch.update(webhook_token=None, webhook_secret_encrypted=None, kapso_webhook_id=None)
+        return None
 
 
 async def _provision(db, kapso):

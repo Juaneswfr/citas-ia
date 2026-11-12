@@ -13,6 +13,7 @@ from api.routes import kapso as kapso_routes
 from api.routes import webhooks
 from core.database import get_db
 from core.security import get_current_user
+from fake_session import FakeSession
 from services.kapso_onboarding import KapsoError, KapsoOnboardingService, KapsoPlatformClient
 
 pytestmark = pytest.mark.asyncio
@@ -41,7 +42,7 @@ class Recorder:
         return httpx.MockTransport(handler)
 
 
-class FakeDB:
+class FakeDB(FakeSession):
     """Emula las consultas que usa el servicio, con la unicidad de phone_number_id."""
 
     def __init__(self):
@@ -49,30 +50,35 @@ class FakeDB:
         self.channels = {}   # phone_number_id -> dict
         self.names = {WS1: "Barbería Uno", WS2: "Barbería Dos"}
 
-    async def fetchval(self, sql, arg):
+    def handle(self, sql, p):
         if "name FROM workspaces" in sql:
-            return self.names.get(arg)
-        if "kapso_customer_id FROM kapso_customers" in sql:
-            return self.customers.get(arg, {}).get("kapso_customer_id")
+            return self.names.get(p["workspace_id"])
+        if "SELECT kapso_customer_id FROM kapso_customers" in sql:
+            return self.customers.get(p["workspace_id"], {}).get("kapso_customer_id")
         if "WHERE kapso_customer_id" in sql:
-            return next((w for w, c in self.customers.items() if c["kapso_customer_id"] == arg), None)
+            return next((w for w, c in self.customers.items() if c["kapso_customer_id"] == p["customer_id"]), None)
         if "workspace_id::text" in sql:
-            return arg if arg in self.customers else None
-
-    async def execute(self, sql, *a):
-        if sql.startswith("INSERT INTO kapso_customers"):
-            self.customers.setdefault(a[0], {"kapso_customer_id": a[1], "setup_status": "none"})
+            return p["ext_id"] if p["ext_id"] in self.customers else None
+        if "INSERT INTO kapso_customers" in sql:
+            self.customers.setdefault(
+                p["workspace_id"], {"kapso_customer_id": p["customer_id"], "setup_status": "none"})
         elif "setup_link_id" in sql:
-            self.customers[a[0]].update(setup_link_id=a[1], setup_link_url=a[2], setup_status="pending")
+            self.customers[p["workspace_id"]].update(
+                setup_link_id=p["setup_link_id"], setup_link_url=p["setup_link_url"], setup_status="pending")
         elif "setup_status='connected'" in sql:
-            self.customers[a[0]]["setup_status"] = "connected"
+            self.customers[p["workspace_id"]]["setup_status"] = "connected"
+        elif "INSERT INTO channels" in sql:
+            return self._upsert_channel(p)
+        return None
 
-    async def fetchrow(self, sql, ws, phone, pid, coex, ctype):
-        cur = self.channels.get(pid)
-        if cur and cur["workspace_id"] != ws:
+    def _upsert_channel(self, p):
+        """ON CONFLICT (phone_number_id) ... WHERE mismo workspace: de otro workspace no devuelve fila."""
+        current = self.channels.get(p["pid"])
+        if current and current["workspace_id"] != p["workspace_id"]:
             return None
-        self.channels[pid] = {"workspace_id": ws, "phone_number": phone, "connection_type": ctype}
-        return {"id": "ch-1"}
+        self.channels[p["pid"]] = {"workspace_id": p["workspace_id"], "phone_number": p["phone"],
+                                   "connection_type": p["conn_type"]}
+        return "ch-1"
 
 
 def _service(rec=None):
@@ -226,15 +232,12 @@ async def test_webhook_dispatches_phone_number_created(monkeypatch):
     async def handle(db, item):
         calls.append(item)
 
-    class Pool:
-        def acquire(self):
-            class Ctx:
-                async def __aenter__(s): return "conn"
-                async def __aexit__(s, *a): return False
-            return Ctx()
+    class Session:
+        async def __aenter__(s): return "conn"
+        async def __aexit__(s, *a): return False
 
     from core import database
-    monkeypatch.setattr(database, "_pool", Pool())
+    monkeypatch.setattr(database, "AsyncSessionLocal", Session)
     monkeypatch.setattr(webhooks, "get_settings", lambda: SimpleNamespace(
         kapso_api_key="k", kapso_base_url="https://api.kapso.ai", frontend_url="https://x",
         kapso_secrets_key=""))

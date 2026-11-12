@@ -9,6 +9,7 @@ import pytest
 from services import agent_service, whatsapp_provider, whatsapp_service
 from services.agent_service import AgentService
 from services.whatsapp_service import WhatsAppService
+from fake_session import FakeSession
 
 pytestmark = pytest.mark.asyncio
 
@@ -105,19 +106,22 @@ async def test_api_key_not_in_logs(wire, caplog):
 
 
 # ── AgentService.run ─────────────────────────────────────────────────────────
-class FakeDB:
+class FakeDB(FakeSession):
+    """Registra las escrituras; solo el INSERT de agent_runs devuelve fila."""
+
     def __init__(self, log): self.log = log
-    async def __aenter__(self): return self
-    async def __aexit__(self, *a): pass
-    async def fetchrow(self, sql, *a):
-        return {"id": "run1"} if "INSERT INTO agent_runs" in sql else None
-    async def fetch(self, *a): return []
-    async def execute(self, sql, *a): self.log.append(sql)
+
+    def handle(self, sql, p):
+        if "INSERT INTO agent_runs" in sql:
+            return {"id": "run1"}
+        if not sql.lstrip().upper().startswith("SELECT"):
+            self.log.append(sql)
+        return []
 
 
 async def _run(monkeypatch, sent):
     log, saved = [], []
-    monkeypatch.setattr(agent_service, "_pool", SimpleNamespace(acquire=lambda: FakeDB(log)))
+    monkeypatch.setattr(agent_service, "AsyncSessionLocal", lambda: FakeDB(log))
 
     async def ctx(ws, conv):
         return {"customer_phone": "57300", "channel": {"phone_number_id": "pn1", "provider": "kapso"}}

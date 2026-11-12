@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from api.routes import channels
 from core.database import get_db
 from core.security import get_current_user
+from fake_session import FakeSession
 
 pytestmark = pytest.mark.asyncio
 
@@ -16,12 +17,8 @@ CHANNEL = {"provider": "x", "phone_number": "+573001234567"}
 CALENDAR = {"name": "c", "google_calendar_id": "g", "oauth_code": "code"}
 
 
-class FakeDB:
-    async def fetch(self, *a):
-        return []
-
-    async def fetchrow(self, *a):
-        return None  # las rutas autorizadas terminan en 500 controlado, nunca 403
+class FakeDB(FakeSession):
+    """Ninguna consulta devuelve filas: las rutas autorizadas terminan en un error controlado, nunca 403."""
 
 
 def _app():
