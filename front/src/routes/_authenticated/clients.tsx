@@ -1,3 +1,4 @@
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -81,9 +82,9 @@ function NewClientModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:200, background:'rgba(0,0,0,0.5)',
-      display:'flex', alignItems:'center', justifyContent:'center' }}>
+      display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
       <div onClick={e => e.stopPropagation()} style={{ background:'var(--surface)', border:'1px solid var(--line)',
-        borderRadius:'var(--r-lg)', boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:380, padding:24 }}>
+        borderRadius:'var(--r-lg)', boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:380, maxHeight:'100%', overflowY:'auto', padding:24 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
           <h3 style={{ margin:0, font:'500 16px/1.2 var(--font-sans)', color:'var(--ink-1)' }}>Nuevo cliente</h3>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--ink-3)', fontSize:14 }}>✕</button>
@@ -136,7 +137,7 @@ function ClientsPage() {
   const [sel, setSel]       = useState<ClientWithOpen | null>(null);
   const [q, setQ]           = useState('');
   const [showNew, setShowNew] = useState(false);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 880;
+  const isMobile = useIsMobile();
 
   const { data: clients = [], isLoading, isError } = useCustomers();
   const list = clients.filter(c =>

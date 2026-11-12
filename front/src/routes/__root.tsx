@@ -15,7 +15,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "theme-color", content: "#F5F6F8" },
       { title: "Hilo · Tu agenda vive en WhatsApp" },
       { name: "description", content: "Agente de citas por WhatsApp. Agenda, reagenda y confirma sin que toques el teléfono." },
     ],

@@ -1,29 +1,38 @@
+/* Barra inferior: solo en móvil (el menú lateral la reemplaza desde 880px). */
 .bottom-tabs {
-  position: sticky;
-  bottom: 0;
-  z-index: 20;
-  flex-shrink: 0;
-  display: flex;
-  justify-content: space-around;
-  align-items: stretch;
-  background: var(--mat-toolbar);
-  backdrop-filter: var(--blur-thin);
-  -webkit-backdrop-filter: var(--blur-thin);
-  border-top: 1px solid var(--line);
-  padding: 6px 8px;
+  display: none;
+}
+
+@media (max-width: 879px) {
+  .bottom-tabs {
+    flex-shrink: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: space-around;
+    align-items: stretch;
+    background: var(--mat-toolbar);
+    backdrop-filter: var(--blur-thin);
+    -webkit-backdrop-filter: var(--blur-thin);
+    border-top: 1px solid var(--line);
+    padding: 4px max(8px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
 }
 
 .bottom-tabs__item {
   flex: 1;
+  min-width: 0;
+  min-height: 48px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  gap: 4px;
   background: transparent;
   border: 0;
   cursor: pointer;
   padding: 4px 0;
   color: var(--ink-3);
+  -webkit-tap-highlight-color: transparent;
   transition: color var(--dur-2) var(--ease-std), transform var(--dur-2) var(--ease-out);
 }
 
@@ -36,9 +45,25 @@
 }
 
 .bottom-tabs__item-label {
-  font: 400 10px/1 var(--font-sans);
+  font: 400 10.5px/1 var(--font-sans);
 }
 
 .bottom-tabs__item--active .bottom-tabs__item-label {
   font-weight: 500;
+}
+
+.bottom-tabs__icon {
+  position: relative;
+  display: inline-flex;
+}
+
+.bottom-tabs__dot {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--wine);
+  border: 1.5px solid var(--surface);
 }

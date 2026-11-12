@@ -1,10 +1,11 @@
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Icon } from "@/components/hilo/icons";
-import { Avatar, Dot, Tag } from "@/components/hilo/primitives";
+import { Avatar, Button, Dot, Tag } from "@/components/hilo/primitives";
 import { fmtCOP } from "@/lib/hilo-data";
 import { useConversations, useMessages } from "@/hooks/use-conversations";
 import { useCustomers } from "@/hooks/use-customers";
@@ -154,7 +155,12 @@ function MessageBubble({ msg }: { msg: MessageOut }) {
 
 // ── Detalle de conversación ────────────────────────────────────────────────
 
-function ConversationDetail({ conv, client }: { conv: ConversationOut; client: HiloClient | undefined }) {
+function ConversationDetail({ conv, client, onBack }: {
+  conv: ConversationOut;
+  client: HiloClient | undefined;
+  /** Solo en móvil: vuelve a la lista de conversaciones. */
+  onBack?: () => void;
+}) {
   const { data: messages = [], isLoading } = useMessages(conv.id);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -172,8 +178,11 @@ function ConversationDetail({ conv, client }: { conv: ConversationOut; client: H
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
       {/* Header con info del cliente */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)', background: 'var(--paper)' }}>
+      <div className="chat-head">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: client ? 12 : 0 }}>
+          {onBack && (
+            <Button variant="ghost" size="sm" icon="chevL" aria-label="Volver a conversaciones" onClick={onBack} className="chat-back" />
+          )}
           <Avatar name={name} hue={client ? (STATUS_HUE[client.status] as any) : 'wine'} size={38} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -195,7 +204,7 @@ function ConversationDetail({ conv, client }: { conv: ConversationOut; client: H
 
         {/* Stat tokens */}
         {client && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <div className="chat-head__chips">
             <StatChip icon="calendar" label={`${client.visits} cita${client.visits !== 1 ? 's' : ''}`} />
             {client.spend > 0 && <StatChip icon="money" label={fmtCOP(client.spend)} />}
             {client.fav && <StatChip icon="scissors" label={client.fav} accent />}
@@ -213,9 +222,7 @@ function ConversationDetail({ conv, client }: { conv: ConversationOut; client: H
       </div>
 
       {/* Mensajes */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px',
-        display: 'flex', flexDirection: 'column', gap: 6,
-        background: 'var(--surface-tint)' }}>
+      <div className="chat-scroll">
         {isLoading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[1, 2, 3].map(i => (
@@ -277,7 +284,7 @@ function EmptyConversation() {
 
 function MessagesPage() {
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 880;
+  const isMobile = useIsMobile();
 
   const { data: conversations = [], isLoading: convsLoading, isError: convsError } = useConversations();
   const { data: clients = [] } = useCustomers();
@@ -340,7 +347,11 @@ function MessagesPage() {
       {(!isMobile || showDetail) && (
         <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
           {selectedRow ? (
-            <ConversationDetail conv={selectedRow.conv} client={selectedRow.client} />
+            <ConversationDetail
+              conv={selectedRow.conv}
+              client={selectedRow.client}
+              onBack={isMobile ? () => setSelectedConvId(null) : undefined}
+            />
           ) : (
             <EmptyConversation />
           )}

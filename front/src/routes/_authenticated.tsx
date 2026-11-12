@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { createFileRoute, Outlet, redirect, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
@@ -9,10 +10,10 @@ import { usePendingReceiptCount } from '@/hooks/use-receipts';
 import { useWorkspace } from '@/hooks/use-workspace';
 import type { AgentHoursOut } from '@/lib/types/api';
 import { PATH_TO_ID, TITLES } from '@/lib/nav';
-import { useIsMobile } from '@/hooks/use-is-mobile';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { BottomTabs } from '@/components/layout/BottomTabs';
+import { MobileMenu } from '@/components/layout/MobileMenu';
 import styles from '@/components/layout/PanelLayout.module.css';
 
 const JWT_KEY = 'hilo_jwt';
@@ -39,7 +40,7 @@ export const Route = createFileRoute('/_authenticated')({
 function PanelLayout() {
   const navigate = useNavigate();
   const { location } = useRouterState();
-  const isMobile = useIsMobile(880);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { me, logout, role } = useAuth();
 
   const activeId = PATH_TO_ID[location.pathname] || 'inicio';
@@ -177,31 +178,39 @@ function PanelLayout() {
     );
   }
 
+  const sidebarProps = {
+    active: activeId,
+    onNav: nav,
+    onboardPct,
+    onboardStepsLeft,
+    businessName,
+    ownerName,
+    ownerInitials,
+    ownerRole,
+    onLogout: logout,
+    alertCount,
+    receiptCount,
+    userRole: role,
+  };
+
   return (
     <div className={styles.panel}>
-      {!isMobile && (
-        <Sidebar
-          active={activeId}
-          onNav={nav}
-          onboardPct={onboardPct}
-          onboardStepsLeft={onboardStepsLeft}
-          businessName={businessName}
-          ownerName={ownerName}
-          ownerInitials={ownerInitials}
-          ownerRole={ownerRole}
-          onLogout={logout}
-          alertCount={alertCount}
-          receiptCount={receiptCount}
-          userRole={role}
-        />
-      )}
+      <div className={styles.panel__sidebar}>
+        <Sidebar {...sidebarProps} />
+      </div>
       <div className={styles.panel__content}>
-        <TopBar title={title} isMobile={isMobile} onCompose={() => nav('/agenda')} statusChips={statusChips} />
+        <TopBar title={title} onCompose={() => nav('/agenda')} statusChips={statusChips} />
         <main className={styles.panel__main}>
           <Outlet />
         </main>
-        {isMobile && <BottomTabs active={activeId} onNav={nav} />}
+        <BottomTabs
+          active={activeId}
+          onNav={nav}
+          onMore={() => setMenuOpen(true)}
+          moreCount={alertCount + receiptCount + (onboardStepsLeft > 0 ? 1 : 0)}
+        />
       </div>
+      <MobileMenu open={menuOpen} onOpenChange={setMenuOpen} {...sidebarProps} />
     </div>
   );
 }

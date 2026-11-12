@@ -200,7 +200,7 @@ function WhatsAppAgentPage() {
   const botOn = cfg?.agent_enabled ?? true;
 
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 24px 64px", display: "flex", flexDirection: "column", gap: 36, animation: "hilo-fade-up var(--dur-3) var(--ease-out)" }}>
+    <div className="page page-enter" style={{ maxWidth: 680, display: "flex", flexDirection: "column", gap: 36 }}>
 
       {/* Header */}
       <div>
@@ -267,8 +267,8 @@ function WhatsAppAgentPage() {
         {/* Per-day editor — always visible for precision */}
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {hours.map((h, i) => (
-            <div key={h.day_of_week} style={{
-              display: "flex", alignItems: "center", gap: 12, padding: "8px 14px",
+            <div key={h.day_of_week} className="agent-hours__row" style={{
+              padding: "8px 14px",
               background: h.is_active ? "var(--surface)" : "transparent",
               border: "1px solid", borderColor: h.is_active ? "var(--line)" : "transparent",
               borderRadius: "var(--r-md)", transition: "all var(--dur-1) var(--ease-std)",
@@ -278,7 +278,7 @@ function WhatsAppAgentPage() {
                 {DAYS_FULL[h.day_of_week]}
               </span>
               {h.is_active ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div className="agent-hours__times">
                   <TimeInput value={h.open_time} onChange={v => updateHour(i, "open_time", v)} />
                   <span style={{ color: "var(--ink-4)", font: "400 12px/1 var(--font-sans)" }}>→</span>
                   <TimeInput value={h.close_time} onChange={v => updateHour(i, "close_time", v)} />

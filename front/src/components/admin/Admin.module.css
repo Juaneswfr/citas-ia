@@ -28,7 +28,7 @@
 .kpi__value { font: 600 26px/1.05 var(--font-sans); letter-spacing: -0.02em; color: var(--ink-1); }
 .kpi__hint { font: 400 12px/1.3 var(--font-sans); color: var(--ink-3); margin-top: 6px; }
 
-.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; }
 .panel { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; }
 .panel__title { font: 600 14px/1.2 var(--font-sans); color: var(--ink-1); margin: 0 0 14px; }
 .panel__empty { font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }

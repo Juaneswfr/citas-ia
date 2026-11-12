@@ -2,7 +2,8 @@
 
 .fin { display: flex; flex-direction: column; gap: 20px; padding: 24px; max-width: 1100px; margin: 0 auto; }
 
-.fin__tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.fin__tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.fin__tabs::-webkit-scrollbar { display: none; }
 .fin__tab {
   padding: 10px 14px; border: 0; background: transparent; cursor: pointer; white-space: nowrap;
   font: 500 14px/1 var(--font-sans); color: var(--ink-3); border-bottom: 2px solid transparent;
@@ -56,7 +57,7 @@
 .bar__fill--expense { background: var(--danger); }
 .bar__value { text-align: right; color: var(--ink-1); font-weight: 500; }
 
-.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px; }
 .panel { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; }
 .panel__title { font: 600 14px/1.2 var(--font-sans); color: var(--ink-1); margin: 0 0 14px; }
 
@@ -99,7 +100,7 @@
 @keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
 .modal__panel {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
-  padding: 22px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto;
+  padding: 22px; width: 100%; max-width: 460px; max-height: 90vh; max-height: calc(100dvh - 32px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 14px; animation: modal-rise var(--dur-3) var(--ease-out);
 }
 @keyframes modal-rise { from { transform: translateY(12px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -159,6 +160,10 @@
 
 @media (max-width: 640px) {
   .fin { padding: 16px; }
+  .fin__tab { padding: 14px 12px; }
+  .row__amount { min-width: 0; }
+  .modal__actions { flex-direction: column-reverse; }
+  .modal__actions > * { width: 100%; min-height: 44px; }
   .review { grid-template-columns: 1fr; }
   .form__grid { grid-template-columns: 1fr; }
   .bar { grid-template-columns: 100px 1fr 80px; }

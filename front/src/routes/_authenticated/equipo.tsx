@@ -96,7 +96,7 @@ function EquipoPage() {
   });
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 20px 40px', animation: 'hilo-fade-up var(--dur-3) var(--ease-out)' }}>
+    <div className="page page-enter" style={{ maxWidth: 860 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h2 style={{ margin: 0, font: '500 22px/1.1 var(--font-sans)', letterSpacing: '-0.02em', color: 'var(--ink-1)' }}>Equipo</h2>
@@ -154,12 +154,12 @@ function EquipoPage() {
         ) : (
           team.map((m, i) => (
             <div key={m.id} style={{
-              display: 'flex', alignItems: 'center', gap: 13,
-              padding: '13px 20px',
+              display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px 13px',
+              padding: '13px 16px',
               borderBottom: i < team.length - 1 ? '1px solid var(--line-soft)' : 'none',
             }}>
               <Avatar name={m.name ?? m.email ?? '?'} hue={memberHue(m.id)} size={38} />
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ flex: '1 1 180px', minWidth: 0, overflowWrap: 'anywhere' }}>
                 <div style={{ font: '500 14px/1.2 var(--font-sans)', color: 'var(--ink-1)' }}>
                   {m.name ?? m.email ?? '—'}
                 </div>

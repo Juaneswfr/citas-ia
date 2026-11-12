@@ -1,15 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
+/**
+ * true cuando la ventana es más angosta que `breakpoint`.
+ * Reacciona a cambios de tamaño y a girar el teléfono. En el servidor devuelve
+ * false y se corrige al hidratar, sin errores de hidratación.
+ */
 export function useIsMobile(breakpoint = 880): boolean {
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== 'undefined' && window.innerWidth < breakpoint,
+  const query = `(max-width: ${breakpoint - 1}px)`;
+
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    },
+    [query],
   );
 
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < breakpoint);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, [breakpoint]);
-
-  return isMobile;
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
 }

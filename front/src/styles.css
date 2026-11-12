@@ -121,7 +121,9 @@ body{
    Los selectores usan :where() (especificidad 0) para que cualquier regla de componente gane. */
 
 /* Entrada de una página y de una pestaña */
-.page-enter{animation:hilo-fade-up var(--dur-3) var(--ease-out) both}
+/* «backwards» y no «both»: una animación de transform que queda aplicada encierra a los hijos
+   position:fixed (paneles y modales) dentro de la página en vez de la pantalla. */
+.page-enter{animation:hilo-fade-up var(--dur-3) var(--ease-out) backwards}
 .tab-enter{animation:hilo-fade var(--dur-2) var(--ease-std) both}
 
 /* Entrada escalonada de los hijos (tarjetas KPI, listas cortas) */
@@ -157,6 +159,70 @@ body{
   *{animation-duration:0.01ms !important;animation-delay:0s !important;animation-iteration-count:1 !important;transition-duration:0.01ms !important}
   :where(button,[role="button"]):not(:disabled):active,.hilo-btn:not(:disabled):active{transform:none}
   .card--interactive:hover{transform:none}
+}
+
+/* ===== Móvil: una sola capa para todo el panel (corte en 880px, igual que useIsMobile) =====
+   El panel se usa como app en el teléfono: sin zoom al enfocar campos, zonas seguras del
+   notch y de la barra de gestos, y objetivos táctiles de al menos 40px. */
+
+/* Contenedor de página: el ancho máximo lo pone cada pantalla */
+.page{margin:0 auto;padding:24px 30px 40px}
+
+/* Inicio */
+.dash-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:18px}
+.dash-cols{display:grid;grid-template-columns:1.45fr 1fr;gap:18px;align-items:start}
+.dash-cols>*{min-width:0}
+
+/* Ajustes › horario de atención */
+.hours-row{display:grid;grid-template-columns:110px 40px 1fr;align-items:center;gap:12px}
+.hours-row__check{display:flex;align-items:center;cursor:pointer}
+.hours-row__times{display:flex;align-items:center;gap:8px;min-width:0}
+
+/* WhatsApp › horario del agente */
+.agent-hours__row{display:flex;align-items:center;gap:12px}
+.agent-hours__times{display:flex;align-items:center;gap:8px;min-width:0}
+
+/* Chat */
+.chat-head{padding:14px 20px;border-bottom:1px solid var(--line);background:var(--paper)}
+.chat-head__chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.chat-scroll{flex:1;min-height:0;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:6px;background:var(--surface-tint)}
+
+@media (max-width: 879px){
+  html,body{overscroll-behavior-y:none}
+  body{-webkit-text-size-adjust:100%}
+
+  /* iOS amplía la página al enfocar un campo con letra menor a 16px */
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea){font-size:16px !important}
+
+  /* Objetivos táctiles */
+  .hilo-btn{min-height:40px;min-width:40px}
+  :where(input[type="checkbox"],input[type="radio"]){min-width:20px;min-height:20px}
+
+  .page{padding:16px 16px 28px}
+
+  .dash-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .dash-cols{grid-template-columns:minmax(0,1fr)}
+
+  .hours-row{grid-template-columns:1fr auto;row-gap:8px}
+  .hours-row__check{justify-self:end;min-width:40px;min-height:32px;justify-content:flex-end}
+  .hours-row__times{grid-column:1 / -1}
+  .hours-row__times input{flex:1 1 0;min-width:0}
+
+  .agent-hours__row{flex-wrap:wrap;row-gap:8px}
+  .agent-hours__times{flex:1 1 100%}
+  .agent-hours__times input{flex:1 1 0;min-width:0}
+
+  .chat-head{padding:10px 12px}
+  .chat-head__chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -12px;padding:0 12px}
+  .chat-head__chips::-webkit-scrollbar{display:none}
+  .chat-back{margin-left:-6px}
+  .chat-scroll{padding:12px}
+  .chat-composer{padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+
+  /* Login y registro */
+  .auth{min-height:100dvh}
+  .auth-form-side{padding:calc(20px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom))}
+  .auth-back{min-height:40px}
 }
 
 /* ===== Landing ===== */

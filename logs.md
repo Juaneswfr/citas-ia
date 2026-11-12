@@ -1,6 +1,20 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-12]
+**Agregado — panel apto para móvil (base para PWA)**
+- front/src/components/layout/BottomTabs.tsx, MobileMenu.tsx (nuevo) — la barra inferior solo mostraba 5 secciones: desde el teléfono no se llegaba a Finanzas, Conversaciones, WhatsApp, Equipo, Ajustes, Plataforma ni a «Cerrar sesión». Ahora son 4 accesos (Inicio, Agenda, Chats, Clientes) + «Más», que abre una hoja con todo el menú filtrado por rol, los contadores, «Termina de configurar» y cerrar sesión.
+- front/src/routes/_authenticated.tsx, components/layout/TopBar.tsx, PanelLayout.module.css — el menú lateral, la barra inferior y la barra superior cambian por media query (880px), no por JS: servidor y cliente pintan lo mismo. Alto del panel en `100dvh` (con `100vh` la barra del navegador tapaba la barra inferior y la caja del chat). Zonas seguras del notch y de la barra de gestos.
+- front/src/hooks/use-is-mobile.ts — ahora usa `matchMedia` + `useSyncExternalStore` (reacciona al girar el teléfono, sin error de hidratación). Dashboard, clientes, mensajes, servicios y onboarding dejaron de leer `window.innerWidth` una sola vez.
+- front/src/styles.css — sección «Móvil»: campos a 16px (iOS ampliaba la página al enfocar), botones de mínimo 40px, clase `page` para el padding de página, horarios de Ajustes y de WhatsApp en dos líneas (se salían de la pantalla), chat compacto.
+- front/src/routes/_authenticated/messages.tsx — botón «volver» en la conversación (en móvil no había forma de regresar a la lista).
+- front/src/routes/_authenticated/agenda.tsx — en móvil abre en vista Día.
+- front/src/routes/__root.tsx — `viewport-fit=cover` y `theme-color`.
+- front/src/components/ui/dialog.tsx, finanzas/Finanzas.module.css, admin/Admin.module.css, onboarding/onboarding.module.css, equipo.tsx, clients.tsx, services.tsx — diálogos con margen y alto máximo en `dvh`, grillas que ya no fuerzan 320px, pie del onboarding que envuelve.
+
+**Corregido**
+- front/src/styles.css — `.page-enter` usaba `animation-fill-mode: both`: el `transform` quedaba aplicado y encerraba los paneles `position: fixed` dentro de la página (el panel «Editar servicio» quedaba debajo de las barras y sin su botón Guardar). Ahora `backwards`.
+
+### [AGENTE: claude] [FECHA: 2026-11-12]
 **Corregido — reagendar por WhatsApp creaba una segunda cita**
 - backend-lang/src/services/appointment_service.py (nuevo) — `reschedule` y `cancel`, compartidos por el agente y el panel. Mover cambia la hora de la misma cita y de su evento de Google Calendar; si Google falla, la BD no cambia. Libera el recordatorio ya enviado para que salga con la hora nueva.
 - backend-lang/src/services/appointment_agent.py — tool nueva `reagendar_cita`; el prompt incluye las citas próximas del cliente y prohíbe usar `crear_cita` para mover una cita; `listar_mis_citas` devuelve `calendar_id` y `service_id`; la respuesta «quedó reagendada» la escribe el backend.

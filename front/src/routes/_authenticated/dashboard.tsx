@@ -215,7 +215,6 @@ function fmtResponse(s: number | null | undefined): string {
 function DashboardPage() {
   const navigate = useNavigate();
   const { me, workspaceId } = useAuth();
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 880;
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const { data: todayAppointments = [], isLoading, isError } = useAppointments({ from_date: today, to_date: today });
@@ -273,7 +272,7 @@ function DashboardPage() {
   const todayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es });
 
   return (
-    <div style={{ maxWidth: 1180, margin: '0 auto', padding: isMobile ? '18px 16px 28px' : '26px 30px 40px', animation: 'hilo-fade-up var(--dur-3) var(--ease-out)' }}>
+    <div className="page page-enter" style={{ maxWidth: 1180 }}>
 
       {/* ── Encabezado ── */}
       <div style={{ marginBottom: 22 }}>
@@ -291,7 +290,7 @@ function DashboardPage() {
       </div>
 
       {/* ── KPIs ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? '150px' : '200px'}, 1fr))`, gap: 14, marginBottom: 18 }}>
+      <div className="dash-kpis">
         <StatCard
           eyebrow="Citas de hoy"
           value={isLoading ? '—' : todayCount}
@@ -323,7 +322,7 @@ function DashboardPage() {
       </div>
 
       {/* ── Grid principal ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.45fr 1fr', gap: 18, alignItems: 'start' }}>
+      <div className="dash-cols">
 
         {/* El día como historia */}
         <div className="card" style={{ padding: '18px 20px 6px' }}>

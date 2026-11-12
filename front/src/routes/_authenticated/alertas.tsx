@@ -82,7 +82,7 @@ function AlertasPage() {
   const ordered = [...critical, ...errors, ...warnings, ...infos];
 
   return (
-    <div style={{ maxWidth: 820, margin: '0 auto', padding: '26px 30px 48px', animation: 'hilo-fade-up var(--dur-3) var(--ease-out)' }}>
+    <div className="page page-enter" style={{ maxWidth: 820 }}>
 
       {/* Encabezado */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 22 }}>

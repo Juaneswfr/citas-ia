@@ -1,3 +1,4 @@
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -145,7 +146,7 @@ function OnboardingPage() {
     setStep(first === -1 ? STEPS.length - 1 : first);
   }, [allLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 880;
+  const isMobile = useIsMobile();
   const last     = step === STEPS.length - 1;
 
   // ── Continuar ─────────────────────────────────────────────────────────────────

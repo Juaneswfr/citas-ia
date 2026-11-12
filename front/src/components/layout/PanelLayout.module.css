@@ -1,12 +1,14 @@
 .panel {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--paper);
 }
 
 .panel--onboarding {
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--paper);
 }
@@ -28,4 +30,15 @@
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+}
+
+/* El menú lateral solo existe desde 880px; en móvil lo reemplazan la barra inferior y «Más». */
+.panel__sidebar {
+  display: flex;
+  flex-shrink: 0;
+}
+
+@media (max-width: 879px) {
+  .panel__sidebar { display: none; }
+  .panel__main { overscroll-behavior-y: contain; }
 }

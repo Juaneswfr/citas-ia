@@ -76,7 +76,7 @@ function EditSheet({
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:60, background:'rgba(40,20,28,0.32)',
       backdropFilter:'blur(3px)', display:'flex', justifyContent:'flex-end',
       animation:'hilo-fade-up var(--dur-2) var(--ease-out)' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width:'min(460px, 100%)', height:'100%', background:'var(--paper)',
+      <div onClick={e => e.stopPropagation()} style={{ width:'min(460px, 100%)', height:'100%', maxHeight:'100dvh', background:'var(--paper)',
         borderLeft:'1px solid var(--line)', boxShadow:'var(--shadow-pop)', display:'flex', flexDirection:'column',
         animation:'hilo-fade-up var(--dur-3) var(--ease-emph)' }}>
         <div style={{ padding:'18px 22px', display:'flex', alignItems:'center', gap:12, borderBottom:'1px solid var(--line)' }}>
@@ -181,7 +181,7 @@ function ServiceCard({ svc, onEdit }: { svc: HiloService; onEdit: (s: HiloServic
 
 function ServicesPageSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(250px, 1fr))', gap:16 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(250px, 100%), 1fr))', gap:16 }}>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="card" style={{ padding:0, overflow:'hidden', minHeight:180 }}>
           <div style={{ height:4, background:'var(--line)' }}/>
@@ -197,7 +197,6 @@ function ServicesPageSkeleton({ count = 4 }: { count?: number }) {
 
 function ServicesPage() {
   const [edit, setEdit] = useState<HiloService | null>(null);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 880;
 
   const { data: services = [], isLoading, isError } = useServices();
   const updateSvc = useUpdateService(edit?.id ?? '');
@@ -227,10 +226,9 @@ function ServicesPage() {
   };
 
   return (
-    <div style={{ maxWidth:1180, margin:'0 auto', padding: isMobile?'16px 14px 28px':'24px 30px 40px',
-      animation:'hilo-fade-up var(--dur-3) var(--ease-out)' }}>
-      <div style={{ display:'flex', alignItems:'flex-end', gap:12, marginBottom:20 }}>
-        <div style={{ flex:1 }}>
+    <div className="page page-enter" style={{ maxWidth:1180 }}>
+      <div style={{ display:'flex', alignItems:'flex-end', flexWrap:'wrap', gap:12, marginBottom:20 }}>
+        <div style={{ flex:'1 1 220px', minWidth:0 }}>
           <h2 style={{ margin:0, font:'400 26px/1.05 var(--font-serif)', color:'var(--ink-1)' }}>
             Tu <span className="serif-i">carta</span> de servicios
           </h2>
@@ -246,7 +244,7 @@ function ServicesPage() {
       {isLoading ? (
         <ServicesPageSkeleton />
       ) : (
-        <div style={{ display:'grid', gridTemplateColumns:`repeat(auto-fill, minmax(${isMobile?'100%':'250px'}, 1fr))`, gap:16 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(250px, 100%), 1fr))', gap:16 }}>
           {services.map(s => <ServiceCard key={s.id} svc={s} onEdit={setEdit}/>)}
           <button
             onClick={handleCreate}

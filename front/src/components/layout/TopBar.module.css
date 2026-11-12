@@ -1,6 +1,7 @@
 .topbar {
+  box-sizing: content-box;
   height: 56px;
-  padding: 0 16px;
+  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
   display: flex;
   align-items: center;
   gap: 12px;
@@ -19,6 +20,20 @@
   font: 500 19px/1 var(--font-sans);
   letter-spacing: -0.02em;
   color: var(--ink-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 0;
+}
+
+.topbar__mark {
+  display: none;
+  flex-shrink: 0;
+}
+
+.topbar__only-mobile {
+  display: none;
 }
 
 .topbar__search {
@@ -58,6 +73,7 @@
 
 .topbar__actions {
   margin-left: auto;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -86,4 +102,14 @@
 .topbar__bell-btn {
   /* shortcut: Button usa inline style para padding; clase no puede sobreescribir.
      Mantener style={{ padding: 8 }} hasta que Button migre a BEM. */
+}
+
+@media (max-width: 879px) {
+  .topbar { gap: 10px; }
+  .topbar__mark { display: inline-flex; }
+  .topbar__search { display: none; }
+  .topbar__only-desktop { display: none; }
+  .topbar__only-mobile { display: inline; }
+  .topbar__status:not(:first-child) { display: none; }
+  .topbar__compose { min-width: 40px; min-height: 40px; }
 }

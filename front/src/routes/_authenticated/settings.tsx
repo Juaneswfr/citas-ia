@@ -413,7 +413,7 @@ function SandboxSection({ workspaceId }: { workspaceId: string }) {
 function TypographySection() {
   const { pairs, current, setPair } = useTypography();
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))', gap: 10 }}>
       {pairs.map(p => {
         const sel = current.id === p.id;
         return (
@@ -478,15 +478,14 @@ function BusinessHoursSection({ workspaceId }: { workspaceId: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {hours.map((h, i) => (
-        <div key={h.day_of_week} style={{
-          display: 'grid', gridTemplateColumns: '110px 40px 1fr', alignItems: 'center', gap: 12,
+        <div key={h.day_of_week} className="hours-row" style={{
           padding: '8px 0', borderBottom: i < 6 ? '1px solid var(--line-soft)' : 'none',
           opacity: h.is_open ? 1 : 0.5,
         }}>
           <span style={{ font: '500 13px/1 var(--font-sans)', color: 'var(--ink-1)' }}>
             {DAY_NAMES[h.day_of_week]}
           </span>
-          <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+          <label className="hours-row__check">
             <input
               type="checkbox"
               checked={h.is_open}
@@ -494,7 +493,7 @@ function BusinessHoursSection({ workspaceId }: { workspaceId: string }) {
               style={{ width: 16, height: 16, accentColor: 'var(--wine)', cursor: 'pointer' }}
             />
           </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="hours-row__times">
             <input
               type="time"
               value={h.open_time.slice(0, 5)}
@@ -574,7 +573,7 @@ function SettingsPage() {
   };
 
   return (
-    <div style={{ padding: '24px 20px', maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="page" style={{ maxWidth: 860, display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       <div>
         <h2 style={{ margin: 0, font: '500 22px/1.1 var(--font-sans)', letterSpacing: '-0.02em', color: 'var(--ink-1)' }}>
@@ -587,7 +586,7 @@ function SettingsPage() {
 
       {/* Cuenta */}
       <SettingsCard icon="user" title="Cuenta" description="Tu información de usuario y workspace.">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))', gap: 14 }}>
           {[
             { label: 'Nombre', value: displayName },
             { label: 'Correo', value: me?.email ?? '—' },

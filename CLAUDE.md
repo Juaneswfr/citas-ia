@@ -152,6 +152,17 @@ Vista de toda la plataforma para el equipo de Hilo. Solo `super_admin` (guard a 
 - `is_active` ya no se puede cambiar desde `PATCH /workspaces/{id}`: un negocio no puede reactivarse solo.
 - Es el único código que lee datos de todos los workspaces. Fuera de alcance por ahora: entrar como otro negocio, cambiar plan o estado de suscripción desde el panel (existe `PATCH /billing/workspaces/{id}/subscription/status`).
 
+## Móvil (base para PWA)
+
+El panel se usa como app en el teléfono. Corte único en **880px**.
+
+- Navegación: `BottomTabs` (Inicio, Agenda, Chats, Clientes + «Más») y `MobileMenu` (hoja con todo `visibleNav(role)`, contadores y cerrar sesión). Una sección nueva en `lib/nav.ts` aparece sola en «Más».
+- Lo que cambia entre móvil y escritorio se decide **por CSS** (`@media (max-width: 879px)`), no por JS. `useIsMobile()` (`hooks/use-is-mobile.ts`) solo cuando cambia el comportamiento (lista ↔ detalle en Clientes y Mensajes). Nunca `window.innerWidth` suelto.
+- Reglas globales en `front/src/styles.css`, sección «Móvil»: campos a 16px (evita el zoom de iOS), botones de mínimo 40px, clase `page` para el padding de cada pantalla.
+- Altos con `dvh`, no `vh`. Barras fijas con `env(safe-area-inset-*)`.
+- Un elemento con `position: fixed` (panel, modal) no puede vivir dentro de algo con `transform` o animación de `transform` que quede aplicada: por eso `.page-enter` usa `backwards`.
+- Pendiente para la PWA: manifest, iconos y service worker.
+
 ## Animaciones e interacción
 
 Una sola capa de movimiento en `front/src/styles.css` (sección «Movimiento»), con los tokens `--dur-*` y `--ease-*`:

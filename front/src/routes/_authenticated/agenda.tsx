@@ -29,7 +29,9 @@ function AgendaPage() {
   const { workspaceId } = useAuth();
   const isMobile = useIsMobile();
 
-  const [view,       setView]       = useState<'day' | 'week' | 'month'>('week');
+  // En el teléfono la semana no cabe: se abre en la vista de día (la semana sigue disponible con scroll).
+  const [view,       setView]       = useState<'day' | 'week' | 'month'>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 879px)').matches ? 'day' : 'week');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [slotDate,   setSlotDate]   = useState<string | undefined>();
   const [slotTime,   setSlotTime]   = useState<string | undefined>();
