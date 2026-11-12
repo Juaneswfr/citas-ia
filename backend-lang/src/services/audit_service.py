@@ -42,8 +42,9 @@ class AuditService:
                         "action": action,
                         "entity_type": entity_type,
                         "entity_id": entity_id,
-                        "before_data": json.dumps(before_data) if before_data is not None else None,
-                        "after_data": json.dumps(after_data) if after_data is not None else None,
+                        # default=str: las filas traen fechas y UUID que json no serializa solo
+                        "before_data": json.dumps(before_data, default=str) if before_data is not None else None,
+                        "after_data": json.dumps(after_data, default=str) if after_data is not None else None,
                     },
                 )
                 await session.commit()

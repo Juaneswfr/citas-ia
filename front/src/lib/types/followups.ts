@@ -1,6 +1,9 @@
 // Seguimiento por WhatsApp (espejo de backend-lang/src/schemas/followups.py).
 
-export type FollowupKind = 'reminder' | 'post_visit' | 'payment_due' | 'reactivation';
+/** Seguimientos que envía el worker: cada uno tiene interruptor y tiempo en FollowupSettings. */
+export type ScheduledFollowupKind = 'reminder' | 'post_visit' | 'payment_due' | 'reactivation';
+/** 'cancellation' sale cuando el negocio cancela una cita desde el panel: no se programa ni se apaga. */
+export type FollowupKind = ScheduledFollowupKind | 'cancellation';
 export type TemplateStatus = 'not_created' | 'pending' | 'approved' | 'rejected' | 'disabled' | 'error';
 
 export interface FollowupSettings {

@@ -50,6 +50,17 @@ class AppointmentOut(BaseModel):
     updated_at: datetime
 
 
+class AppointmentCancel(BaseModel):
+    """Cancelación desde el panel por cualquier miembro del equipo."""
+    reason: Optional[str] = Field(None, max_length=500, description="Motivo interno de la cancelación")
+
+
+class AppointmentCancelOut(AppointmentOut):
+    """La cita cancelada y si el cliente quedó avisado por WhatsApp."""
+    customer_notified: bool
+    notify_detail: Optional[str] = None  # por qué no se pudo avisar
+
+
 class AvailabilityBlockCreate(BaseModel):
     """
     Bloqueo de agenda. Requiere confirmación explícita del dueño (Principio IX).

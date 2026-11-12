@@ -1,4 +1,4 @@
-// Panel de detalle de una cita: información del servicio, completar la cita y cobrarla con comprobante.
+// Panel de detalle de una cita: información del servicio, completarla y cobrarla con comprobante, o cancelarla.
 
 import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
@@ -60,8 +60,8 @@ interface AppointmentDetailProps {
 }
 
 export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailProps) {
-  const { appointment, service, customer, sale, canManage, isCompleted, complete, isCompleting } =
-    useAppointmentDetail(appointmentId);
+  const { appointment, service, customer, sale, canManage, isCompleted, complete, isCompleting,
+          canCancel, cancel, isCancelling } = useAppointmentDetail(appointmentId);
   const pay = usePayWithReceipt('sales');
   const voidMovement = useVoidMovement();
   const [paying, setPaying] = useState<SalesOrderOut | null>(null);
@@ -78,6 +78,17 @@ export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailP
     try {
       const created = await complete();
       if (thenCollect && created && created.status === 'open') setPaying(created);
+    } catch {
+      // El onError de la mutación ya mostró el toast.
+    }
+  };
+
+  const handleCancel = async () => {
+    const who = customer?.name ?? customer?.phone ?? 'el cliente';
+    if (!window.confirm(`¿Cancelar la cita de ${who}? Se le avisará por WhatsApp y el horario quedará libre.`)) return;
+    try {
+      await cancel();
+      onClose();
     } catch {
       // El onError de la mutación ya mostró el toast.
     }
@@ -156,6 +167,11 @@ export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailP
         )}
       </AsyncState>
       <div className={styles.detail__actions}>
+        {canCancel && (
+          <Button variant="danger" disabled={isCancelling || isCompleting} onClick={handleCancel}>
+            {isCancelling ? 'Cancelando…' : 'Cancelar cita'}
+          </Button>
+        )}
         <Button variant="ghost" onClick={onClose}>Cerrar</Button>
       </div>
       {paying && (

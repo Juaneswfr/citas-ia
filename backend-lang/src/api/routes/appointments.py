@@ -15,7 +15,7 @@ from sqlalchemy import text
 from core.database import get_db
 from core.security import require_workspace_access
 from schemas.appointment import (
-    AppointmentCreate, AppointmentOut, AppointmentUpdate,
+    AppointmentCancel, AppointmentCancelOut, AppointmentCreate, AppointmentOut, AppointmentUpdate,
     AvailabilityBlockCreate, AvailabilityBlockOut,
 )
 
@@ -208,8 +208,9 @@ async def create_appointment(
     log.info("[appointments] created | workspace=%s | id=%s | start=%s",
              workspace_id, appointment["id"], body.start_at)
 
-    # Notificar al cliente por WhatsApp (best-effort — no bloquea la respuesta)
-    if channel_id and customer_phone:
+    # Notificar al cliente por WhatsApp (best-effort — no bloquea la respuesta).
+    # Sin `sub` quien crea es el agente, que ya le responde al cliente con su propia confirmación.
+    if channel_id and customer_phone and current_user.get("sub"):
         ch_row = (await db.execute(
             text("SELECT * FROM channels WHERE id = :channel_id"),
             {"channel_id": channel_id},
@@ -272,98 +273,119 @@ async def update_appointment(
             detail="La cancelación requiere confirmación explícita. Pasa confirmed=true tras obtener aprobación del dueño.",
         )
 
-    current = (await db.execute(
-        text("SELECT status, google_event_id, calendar_id, channel_id, customer_id, service_id FROM appointments WHERE id = :appointment_id AND workspace_id = :workspace_id"),
-        {"appointment_id": appointment_id, "workspace_id": workspace_id},
-    )).mappings().fetchone()
-    if not current:
-        raise HTTPException(status_code=404, detail="Cita no encontrada.")
+    from services import appointment_service
+    actor = current_user.get("sub")
 
-    if current["status"] in {"completed", "noshow"} and body.status == "cancelled":
+    # Cancelar y mover tienen reglas propias (Google Calendar, recordatorios, aviso al cliente).
+    if body.status == "cancelled":
+        cancelled = await appointment_service.cancel(
+            db, workspace_id, appointment_id, reason=body.cancellation_reason, actor_user_id=actor)
+        await appointment_service.notify_cancelled(db, workspace_id, cancelled)
+        return cancelled
+
+    row = None
+    if body.start_at:
+        row = await appointment_service.reschedule(
+            db, workspace_id, appointment_id, body.start_at, actor_user_id=actor)
+        await _notify_rescheduled(db, workspace_id, row)
+
+    data = body.model_dump(exclude_none=True, exclude={"start_at"})
+    if data:
+        current = (await db.execute(
+            text("SELECT status FROM appointments WHERE id = :appointment_id AND workspace_id = :workspace_id"),
+            {"appointment_id": appointment_id, "workspace_id": workspace_id},
+        )).mappings().fetchone()
+        if not current:
+            raise HTTPException(status_code=404, detail="Cita no encontrada.")
+
+        set_clause = ", ".join(f"{f} = :{f}" for f in data.keys())
+        params = {"appointment_id": appointment_id, "workspace_id": workspace_id, **data}
+        row = (await db.execute(
+            text(f"UPDATE appointments SET {set_clause} WHERE id = :appointment_id AND workspace_id = :workspace_id RETURNING *"),
+            params,
+        )).mappings().fetchone()
+        await db.commit()
+
+        from services.audit_service import AuditService
+        await AuditService.log(
+            workspace_id=workspace_id,
+            actor_user_id=actor,
+            action=f"appointment.{body.status or 'update'}",
+            entity_type="appointment",
+            entity_id=appointment_id,
+            before_data=dict(current),
+            after_data=dict(row) if row else {},
+        )
+        log.info("[appointments] updated | workspace=%s | id=%s | status=%s | by=%s",
+                 workspace_id, appointment_id, body.status, actor)
+
+        if body.status == "completed":
+            await _create_sale_for_completed(db, workspace_id, appointment_id)
+
+    if not row:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No hay cambios que aplicar.")
+    return dict(row)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/appointments/{appointment_id}/cancel",
+    response_model=AppointmentCancelOut,
+    summary="Cancelar una cita desde el panel y avisar al cliente por WhatsApp.",
+)
+async def cancel_appointment(
+    workspace_id: str,
+    appointment_id: str,
+    body: AppointmentCancel | None = None,
+    confirmed: bool = Query(False),
+    current_user: dict = Depends(require_workspace_access("staff")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cualquier miembro del equipo puede cancelar cualquier cita del negocio.
+
+    El aviso al cliente es un paso aparte: si no sale, la cita queda cancelada igual y la
+    respuesta lo dice (`customer_notified=false`) para que el equipo le avise por su cuenta.
+    """
+    from services import appointment_service
+    if not confirmed:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"No se puede cancelar una cita en estado '{current['status']}'.",
+            detail="La cancelación requiere confirmación explícita. Pasa confirmed=true.",
         )
+    cancelled = await appointment_service.cancel(
+        db, workspace_id, appointment_id,
+        reason=body.reason if body else None, actor_user_id=current_user.get("sub"))
+    notified, detail = await appointment_service.notify_cancelled(db, workspace_id, cancelled)
+    return {**cancelled, "customer_notified": notified, "notify_detail": detail}
 
-    data = body.model_dump(exclude_none=True)
-    if body.status == "cancelled":
-        data["cancelled_by"] = current_user.get("sub")
 
-    set_clause = ", ".join(f"{f} = :{f}" for f in data.keys())
-    params = {"appointment_id": appointment_id, "workspace_id": workspace_id, **data}
-
-    row = (await db.execute(
-        text(f"UPDATE appointments SET {set_clause} WHERE id = :appointment_id AND workspace_id = :workspace_id RETURNING *"),
-        params,
-    )).mappings().fetchone()
-
-    # Eliminar evento de Calendar si se cancela (Principio VI)
-    if body.status == "cancelled" and current["google_event_id"]:
-        from services.calendar_service import CalendarService
-        cal = (await db.execute(
-            text("SELECT * FROM calendars WHERE id = :calendar_id"),
-            {"calendar_id": current["calendar_id"]},
+async def _notify_rescheduled(db: AsyncSession, workspace_id: str, appointment: dict) -> None:
+    """Avisa al cliente la nueva hora por texto libre (best-effort)."""
+    from zoneinfo import ZoneInfo
+    from services import followup_templates as ft
+    from services.whatsapp_service import WhatsAppService
+    if not appointment.get("channel_id"):
+        return
+    try:
+        info = (await db.execute(
+            text("""
+                SELECT cu.phone, ch.phone_number_id, ch.provider, w.timezone
+                FROM customers cu
+                JOIN workspaces w ON w.id = cu.workspace_id
+                JOIN channels ch ON ch.id = :channel_id
+                WHERE cu.id = :customer_id AND cu.workspace_id = :workspace_id
+            """),
+            {"channel_id": appointment["channel_id"], "customer_id": appointment["customer_id"],
+             "workspace_id": workspace_id},
         )).mappings().fetchone()
-        if cal:
-            cal_service = CalendarService(dict(cal))
-            await cal_service.delete_event(current["google_event_id"])
-
-    await db.commit()
-
-    from services.audit_service import AuditService
-    await AuditService.log(
-        workspace_id=workspace_id,
-        actor_user_id=current_user.get("sub"),
-        action=f"appointment.{body.status or 'update'}",
-        entity_type="appointment",
-        entity_id=appointment_id,
-        before_data=dict(current),
-        after_data=dict(row) if row else {},
-    )
-    log.info("[appointments] updated | workspace=%s | id=%s | status=%s | by=%s",
-             workspace_id, appointment_id, body.status, current_user.get("sub"))
-
-    if body.status == "completed":
-        await _create_sale_for_completed(db, workspace_id, appointment_id)
-
-    # Notificar al cliente por WhatsApp (best-effort)
-    notify_channel = current["channel_id"]
-    if row and notify_channel and (body.status in {"cancelled"} or body.start_at):
-        cust_row = (await db.execute(
-            text("SELECT phone FROM customers WHERE id = :customer_id"),
-            {"customer_id": current["customer_id"]},
-        )).mappings().fetchone()
-        svc_row = (await db.execute(
-            text("SELECT name FROM services WHERE id = :service_id"),
-            {"service_id": current["service_id"]},
-        )).mappings().fetchone()
-        if cust_row and cust_row["phone"] and svc_row:
-            ch_row = (await db.execute(
-                text("SELECT * FROM channels WHERE id = :channel_id"),
-                {"channel_id": notify_channel},
-            )).mappings().fetchone()
-            if ch_row:
-                from services.whatsapp_service import WhatsAppService
-                nombre_svc = svc_row["name"]
-                if body.status == "cancelled":
-                    msg = f"❌ Tu cita de *{nombre_svc}* fue cancelada. Escríbenos si quieres reagendar."
-                else:
-                    apt_row = dict(row)
-                    meses = ['enero','febrero','marzo','abril','mayo','junio','julio',
-                             'agosto','septiembre','octubre','noviembre','diciembre']
-                    start = apt_row["start_at"]
-                    fecha_str = f"{start.day} de {meses[start.month - 1]} a las {start.strftime('%H:%M')}"
-                    msg = f"📅 Tu cita de *{nombre_svc}* fue reagendada para el *{fecha_str}*."
-                try:
-                    await WhatsAppService.send_text(
-                        to=cust_row["phone"], text=msg,
-                        phone_number_id=ch_row["phone_number_id"],
-                        provider=ch_row["provider"],
-                    )
-                except Exception:
-                    log.warning("[appointments] no se pudo notificar actualización por WhatsApp | id=%s", appointment_id)
-
-    return dict(row)
+        if not info or not info["phone"]:
+            return
+        local = appointment["start_at"].astimezone(ZoneInfo(info["timezone"] or "America/Bogota"))
+        msg = (f"📅 Tu cita de *{appointment.get('service_name') or 'servicio'}* fue reagendada para el "
+               f"*{ft.format_date(local)} a las {ft.format_time(local)}*.")
+        await WhatsAppService.send_text(
+            to=info["phone"], text=msg, phone_number_id=info["phone_number_id"], provider=info["provider"])
+    except Exception:
+        log.warning("[appointments] no se pudo notificar el cambio de hora por WhatsApp | id=%s", appointment.get("id"))
 
 
 # ── Bloques de disponibilidad ─────────────────────────────────────────────────

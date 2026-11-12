@@ -1,4 +1,4 @@
-// Datos y acciones del panel de detalle de una cita: cita, servicio, cliente, venta asociada y completar.
+// Datos y acciones del panel de detalle de una cita: cita, servicio, cliente, venta asociada, completar y cancelar.
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
@@ -6,9 +6,9 @@ import { getAppointment } from '@/lib/api/appointments';
 import { listCustomers } from '@/lib/api/conversations';
 import { listServices } from '@/lib/api/services';
 import { getSalesOrderByAppointment } from '@/lib/api/accounting';
-import { canManageFinance } from '@/lib/nav';
+import { canCancelAppointments, canManageFinance } from '@/lib/nav';
 import type { SalesOrderOut } from '@/lib/types/accounting';
-import { useUpdateAppointment } from '@/hooks/use-appointments';
+import { useCancelAppointment, useUpdateAppointment } from '@/hooks/use-appointments';
 import { useSaleByAppointment } from '@/hooks/use-accounting';
 
 const STALE = 5 * 60 * 1000;
@@ -56,7 +56,14 @@ export function useAppointmentDetail(appointmentId: string) {
     });
   };
 
+  const cancelMutation = useCancelAppointment(appointmentId);
+  const status = appointment.data?.status;
+
   return {
+    canCancel: canCancelAppointments(role) && (status === 'pending' || status === 'confirmed'),
+    /** Cancela la cita; el backend avisa al cliente por WhatsApp. Lanza si falla (el toast ya salió). */
+    cancel: () => cancelMutation.mutateAsync(),
+    isCancelling: cancelMutation.isPending,
     appointment,
     service: services.data?.find((s) => s.id === appointment.data?.service_id) ?? null,
     customer: customers.data?.find((c) => c.id === appointment.data?.customer_id) ?? null,

@@ -93,10 +93,22 @@ El agente de citas (`backend-lang/src/services/appointment_agent.py`) usa Claude
 | `listar_servicios` | Lista servicios activos del workspace con precio y duración |
 | `consultar_disponibilidad` | Revisa Google Calendar del profesional elegido si horas candidatas están libres |
 | `crear_cita` | Valida disponibilidad, inserta cita en BD, crea evento en Google Calendar del profesional |
-| `listar_mis_citas` | Lista citas próximas del cliente en la conversación |
+| `listar_mis_citas` | Lista citas próximas del cliente con su `appointment_id`, `calendar_id` y `service_id` |
+| `reagendar_cita` | Mueve una cita existente a otro día u hora (misma fila, mismo evento de Google Calendar) |
 | `cancelar_cita` | Cancela una cita del cliente por su ID |
 
 Flujo agente: `listar_profesionales` → (si varios, preguntar cuál prefiere el cliente) → `listar_servicios` → `consultar_disponibilidad(calendar_id, ...)` → `crear_cita(calendar_id, ...)`.
+
+Cambio de hora: `consultar_disponibilidad` → `reagendar_cita(appointment_id, ...)`. **Nunca `crear_cita` para mover una cita** (dejaba dos citas del mismo cliente). El prompt incluye las citas próximas del cliente, así que el agente sabe que ya tiene una sin gastar una tool. `reagendar_cita` conserva servicio y profesional; para cambiarlos se cancela y se agenda de nuevo. La respuesta «quedó reagendada» la escribe el backend, igual que la de «quedó confirmada».
+
+### Mover y cancelar citas (`services/appointment_service.py`)
+
+Una sola implementación para el agente y el panel:
+
+- `reschedule`: valida free/busy sin contar el horario actual de la propia cita, mueve el evento con `CalendarService.update_event` (si Google falla, la BD no cambia), borra el recordatorio ya enviado (`followup_sends`) para que salga con la hora nueva y limpia `confirmed_by_customer_at`. El estado no cambia.
+- `cancel`: borra el evento del calendario **de la cita** y guarda `cancelled_by` con el usuario del panel, o `NULL` si cancela el cliente (es FK a `users`).
+- Panel: `POST /workspaces/{id}/appointments/{aid}/cancel?confirmed=true`, rol `staff` o superior: cualquier miembro del equipo cancela cualquier cita del negocio (botón «Cancelar cita» en el detalle de la agenda). El `PATCH` sigue siendo de `manager` y delega en el mismo servicio.
+- Aviso al cliente al cancelar desde el panel (`notify_cancelled`): plantilla `cancellation` si está aprobada; si no, texto libre solo con la ventana de 24 h abierta; si nada sale, la respuesta trae `customer_notified=false` y el panel le dice al equipo que avise por su cuenta. La cancelación nunca se revierte por un aviso fallido. Cuando cancela el cliente por el agente no hay aviso aparte.
 
 Flujo sistema: WhatsApp → webhook → `ConversationService.find_or_create` → `AgentService.run` → `appointment_agent.run_agent` → respuesta por WhatsApp.
 
@@ -187,7 +199,7 @@ uv run python migrate.py           # aplica pendientes
 uv run python migrate.py --status  # ver estado
 ```
 
-Migración más reciente: `018_human_messages.sql`. **001–017 están aplicadas en la BD** (016 y 017 el 2026-11-11); **018 está pendiente** y el chat de Hilo la necesita.
+Migración más reciente: `019_cancellation_template.sql`. **001–017 están aplicadas en la BD** (016 y 017 el 2026-11-11); **018 y 019 están pendientes**: el chat de Hilo necesita la 018 y el aviso de cita cancelada la 019.
 
 Ojo con el runner (`core/migrations.py`): parte el archivo por `;` + salto de línea y envía cada trozo a la BD. Un comentario suelto al final del archivo llega como consulta vacía y lo hace fallar; los comentarios van antes de una sentencia.
 
@@ -196,6 +208,7 @@ Qué agregan las últimas:
 - `016_followups.sql` — seguimiento por WhatsApp (`followup_settings`, `followup_templates`, `followup_sends`, `customers.marketing_opt_out`, `appointments.confirmed_by_customer_at`). Sin ella el worker de seguimientos falla en cada pasada.
 - `017_payment_receipts.sql` — comprobantes recibidos por WhatsApp (`payment_receipts`).
 - `018_human_messages.sql` — mensajes de una persona del negocio (`messages.sender_type='human'`, `messages.sent_via`). Sin ella falla responder desde Hilo y guardar lo enviado desde el celular.
+- `019_cancellation_template.sql` — admite `kind='cancellation'` en `followup_templates` y `followup_sends`. Sin ella la plantilla de cita cancelada no se puede registrar ni enviar: el aviso solo sale como texto libre dentro de la ventana de 24 h (la cancelación sí se guarda).
 
 ---
 
@@ -218,7 +231,7 @@ Modelo de caja, sin partida doble. Detalle en `backend-lang/src/services/account
 
 ## Seguimiento por WhatsApp (plantillas)
 
-Cuatro seguimientos automáticos: recordatorio de cita, post-visita, cobro pendiente y reactivación.
+Cuatro seguimientos automáticos: recordatorio de cita, post-visita, cobro pendiente y reactivación. Una quinta plantilla, `cancellation` (`hilo_cita_cancelada_v1`), no la envía el worker ni tiene interruptor: sale cuando el negocio cancela una cita desde el panel. Se registra y aprueba igual que las demás; los negocios ya conectados deben pulsar otra vez «Activar plantillas».
 
 - Texto **fijo**, definido en `backend-lang/src/services/followup_templates.py`. Para cambiar un texto hay que subir el sufijo `_vN` del nombre: Meta no deja editar una plantilla ya enviada a revisión.
 - Meta aprueba las plantillas **por cuenta de WhatsApp (WABA)**: cada barbería las registra en la suya desde WhatsApp › Seguimiento automático › «Activar plantillas» (`followup_service.sync_templates`). Un seguimiento solo se envía cuando su plantilla está `approved`.

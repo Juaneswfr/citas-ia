@@ -1,7 +1,9 @@
 // T014 — Módulo de API de citas
 
 import { apiFetch } from './client';
-import type { AppointmentOut, AppointmentUpdate, AppointmentStatus, AppointmentCreate } from '../types/api';
+import type {
+  AppointmentCancelOut, AppointmentOut, AppointmentUpdate, AppointmentStatus, AppointmentCreate,
+} from '../types/api';
 
 interface ListAppointmentsParams {
   status?: AppointmentStatus;
@@ -42,8 +44,24 @@ export async function createAppointment(
 }
 
 /**
+ * POST /workspaces/{workspaceId}/appointments/{appointmentId}/cancel
+ * Cancela la cita (cualquier miembro del equipo) y avisa al cliente por WhatsApp.
+ * Solo se llama después de que la persona confirmó (Principio IX).
+ */
+export async function cancelAppointment(
+  workspaceId: string,
+  appointmentId: string,
+  reason?: string,
+): Promise<AppointmentCancelOut> {
+  return apiFetch<AppointmentCancelOut>(
+    `/workspaces/${workspaceId}/appointments/${appointmentId}/cancel?confirmed=true`,
+    { method: 'POST', body: JSON.stringify({ reason: reason ?? null }) },
+  );
+}
+
+/**
  * PATCH /workspaces/{workspaceId}/appointments/{appointmentId}
- * Para cancelar: body.status = 'cancelled' + confirmed = true (Principio IX)
+ * Solo dueño o administrador. Para cancelar desde el panel usar cancelAppointment.
  */
 export async function updateAppointment(
   workspaceId: string,

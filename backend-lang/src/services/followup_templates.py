@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 
 LANGUAGE = "es_CO"
 
-KINDS = ("reminder", "post_visit", "payment_due", "reactivation")
+# "cancellation" no la envía el worker: sale cuando el negocio cancela una cita desde el panel.
+KINDS = ("reminder", "post_visit", "payment_due", "reactivation", "cancellation")
 
 # Payloads de los botones de respuesta rápida. El de cita lleva el id: "confirm:<appointment_id>".
 PAYLOAD_CONFIRM = "confirm"
@@ -94,6 +95,13 @@ TEMPLATES: dict[str, FollowupTemplate] = {
         body="Hola {{nombre}}, hace rato no te vemos en {{negocio}}. ¿Te agendamos esta semana?",
         examples=_EXAMPLES,
         buttons=(("Agendar", PAYLOAD_BOOK), ("No más mensajes", PAYLOAD_OPT_OUT)),
+    ),
+    "cancellation": FollowupTemplate(
+        kind="cancellation", name="hilo_cita_cancelada_v1", category="UTILITY",
+        body=("Hola {{nombre}}, tu cita de {{servicio}} en {{negocio}} del {{fecha}} a las {{hora}} "
+              "fue cancelada. Si quieres otra hora, escríbenos por aquí."),
+        examples=_EXAMPLES,
+        buttons=(("Agendar", PAYLOAD_BOOK),),
     ),
 }
 

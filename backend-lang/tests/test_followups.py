@@ -31,9 +31,9 @@ def _provider(handler) -> KapsoProvider:
 
 # ── Plantillas ────────────────────────────────────────────────────────────────
 
-async def test_four_templates_with_unique_names():
+async def test_templates_with_unique_names():
     assert set(ft.TEMPLATES) == set(ft.KINDS)
-    assert len({t.name for t in ft.TEMPLATES.values()}) == 4
+    assert len({t.name for t in ft.TEMPLATES.values()}) == len(ft.KINDS) == 5
 
 
 @pytest.mark.parametrize("kind", ft.KINDS)
@@ -56,6 +56,7 @@ async def test_button_payloads_carry_appointment_id():
     assert ft.TEMPLATES["reminder"].button_payloads("apt-1") == ["confirm:apt-1", "cancel:apt-1"]
     assert ft.TEMPLATES["reactivation"].button_payloads() == ["book", "optout"]
     assert ft.TEMPLATES["post_visit"].button_payloads("apt-1") == []
+    assert ft.TEMPLATES["cancellation"].button_payloads("apt-1") == ["book:apt-1"]
 
 
 async def test_formatters():
@@ -369,4 +370,4 @@ async def test_list_templates_reports_connection(monkeypatch, channel, connected
                         lambda: SimpleNamespace(kapso_sandbox_phone_number_id="SANDBOX"))
     out = await followup_service.list_templates(_Db(), "ws-1")
     assert (out["connected"], out["can_activate"]) == (connected, can_activate)
-    assert len(out["templates"]) == 4
+    assert len(out["templates"]) == len(ft.KINDS)

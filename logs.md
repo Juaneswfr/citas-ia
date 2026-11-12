@@ -1,6 +1,28 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-12]
+**Corregido — reagendar por WhatsApp creaba una segunda cita**
+- backend-lang/src/services/appointment_service.py (nuevo) — `reschedule` y `cancel`, compartidos por el agente y el panel. Mover cambia la hora de la misma cita y de su evento de Google Calendar; si Google falla, la BD no cambia. Libera el recordatorio ya enviado para que salga con la hora nueva.
+- backend-lang/src/services/appointment_agent.py — tool nueva `reagendar_cita`; el prompt incluye las citas próximas del cliente y prohíbe usar `crear_cita` para mover una cita; `listar_mis_citas` devuelve `calendar_id` y `service_id`; la respuesta «quedó reagendada» la escribe el backend.
+- backend-lang/src/services/appointment_agent.py — `cancelar_cita` escribía `cancelled_by='customer'` en una columna UUID (Postgres lo rechazaba y la cita no se cancelaba) y borraba el evento del primer calendario del negocio, no del de la cita. Ahora usa `appointment_service.cancel`.
+- backend-lang/src/api/routes/appointments.py — el `PATCH` con `start_at` no recalculaba `end_at` ni movía el evento de Google; ahora delega en `reschedule`. El aviso de cambio de hora usa la zona horaria del negocio.
+- backend-lang/src/api/routes/appointments.py — al agendar por el agente el cliente recibía dos confirmaciones (la del endpoint y la del agente); el endpoint ya no envía la suya cuando crea el agente.
+- backend-lang/src/services/audit_service.py — `json.dumps(..., default=str)`: la auditoría de citas fallaba en silencio al serializar fechas y UUID.
+
+**Agregado — cancelar una cita desde el panel con aviso al cliente**
+- backend-lang/src/api/routes/appointments.py — `POST .../appointments/{id}/cancel?confirmed=true`, rol `staff` o superior. Responde `customer_notified` y `notify_detail`.
+- backend-lang/src/services/appointment_service.py — `notify_cancelled`: plantilla aprobada; si no, texto libre dentro de la ventana de 24 h; si no sale, lo informa sin revertir la cancelación.
+- backend-lang/src/services/followup_templates.py, schemas/followups.py — plantilla `cancellation` (`hilo_cita_cancelada_v1`, botón «Agendar»).
+- backend-lang/migrations/019_cancellation_template.sql — amplía los CHECK de `kind`. **Pendiente de aplicar** (junto con la 018).
+- backend-lang/tests/test_appointment_service.py (nuevo), test_appointment_agent.py, test_followups.py — mover, cancelar, aviso y matriz de roles.
+- front/src/components/agenda/AppointmentDetail.tsx, hooks/use-appointment-detail.ts, hooks/use-appointments.ts, lib/api/appointments.ts, lib/nav.ts, lib/types/api.ts — botón «Cancelar cita» para cualquier miembro del equipo, con confirmación y aviso de si el cliente quedó notificado.
+- front/src/components/seguimiento/FollowupsSection.tsx, lib/types/followups.ts — tarjeta «Cita cancelada» (sin interruptor) en Seguimiento automático.
+
+**Pendiente del despliegue**
+- Aplicar 018 y 019 (`uv run python migrate.py`) y, en cada negocio con número real, pulsar «Activar plantillas» para enviar `hilo_cita_cancelada_v1` a revisión de Meta.
+- Las citas duplicadas que ya existen no se corrigen solas: cancelarlas desde el botón nuevo avisa al cliente.
+
+### [AGENTE: claude] [FECHA: 2026-11-12]
 **Agregado — responder desde el chat de Hilo y ver lo enviado desde el celular (coexistencia)**
 - backend-lang/migrations/018_human_messages.sql — `sender_type='human'`, columna `messages.sent_via` ('hilo' | 'business_app') e índice por `provider_message_id`. **Pendiente de aplicar.**
 - backend-lang/src/services/chat_service.py (nuevo) — envío de una respuesta escrita por una persona; rechaza con 409 fuera de la ventana de 24 h de WhatsApp o con el número desconectado.

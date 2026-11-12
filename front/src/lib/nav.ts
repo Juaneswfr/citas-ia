@@ -19,6 +19,13 @@ export function canManageFinance(role: string | null | undefined): boolean {
   return !!role && FINANCE_ROLES.includes(role);
 }
 
+const TEAM_ROLES = [...FINANCE_ROLES, 'staff'];
+
+/** true si el rol puede cancelar citas: cualquier miembro del equipo (espejo de require_workspace_access("staff")). */
+export function canCancelAppointments(role: string | null | undefined): boolean {
+  return !!role && TEAM_ROLES.includes(role);
+}
+
 /** true si el usuario administra toda la plataforma (espejo de require_role("super_admin")). */
 export function isPlatformAdmin(role: string | null | undefined): boolean {
   return role === 'super_admin';

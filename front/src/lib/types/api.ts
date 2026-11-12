@@ -109,6 +109,13 @@ export interface AppointmentOut {
   updated_at: string;
 }
 
+/** Respuesta de POST .../appointments/{id}/cancel: la cita y si el cliente quedó avisado por WhatsApp. */
+export interface AppointmentCancelOut extends AppointmentOut {
+  customer_notified: boolean;
+  /** Por qué no se pudo avisar al cliente; null si se avisó. */
+  notify_detail: string | null;
+}
+
 export interface AppointmentUpdate {
   start_at?: string;
   status?: AppointmentStatus;

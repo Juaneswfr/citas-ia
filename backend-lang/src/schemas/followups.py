@@ -4,7 +4,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-FollowupKind = Literal["reminder", "post_visit", "payment_due", "reactivation"]
+FollowupKind = Literal["reminder", "post_visit", "payment_due", "reactivation", "cancellation"]
 TemplateStatus = Literal["not_created", "pending", "approved", "rejected", "disabled", "error"]
 
 

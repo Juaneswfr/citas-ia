@@ -8,7 +8,7 @@ import { Button } from '@/components/hilo/primitives';
 import {
   useFollowupSettings, useFollowupTemplateAction, useFollowupTemplates, useUpdateFollowupSettings,
 } from '@/hooks/use-followups';
-import type { FollowupKind, FollowupSettings, FollowupTemplateOut, TemplateStatus } from '@/lib/types/followups';
+import type { FollowupSettings, FollowupTemplateOut, ScheduledFollowupKind, TemplateStatus } from '@/lib/types/followups';
 import styles from './Followups.module.css';
 
 type EnabledKey = 'reminder_enabled' | 'post_visit_enabled' | 'payment_due_enabled' | 'reactivation_enabled';
@@ -25,7 +25,7 @@ interface KindConfig {
   max: number;
 }
 
-const KINDS: Record<FollowupKind, KindConfig> = {
+const KINDS: Record<ScheduledFollowupKind, KindConfig> = {
   reminder: {
     title: 'Recordatorio de cita', description: 'Avisa al cliente antes de su cita, con botones para confirmar o cancelar.',
     enabledKey: 'reminder_enabled', timingKey: 'reminder_hours_before', timingLabel: 'Enviar', unit: 'horas antes', min: 1, max: 72,
@@ -43,7 +43,7 @@ const KINDS: Record<FollowupKind, KindConfig> = {
     enabledKey: 'reactivation_enabled', timingKey: 'reactivation_days', timingLabel: 'Enviar a los', unit: 'días sin venir', min: 14, max: 365,
   },
 };
-const ORDER: FollowupKind[] = ['reminder', 'post_visit', 'payment_due', 'reactivation'];
+const ORDER: ScheduledFollowupKind[] = ['reminder', 'post_visit', 'payment_due', 'reactivation'];
 
 const STATUS: Record<TemplateStatus, { label: string; modifier: string }> = {
   not_created: { label: 'Sin activar', modifier: 'idle' },
@@ -67,6 +67,7 @@ function TemplateBody({ body }: { body: string }) {
 }
 
 interface FollowupCardProps {
+  config: KindConfig;
   template: FollowupTemplateOut;
   settings: FollowupSettings;
   /** Sin número de WhatsApp conectado no se puede configurar nada. */
@@ -74,8 +75,7 @@ interface FollowupCardProps {
   onChange: (patch: Partial<FollowupSettings>) => void;
 }
 
-function FollowupCard({ template, settings, disabled, onChange }: FollowupCardProps) {
-  const config = KINDS[template.kind];
+function FollowupCard({ config, template, settings, disabled, onChange }: FollowupCardProps) {
   const enabled = settings[config.enabledKey];
   const status = STATUS[template.status];
 
@@ -109,6 +109,35 @@ function FollowupCard({ template, settings, disabled, onChange }: FollowupCardPr
                  onChange={(e) => onChange({ [config.timingKey]: Number(e.target.value) })} />
           <span>{config.unit}</span>
         </label>
+        <span className={`${styles.status} ${styles[`status--${status.modifier}`]}`} title={template.detail ?? undefined}>
+          {status.label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Aviso de cita cancelada: sale al cancelar desde la agenda, así que no tiene interruptor ni tiempo. */
+function CancellationCard({ template }: { template: FollowupTemplateOut }) {
+  const status = STATUS[template.status];
+  return (
+    <div className={styles.followup}>
+      <div className={styles.followup__head}>
+        <div>
+          <div className={styles.followup__title}>Cita cancelada</div>
+          <div className={styles.followup__description}>
+            Avisa al cliente cuando el negocio cancela su cita desde la agenda. Se envía en el momento.
+          </div>
+        </div>
+      </div>
+      <TemplateBody body={template.body} />
+      {template.buttons.length > 0 && (
+        <div className={styles.followup__buttons}>
+          {template.buttons.map((label) => <span key={label} className={styles.followup__button}>{label}</span>)}
+        </div>
+      )}
+      <div className={styles.followup__foot}>
+        <span>Siempre activo</span>
         <span className={`${styles.status} ${styles[`status--${status.modifier}`]}`} title={template.detail ?? undefined}>
           {status.label}
         </span>
@@ -154,6 +183,7 @@ export function FollowupsSection() {
 
   const { templates, connected, can_activate: canActivate, reason } = templatesQuery.data;
   const byKind = new Map(templates.map((t) => [t.kind, t]));
+  const cancellation = byKind.get('cancellation');
   const missing = templates.some((t) => t.status === 'not_created' || t.status === 'error');
   const waiting = templates.some((t) => t.status === 'pending');
   const busy = activate.isPending || sync.isPending;
@@ -211,8 +241,11 @@ export function FollowupsSection() {
       <div className={styles.followups__list}>
         {ORDER.map((kind) => {
           const template = byKind.get(kind);
-          return template ? <FollowupCard key={kind} template={template} settings={draft} disabled={!connected} onChange={handleChange} /> : null;
+          return template
+            ? <FollowupCard key={kind} config={KINDS[kind]} template={template} settings={draft} disabled={!connected} onChange={handleChange} />
+            : null;
         })}
+        {cancellation && <CancellationCard template={cancellation} />}
       </div>
 
       <div className={styles.followups__save}>

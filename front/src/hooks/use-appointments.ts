@@ -4,12 +4,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, parseISO, getHours, getMinutes, differenceInMinutes } from 'date-fns';
 import { useAuth } from '@/lib/auth-context';
-import { listAppointments, updateAppointment, createAppointment } from '@/lib/api/appointments';
+import { listAppointments, updateAppointment, createAppointment, cancelAppointment } from '@/lib/api/appointments';
 import { listCustomers } from '@/lib/api/conversations';
 import { listServices } from '@/lib/api/services';
 import { toHiloAppointment } from '@/lib/api/adapters';
 import type { HiloAppointment } from '@/lib/hilo-data';
-import type { AppointmentCreate, AppointmentOut, AppointmentStatus, AppointmentUpdate, ServiceOut, CustomerOut } from '@/lib/types/api';
+import type {
+  AppointmentCancelOut, AppointmentCreate, AppointmentOut, AppointmentStatus, AppointmentUpdate, ServiceOut, CustomerOut,
+} from '@/lib/types/api';
 
 const STALE = 60 * 1000; // 1 min
 
@@ -135,7 +137,32 @@ export function useCreateAppointment() {
   });
 }
 
-/** React Query mutation — actualizar o cancelar una cita */
+/** React Query mutation — cancelar una cita desde el panel; el backend avisa al cliente por WhatsApp */
+export function useCancelAppointment(appointmentId: string) {
+  const { workspaceId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<AppointmentCancelOut, Error, { reason?: string } | void>({
+    mutationFn: (variables) => {
+      if (!workspaceId) throw new Error('No workspace');
+      return cancelAppointment(workspaceId, appointmentId, variables?.reason);
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['appointments', workspaceId] });
+      qc.invalidateQueries({ queryKey: ['appointments-week', workspaceId] });
+      qc.invalidateQueries({ queryKey: ['appointment', workspaceId, appointmentId] });
+      if (result.customer_notified) {
+        toast.success('Cita cancelada. Se avisó al cliente por WhatsApp.');
+      } else {
+        toast.warning(`Cita cancelada. ${result.notify_detail ?? 'No se pudo avisar al cliente: escríbele o llámalo.'}`);
+      }
+    },
+    onError: (error) => {
+      toast.error((error as { detail?: string }).detail ?? error.message ?? 'Error al cancelar la cita');
+    },
+  });
+}
+
+/** React Query mutation — actualizar una cita (solo dueño o administrador) */
 export function useUpdateAppointment(appointmentId: string) {
   const { workspaceId } = useAuth();
   const qc = useQueryClient();
