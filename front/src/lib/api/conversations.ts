@@ -69,3 +69,15 @@ export async function listMessages(
     `/workspaces/${workspaceId}/conversations/${conversationId}/messages`,
   );
 }
+
+/** POST /workspaces/{workspaceId}/conversations/{conversationId}/messages — responde al cliente (409 si la ventana de 24 h está cerrada) */
+export async function sendMessage(
+  workspaceId: string,
+  conversationId: string,
+  text: string,
+): Promise<MessageOut> {
+  return apiFetch<MessageOut>(
+    `/workspaces/${workspaceId}/conversations/${conversationId}/messages`,
+    { method: 'POST', body: JSON.stringify({ text }) },
+  );
+}

@@ -42,6 +42,8 @@ class ConversationOut(BaseModel):
     needs_review: bool
     created_at: datetime
     updated_at: datetime
+    # Último mensaje del cliente por el número actual: la ventana de 24 h de WhatsApp corre desde aquí.
+    last_inbound_at: Optional[datetime] = None
 
 
 class MessageOut(BaseModel):
@@ -51,7 +53,7 @@ class MessageOut(BaseModel):
     channel_id: str
     customer_id: Optional[str]
     direction: str  # inbound | outbound
-    sender_type: str  # customer | agent | system
+    sender_type: str  # customer | agent | system | human (una persona del negocio)
     message_type: str
     content: Optional[str]
     media_url: Optional[str]
@@ -60,3 +62,9 @@ class MessageOut(BaseModel):
     sent_at: Optional[datetime]
     received_at: Optional[datetime]
     created_at: datetime
+    # Solo en mensajes de una persona: 'hilo' (chat de Hilo) | 'business_app' (app de WhatsApp Business)
+    sent_via: Optional[str] = None
+
+
+class MessageSend(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4096, description="Texto a enviar al cliente")

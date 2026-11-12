@@ -187,7 +187,7 @@ uv run python migrate.py           # aplica pendientes
 uv run python migrate.py --status  # ver estado
 ```
 
-Migración más reciente: `017_payment_receipts.sql`. **Todas (001–017) están aplicadas en la BD** (016 y 017 el 2026-11-11). El backend que las usa aún no está desplegado.
+Migración más reciente: `018_human_messages.sql`. **001–017 están aplicadas en la BD** (016 y 017 el 2026-11-11); **018 está pendiente** y el chat de Hilo la necesita.
 
 Ojo con el runner (`core/migrations.py`): parte el archivo por `;` + salto de línea y envía cada trozo a la BD. Un comentario suelto al final del archivo llega como consulta vacía y lo hace fallar; los comentarios van antes de una sentencia.
 
@@ -195,6 +195,7 @@ Qué agregan las últimas:
 - `015_payment_attachments.sql` — comprobantes adjuntos a movimientos (`movement_attachments`, se consulta al listar ventas y movimientos).
 - `016_followups.sql` — seguimiento por WhatsApp (`followup_settings`, `followup_templates`, `followup_sends`, `customers.marketing_opt_out`, `appointments.confirmed_by_customer_at`). Sin ella el worker de seguimientos falla en cada pasada.
 - `017_payment_receipts.sql` — comprobantes recibidos por WhatsApp (`payment_receipts`).
+- `018_human_messages.sql` — mensajes de una persona del negocio (`messages.sender_type='human'`, `messages.sent_via`). Sin ella falla responder desde Hilo y guardar lo enviado desde el celular.
 
 ---
 
@@ -228,6 +229,16 @@ Cuatro seguimientos automáticos: recordatorio de cita, post-visita, cobro pendi
 - Número sandbox y canales que no son Kapso: no admiten plantillas; el seguimiento sale como texto libre (solo llega dentro de la ventana de 24 h).
 - Botones: «Confirmar» marca `appointments.confirmed_by_customer_at`; «Cancelar» y «Agendar» pasan al agente como texto; «No más mensajes» activa `customers.marketing_opt_out`.
 - Rutas `/workspaces/{id}/followups/*`: solo `manager` o superior.
+
+## Chat de Mensajes (responder desde Hilo y coexistencia)
+
+- Una conversación por cliente; sigue al número por el que llegó el último mensaje (`ConversationService.find_or_create` actualiza `channel_id`). Se responde siempre desde ese número.
+- Responder desde Hilo: `POST /workspaces/{id}/conversations/{cid}/messages` (`services/chat_service.py`, rol `staff` o superior). Se guarda con `sender_type='human'`, `sent_via='hilo'`.
+- Ventana de 24 h de WhatsApp: solo se puede enviar texto libre hasta 24 h después del último mensaje del cliente (`last_inbound_at` en `ConversationOut`). Fuera de la ventana el backend responde 409 y el front deshabilita la caja. No hay envío de plantillas desde el chat.
+- Coexistencia: lo que el negocio escribe desde la app de WhatsApp Business llega por el evento `whatsapp.message.sent` con `message.kapso.origin = "business_app"` y se guarda con `sent_via='business_app'`. Nunca pasa por el agente. Lo enviado por la API (`origin` distinto) se ignora porque ya está guardado.
+- Eventos del webhook por número: `NUMBER_WEBHOOK_EVENTS` en `kapso_onboarding.py`. Al agregar uno, correr `uv run python sync_kapso_webhooks.py` para los números ya conectados.
+- El chat se actualiza por sondeo (5 s los mensajes, 15 s la lista); no hay websockets.
+- El agente **no** se pausa solo cuando una persona responde: se apaga por cliente (`customers.agent_enabled`) o global.
 
 ## Mensajes entrantes y comprobantes de pago
 

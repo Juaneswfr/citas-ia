@@ -59,7 +59,18 @@ class ConversationService:
                 {"workspace_id": workspace_id, "customer_id": customer["id"]},
             )).mappings().fetchone()
             if conv:
-                return dict(conv)
+                conv = dict(conv)
+                # El cliente pudo haber escrito antes por otro número (p. ej. el sandbox). La
+                # conversación sigue al número por el que llega ahora: se responde desde ahí,
+                # que es donde está abierta la ventana de 24 h.
+                if conv["channel_id"] != channel_id:
+                    await session.execute(
+                        text("UPDATE conversations SET channel_id = :channel_id WHERE id = :id"),
+                        {"channel_id": channel_id, "id": conv["id"]},
+                    )
+                    await session.commit()
+                    conv["channel_id"] = channel_id
+                return conv
 
             # Crear nueva conversación
             new_conv = (await session.execute(
@@ -105,6 +116,15 @@ class ConversationService:
             return dict(new_row)
 
     @staticmethod
+    async def message_exists(workspace_id: str, provider_message_id: str) -> bool:
+        """True si ya se guardó un mensaje con ese id de WhatsApp (evita duplicar avisos de envío)."""
+        async with AsyncSessionLocal() as session:
+            return (await session.execute(
+                text("SELECT 1 FROM messages WHERE workspace_id = :w AND provider_message_id = :p LIMIT 1"),
+                {"w": workspace_id, "p": provider_message_id},
+            )).scalar_one_or_none() is not None
+
+    @staticmethod
     async def save_message(
         conversation_id: str,
         workspace_id: str,
@@ -115,13 +135,15 @@ class ConversationService:
         content: str,
         message_type: str = "text",
         provider_message_id: Optional[str] = None,
+        sent_via: Optional[str] = None,
     ) -> dict:
         """
         Persiste un mensaje (inbound o outbound).
 
         Args:
             direction: 'inbound' | 'outbound'
-            sender_type: 'customer' | 'agent' | 'system'
+            sender_type: 'customer' | 'agent' | 'system' | 'human' (una persona del negocio)
+            sent_via: solo para 'human': 'hilo' (chat de Hilo) | 'business_app' (app de WhatsApp Business)
         """
         async with AsyncSessionLocal() as session:
             now = datetime.now(timezone.utc)
@@ -130,10 +152,10 @@ class ConversationService:
                 INSERT INTO messages
                     (conversation_id, workspace_id, channel_id, customer_id,
                      direction, sender_type, message_type, content,
-                     provider_message_id, status, sent_at, received_at)
+                     provider_message_id, status, sent_at, received_at, sent_via)
                 VALUES (:conversation_id,:workspace_id,:channel_id,:customer_id,
                         :direction,:sender_type,:message_type,:content,
-                        :provider_message_id,:status,:sent_at,:received_at)
+                        :provider_message_id,:status,:sent_at,:received_at,:sent_via)
                 RETURNING *
                 """),
                 {
@@ -149,6 +171,7 @@ class ConversationService:
                     "status": "sent" if direction == "outbound" else "received",
                     "sent_at": now if direction == "outbound" else None,
                     "received_at": now if direction == "inbound" else None,
+                    "sent_via": sent_via,
                 },
             )).mappings().fetchone()
 

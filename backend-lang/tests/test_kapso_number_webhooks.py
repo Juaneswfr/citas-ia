@@ -77,7 +77,7 @@ async def test_creates_webhook_with_token_url_and_encrypted_secret():
     assert (method, path) == ("POST", f"/platform/v1/whatsapp/phone_numbers/{PID}/webhooks")
     assert wh["url"] == f"{BASE}/webhooks/kapso/n/{db.ch['webhook_token']}"
     assert wh["payload_version"] == "v2" and wh["kind"] == "kapso" and wh["active"] is True
-    assert wh["events"] == ["whatsapp.message.received"] and wh["secret_key"]
+    assert wh["events"] == ["whatsapp.message.received", "whatsapp.message.sent"] and wh["secret_key"]
     assert db.ch["kapso_webhook_id"] == "wh-1"
     assert wh["secret_key"] not in db.ch["webhook_secret_encrypted"]
     assert decrypt_secret(KEY, db.ch["webhook_secret_encrypted"]) == wh["secret_key"]

@@ -12,10 +12,10 @@ from sqlalchemy import text
 from core.database import get_db
 from core.security import ROLE_HIERARCHY, require_workspace_access
 from schemas.conversation import (
-    ConversationOut, CustomerCreate, CustomerOut, CustomerUpdate, MessageOut
+    ConversationOut, CustomerCreate, CustomerOut, CustomerUpdate, MessageOut, MessageSend
 )
 from schemas.customer_summary import CustomerSummaryOut
-from services import customer_summary_service
+from services import chat_service, customer_summary_service
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["conversations", "customers"])
@@ -156,16 +156,16 @@ async def list_conversations(
     status: str = None,
     db: AsyncSession = Depends(get_db),
 ):
-    if status:
-        rows = (await db.execute(
-            text("SELECT * FROM conversations WHERE workspace_id = :workspace_id AND status = :status ORDER BY last_message_at DESC"),
-            {"workspace_id": workspace_id, "status": status},
-        )).mappings().fetchall()
-    else:
-        rows = (await db.execute(
-            text("SELECT * FROM conversations WHERE workspace_id = :workspace_id ORDER BY last_message_at DESC"),
-            {"workspace_id": workspace_id},
-        )).mappings().fetchall()
+    rows = (await db.execute(
+        text(f"""
+            SELECT c.*, {chat_service.LAST_INBOUND_SQL} AS last_inbound_at
+            FROM conversations c
+            WHERE c.workspace_id = :workspace_id
+              AND (CAST(:status AS text) IS NULL OR c.status = :status)
+            ORDER BY c.last_message_at DESC
+        """),
+        {"workspace_id": workspace_id, "status": status},
+    )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -181,7 +181,11 @@ async def get_conversation(
     db: AsyncSession = Depends(get_db),
 ):
     row = (await db.execute(
-        text("SELECT * FROM conversations WHERE id = :conversation_id AND workspace_id = :workspace_id"),
+        text(f"""
+            SELECT c.*, {chat_service.LAST_INBOUND_SQL} AS last_inbound_at
+            FROM conversations c
+            WHERE c.id = :conversation_id AND c.workspace_id = :workspace_id
+        """),
         {"conversation_id": conversation_id, "workspace_id": workspace_id},
     )).mappings().fetchone()
     if not row:
@@ -201,7 +205,29 @@ async def list_messages(
     db: AsyncSession = Depends(get_db),
 ):
     rows = (await db.execute(
-        text("SELECT * FROM messages WHERE conversation_id = :conversation_id AND workspace_id = :workspace_id ORDER BY sent_at"),
+        text("SELECT * FROM messages WHERE conversation_id = :conversation_id AND workspace_id = :workspace_id ORDER BY COALESCE(sent_at, received_at, created_at)"),
         {"conversation_id": conversation_id, "workspace_id": workspace_id},
     )).mappings().fetchall()
     return [dict(r) for r in rows]
+
+
+@router.post(
+    "/workspaces/{workspace_id}/conversations/{conversation_id}/messages",
+    response_model=MessageOut,
+    status_code=201,
+    summary="Responder al cliente desde Hilo (solo dentro de la ventana de 24 h de WhatsApp)",
+    dependencies=[Depends(require_workspace_access("staff"))],
+)
+async def send_message(
+    workspace_id: str,
+    conversation_id: str,
+    body: MessageSend,
+    db: AsyncSession = Depends(get_db),
+):
+    content = body.text.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="El mensaje está vacío.")
+    try:
+        return await chat_service.send_reply(db, workspace_id, conversation_id, content)
+    except chat_service.ChatError as e:
+        raise HTTPException(status_code=e.status, detail=e.detail)

@@ -8,6 +8,7 @@ import { Avatar, Dot, Tag } from "@/components/hilo/primitives";
 import { fmtCOP } from "@/lib/hilo-data";
 import { useConversations, useMessages } from "@/hooks/use-conversations";
 import { useCustomers } from "@/hooks/use-customers";
+import { MessageComposer } from "@/components/mensajes/MessageComposer";
 import type { ConversationOut, MessageOut } from "@/lib/types/api";
 import type { HiloClient } from "@/lib/hilo-data";
 
@@ -111,9 +112,20 @@ function ConversationItem({ row, active, onClick }: { row: ConvRow; active: bool
 
 // ── Burbuja de mensaje ─────────────────────────────────────────────────────
 
+// Quién envió cada mensaje saliente y por dónde: icono + etiqueta al pie de la burbuja.
+function messageOrigin(msg: MessageOut): { icon: string; label: string } | null {
+  if (msg.direction !== 'outbound') return null;
+  if (msg.sender_type === 'agent') return { icon: 'sparkle', label: 'Agente' };
+  if (msg.sender_type === 'system') return { icon: 'bolt', label: 'Automático' };
+  if (msg.sent_via === 'business_app') return { icon: 'phone', label: 'Desde el celular' };
+  if (msg.sent_via === 'hilo') return { icon: 'thread', label: 'Desde Hilo' };
+  return null;
+}
+
 function MessageBubble({ msg }: { msg: MessageOut }) {
   const isAgent = msg.direction === 'outbound';
   const time = msg.sent_at ?? msg.received_at ?? msg.created_at;
+  const origin = messageOrigin(msg);
   return (
     <div style={{ alignSelf: isAgent ? 'flex-end' : 'flex-start', maxWidth: '85%',
       padding: '8px 12px',
@@ -128,7 +140,12 @@ function MessageBubble({ msg }: { msg: MessageOut }) {
         <div style={{ font: '400 10px/1 var(--font-mono)', marginTop: 4,
           color: isAgent ? 'rgba(255,255,255,0.55)' : 'var(--ink-4)',
           textAlign: 'right' }}>
-          {relativeTime(time)}{isAgent ? ' · agente' : ''}
+          {relativeTime(time)}
+          {origin && (
+            <span className="chat-origin" title={origin.label}>
+              <Icon name={origin.icon} size={11} />{origin.label}
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -215,6 +232,8 @@ function ConversationDetail({ conv, client }: { conv: ConversationOut; client: H
         )}
         <div ref={bottomRef} />
       </div>
+
+      <MessageComposer conv={conv} />
     </div>
   );
 }

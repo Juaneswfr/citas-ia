@@ -270,6 +270,7 @@ class Message(Base):
     status = Column(Text, nullable=False, server_default="received")
     sent_at = Column(DateTime(timezone=True))
     received_at = Column(DateTime(timezone=True))
+    sent_via = Column(Text)  # 'hilo' | 'business_app' (solo mensajes de una persona)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=NOW)
 
 

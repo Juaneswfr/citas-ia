@@ -1,5 +1,21 @@
 # Cambios por agente
 
+### [AGENTE: claude] [FECHA: 2026-11-12]
+**Agregado — responder desde el chat de Hilo y ver lo enviado desde el celular (coexistencia)**
+- backend-lang/migrations/018_human_messages.sql — `sender_type='human'`, columna `messages.sent_via` ('hilo' | 'business_app') e índice por `provider_message_id`. **Pendiente de aplicar.**
+- backend-lang/src/services/chat_service.py (nuevo) — envío de una respuesta escrita por una persona; rechaza con 409 fuera de la ventana de 24 h de WhatsApp o con el número desconectado.
+- backend-lang/src/api/routes/conversations.py — `POST .../conversations/{id}/messages`; las conversaciones devuelven `last_inbound_at`; los mensajes se ordenan por la fecha que tengan (antes solo `sent_at`, nula en los entrantes).
+- backend-lang/src/services/inbound_message_service.py — `handle_kapso_sent`: guarda los mensajes con `origin = business_app` (escritos desde la app de WhatsApp Business) sin pasarlos al agente.
+- backend-lang/src/api/routes/webhooks.py, services/kapso_onboarding.py — el webhook por número también pide y procesa `whatsapp.message.sent`.
+- backend-lang/sync_kapso_webhooks.py (nuevo) — pone al día los eventos del webhook de los números ya conectados.
+- backend-lang/tests/test_chat.py (nuevo) — ventana de 24 h, envío desde Hilo y eco de la app.
+- front/src/components/mensajes/MessageComposer.tsx (nuevo), styles.css — caja de respuesta con aviso de hasta cuándo se puede responder; deshabilitada fuera de la ventana.
+- front/src/routes/_authenticated/messages.tsx — icono y etiqueta de origen en cada mensaje saliente (Agente, Automático, Desde Hilo, Desde el celular).
+- front/src/hooks/use-conversations.ts, lib/api/conversations.ts, lib/types/api.ts — `useSendMessage`, sondeo del chat, tipos.
+
+**Corregido — el agente respondía desde el número sandbox tras conectar un número real**
+- backend-lang/src/services/conversation_service.py — `find_or_create` reutilizaba la conversación abierta del cliente con el canal con el que se creó (el sandbox). El agente respondía desde ese número y Kapso lo rechazaba con 422 «outside the 24-hour window». Ahora la conversación pasa al canal por el que llega el mensaje.
+
 ### [AGENTE: claude] [FECHA: 2026-11-11]
 **Agregado — tipos de negocio (la app deja de ser solo para barberías)**
 - backend-lang/src/core/business_types.py — catálogo de 13 industrias: etiqueta, cómo se llama quien atiende y nota del agente para salud/veterinaria (no dar diagnósticos).

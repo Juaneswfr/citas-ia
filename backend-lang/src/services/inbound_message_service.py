@@ -4,6 +4,8 @@
 - Botón de una plantilla (Confirmar / Cancelar / Agendar / No más mensajes) → acción directa o agente.
 - Imagen o documento → posible comprobante de pago (receipt_service).
 - Audio, video, sticker, ubicación... → se avisa que solo se lee texto.
+- Mensaje que el negocio envió desde la app de WhatsApp Business (coexistencia) → se guarda en la
+  conversación como respuesta de una persona; no pasa por el agente.
 
 Las respuestas automáticas respetan los interruptores del agente (global y por cliente): si el
 negocio lo pausó, el mensaje se guarda pero no se responde.
@@ -168,9 +170,48 @@ async def _handle_media(conversation: dict, parsed: dict, phone_number_id: str) 
         await _reply(conversation, ONLY_TEXT_OR_RECEIPT)
 
 
+def _is_business_echo(msg: dict) -> bool:
+    """El negocio escribió desde la app de WhatsApp Business (número en coexistencia)."""
+    return (msg.get("kapso") or {}).get("origin") == "business_app"
+
+
+async def handle_kapso_sent(item: dict) -> None:
+    """Procesa un evento whatsapp.message.sent: guarda lo que el negocio respondió desde su celular.
+
+    Solo interesan los mensajes con origin 'business_app'. Lo que sale por la API (agente, chat de
+    Hilo, seguimientos) ya lo guardó quien lo envió.
+    """
+    msg = item.get("message") or {}
+    if not _is_business_echo(msg):
+        return
+    customer_phone = msg.get("to") or (item.get("conversation") or {}).get("phone_number")
+    phone_number_id = item.get("phone_number_id")
+    parsed = parse_message(msg)
+    if not customer_phone or not phone_number_id or parsed["kind"] == "ignore":
+        return
+    content = parsed.get("text") or _LABELS.get(parsed.get("type", ""), "[archivo]")
+    message_type = parsed.get("type") or "text"
+
+    conversation = await ConversationService.find_or_create(
+        customer_phone=str(customer_phone).lstrip("+"), phone_number_id=phone_number_id)
+    wamid = str(msg.get("id") or "")
+    if wamid and await ConversationService.message_exists(conversation["workspace_id"], wamid):
+        return
+    await ConversationService.save_message(
+        conversation_id=conversation["id"], workspace_id=conversation["workspace_id"],
+        channel_id=conversation["channel_id"], customer_id=conversation.get("customer_id"),
+        direction="outbound", sender_type="human", content=content, message_type=message_type,
+        provider_message_id=wamid or None, sent_via="business_app",
+    )
+
+
 async def handle_kapso_message(item: dict) -> None:
     """Procesa un evento whatsapp.message.received. Lanza si algo falla (el webhook libera la clave)."""
     msg = item.get("message") or {}
+    if _is_business_echo(msg) or (msg.get("kapso") or {}).get("direction") == "outbound":
+        # No es un mensaje del cliente: nunca debe llegar al agente.
+        await handle_kapso_sent(item)
+        return
     customer_phone = msg.get("from")
     phone_number_id = item.get("phone_number_id")
     parsed = parse_message(msg)

@@ -176,6 +176,8 @@ export interface ConversationOut {
   needs_review: boolean;
   created_at: string;
   updated_at: string;
+  /** Último mensaje del cliente: WhatsApp deja responder con texto libre hasta 24 h después. */
+  last_inbound_at: string | null;
 }
 
 export interface MessageOut {
@@ -185,7 +187,8 @@ export interface MessageOut {
   channel_id: string;
   customer_id: string | null;
   direction: 'inbound' | 'outbound';
-  sender_type: 'customer' | 'agent' | 'system';
+  /** 'human' = una persona del negocio (desde Hilo o desde la app de WhatsApp Business). */
+  sender_type: 'customer' | 'agent' | 'system' | 'human';
   message_type: string;
   content: string | null;
   media_url: string | null;
@@ -194,6 +197,8 @@ export interface MessageOut {
   sent_at: string | null;
   received_at: string | null;
   created_at: string;
+  /** Solo en mensajes de una persona: por dónde se envió. */
+  sent_via: 'hilo' | 'business_app' | null;
 }
 
 // ── Channels & Calendars ──────────────────────────────────────────────────────

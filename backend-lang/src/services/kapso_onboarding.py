@@ -18,6 +18,12 @@ from sqlalchemy import text
 log = logging.getLogger(__name__)
 
 
+# Eventos del webhook de cada número. "sent" trae lo que el negocio responde desde la app de
+# WhatsApp Business (coexistencia). Los números conectados antes de agregar un evento se ponen al
+# día con sync_kapso_webhooks.py.
+NUMBER_WEBHOOK_EVENTS = ["whatsapp.message.received", "whatsapp.message.sent"]
+
+
 class KapsoError(Exception):
     """Error de la Platform API; el mensaje solo lleva el código HTTP, nunca cuerpos ni claves."""
 
@@ -59,6 +65,15 @@ class KapsoPlatformClient:
                 "url": url, "secret_key": secret_key, "events": events,
                 "kind": "kapso", "payload_version": "v2", "active": True,
             }},
+        )
+
+    async def update_phone_number_webhook(
+        self, phone_number_id: str, webhook_id: str, *, events: list[str]
+    ) -> None:
+        """Cambia los eventos de un webhook ya creado (PATCH .../webhooks/{id}, docs.kapso.ai)."""
+        await self._request(
+            "PATCH", f"/whatsapp/phone_numbers/{phone_number_id}/webhooks/{webhook_id}",
+            {"whatsapp_webhook": {"events": events}},
         )
 
     async def delete_phone_number_webhook(self, phone_number_id: str, webhook_id: str) -> None:
@@ -276,7 +291,7 @@ async def provision_number_webhook(
     try:
         wh = await client.create_phone_number_webhook(
             pid, url=f"{base_url.rstrip('/')}/webhooks/kapso/n/{token}", secret_key=secret,
-            events=["whatsapp.message.received"],
+            events=NUMBER_WEBHOOK_EVENTS,
         )
         await db.execute(
             text("UPDATE channels SET kapso_webhook_id=:webhook_id WHERE id=:claimed"),

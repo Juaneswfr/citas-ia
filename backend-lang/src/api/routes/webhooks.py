@@ -228,6 +228,10 @@ async def _run_kapso_task(key: str, event: str, items: list) -> None:
             log.error("[webhooks/kapso] no se pudo liberar la clave | err=%s", type(e2).__name__)
 
 
+# Eventos de mensajes que se procesan (los mismos que se piden al crear el webhook del número).
+_MESSAGE_EVENTS = ("whatsapp.message.received", "whatsapp.message.sent")
+
+
 async def _get_channel_by_webhook_token(token: str):
     from core.database import AsyncSessionLocal
     from sqlalchemy import text as _text
@@ -283,7 +287,7 @@ async def kapso_number_inbound(token: str, request: Request):
     # El número lo fija el canal del token, no el cuerpo: un secreto no sirve para otro número.
     items = [{**i, "phone_number_id": channel["phone_number_id"]} for i in items if isinstance(i, dict)]
 
-    if event == "whatsapp.message.received":
+    if event in _MESSAGE_EVENTS:
         _spawn(_run_kapso_task(key, event, items))
     return {"status": "ok"}
 
@@ -337,7 +341,7 @@ async def kapso_sandbox_inbound(request: Request):
     batch = request.headers.get("X-Webhook-Batch", "").lower() == "true"
     items = payload.get("data") if batch and isinstance(payload.get("data"), list) else [payload]
 
-    if event == "whatsapp.message.received":
+    if event in _MESSAGE_EVENTS:
         _spawn(_run_kapso_task(key, event, items))
     return {"status": "ok"}
 
@@ -408,15 +412,17 @@ async def _process_kapso_events(event: str, items: list):
         if failed:
             raise RuntimeError("kapso_item_failed")  # _run_kapso_task libera la clave
         return
-    if event != "whatsapp.message.received":
+    if event not in _MESSAGE_EVENTS:
         return
     # Texto, botones de plantilla, comprobantes (imagen/documento) y demás tipos: ver inbound_message_service.
-    from services.inbound_message_service import handle_kapso_message
+    # "sent" solo sirve para guardar lo que el negocio respondió desde la app de WhatsApp Business.
+    from services.inbound_message_service import handle_kapso_message, handle_kapso_sent
 
+    handler = handle_kapso_message if event == "whatsapp.message.received" else handle_kapso_sent
     failed = False
     for item in items:
         try:
-            await handle_kapso_message(item)
+            await handler(item)
         except Exception as e:
             failed = True
             log.error("[webhooks/kapso] error procesando evento | err=%s", type(e).__name__, exc_info=False)
