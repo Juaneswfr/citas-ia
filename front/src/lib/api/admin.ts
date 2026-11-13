@@ -2,7 +2,7 @@
 
 import { apiFetch } from './client';
 import type {
-  AdminOverview, AdminUserList, AdminWorkspaceDetail, AdminWorkspaceFilters,
+  AdminHealth, AdminOverview, AdminUserList, AdminWorkspaceDetail, AdminWorkspaceFilters,
   AdminWorkspaceList, AdminWorkspaceUpdate,
 } from '../types/admin';
 
@@ -14,6 +14,11 @@ export const adminService = {
   /** GET /admin/overview — totales y repartos de la plataforma */
   getOverview(): Promise<AdminOverview> {
     return apiFetch<AdminOverview>(`${BASE_URL}/overview`);
+  },
+
+  /** GET /admin/health — prueba las claves de Anthropic y Kapso y resume los envíos de 24 h */
+  getHealth(): Promise<AdminHealth> {
+    return apiFetch<AdminHealth>(`${BASE_URL}/health`);
   },
 
   /** GET /admin/workspaces — negocios, con búsqueda y filtros */

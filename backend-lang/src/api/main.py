@@ -31,6 +31,11 @@ from api.routes.receipts import router as receipts_router
 from api.routes.followups import router as followups_router
 from api.routes.admin import router as admin_router
 
+# Sin esto el logger raíz queda en WARNING y sin formato: los `log.info` del agente, de Kapso y de los
+# webhooks («enviado», «skip: agente pausado»…) nunca llegaban a `docker compose logs`.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)  # registra cada URL que llama; es ruido
+
 log = logging.getLogger(__name__)
 
 # ── Rate Limiter (Principio VII + SC-007) ────────────────────────────────────

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
+import { HealthTab } from "@/components/admin/HealthTab";
 import { OverviewTab } from "@/components/admin/OverviewTab";
 import { UsersTab } from "@/components/admin/UsersTab";
 import { WorkspacesTab } from "@/components/admin/WorkspacesTab";
@@ -12,16 +13,18 @@ export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminPage,
 });
 
-type TabId = "resumen" | "negocios" | "usuarios";
+type TabId = "resumen" | "estado" | "negocios" | "usuarios";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "resumen", label: "Resumen" },
+  { id: "estado", label: "Estado" },
   { id: "negocios", label: "Negocios" },
   { id: "usuarios", label: "Usuarios" },
 ];
 
 const TAB_CONTENT: Record<TabId, () => ReactNode> = {
   resumen: () => <OverviewTab />,
+  estado: () => <HealthTab />,
   negocios: () => <WorkspacesTab />,
   usuarios: () => <UsersTab />,
 };

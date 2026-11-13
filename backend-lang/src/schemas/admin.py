@@ -119,5 +119,49 @@ class AdminUserList(BaseModel):
     total: int
 
 
+class HealthCheckOut(BaseModel):
+    """Resultado de probar un servicio externo. `status`: ok | warn | bad."""
+
+    id: str
+    label: str
+    status: str
+    detail: str
+    latency_ms: Optional[int] = None
+    action_url: Optional[str] = None
+
+
+class HealthNumberOut(BaseModel):
+    channel_id: str
+    workspace_name: str
+    phone_number: str
+    status: str
+    detail: str
+
+
+class HealthErrorOut(BaseModel):
+    id: str
+    severity: str
+    reason: Optional[str] = None
+    created_at: datetime
+    workspace_name: str
+
+
+class HealthActivityOut(BaseModel):
+    inbound_24h: int
+    outbound_24h: int
+    last_inbound_at: Optional[datetime] = None
+    last_outbound_at: Optional[datetime] = None
+    runs_ok_24h: int
+    runs_error_24h: int
+    unanswered_24h: int
+    recent_errors: list[HealthErrorOut]
+
+
+class AdminHealthOut(BaseModel):
+    checks: list[HealthCheckOut]
+    numbers: list[HealthNumberOut]
+    activity: HealthActivityOut
+
+
 class AdminUserUpdate(BaseModel):
     is_active: bool = Field(..., description="false bloquea el inicio de sesión del usuario")

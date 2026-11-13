@@ -138,3 +138,76 @@ async def test_negocio_inexistente_es_404(session, monkeypatch):
     async def empty(statement, params=None): return _Result([])
     monkeypatch.setattr(session, "execute", empty)
     assert (await _call(_app(session), "GET", "/admin/workspaces/nope")).status_code == 404
+
+
+# ── Estado de la plataforma (/admin/health) ──────────────────────────────────
+
+from services import platform_health as ph  # noqa: E402
+
+
+@pytest.mark.parametrize("status_code,error_type,message,expected", [
+    (200, "", "", ph.OK),
+    (400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API.", ph.BAD),
+    (401, "authentication_error", "invalid x-api-key", ph.BAD),
+    (429, "rate_limit_error", "", ph.WARN),
+    (529, "overloaded_error", "", ph.WARN),
+])
+async def test_classify_anthropic(status_code, error_type, message, expected):
+    assert ph.classify_anthropic(status_code, error_type, message)[0] == expected
+
+
+async def test_anthropic_sin_saldo_no_expone_la_clave(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secreta")
+    transport = httpx.MockTransport(lambda request: httpx.Response(400, json={
+        "error": {"type": "invalid_request_error", "message": "Your credit balance is too low"}}))
+    check = await ph.check_anthropic(transport)
+    assert check["status"] == ph.BAD and "saldo" in check["detail"]
+    assert "sk-secreta" not in str(check)
+
+
+async def test_anthropic_sin_clave(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert (await ph.check_anthropic())["status"] == ph.BAD
+
+
+class _KapsoClient:
+    def __init__(self, error=None, status="CONNECTED"):
+        self.error, self.status = error, status
+
+    async def get_phone_number(self, phone_number_id):
+        if self.error:
+            raise ph.KapsoError(self.error)
+        return {"status": self.status}
+
+
+class _ChannelSession:
+    async def execute(self, statement, params=None):
+        return _Result([{"id": "ch-1", "phone_number": "+573001112233", "phone_number_id": "111",
+                         "workspace_name": "Negocio"}])
+
+
+@pytest.fixture
+def kapso_on(monkeypatch):
+    class S:
+        kapso_enabled, kapso_api_key, kapso_base_url = True, "k", "https://api.kapso.ai"
+        kapso_sandbox_phone_number_id = "597907523413541"
+    monkeypatch.setattr(ph, "get_settings", lambda: S())
+
+
+@pytest.mark.parametrize("client,expected_check,expected_number", [
+    (_KapsoClient(), ph.OK, ph.OK),
+    (_KapsoClient(error="http_401"), ph.BAD, ph.BAD),
+    (_KapsoClient(error="http_404"), ph.WARN, ph.BAD),       # la clave sirve; el número ya no existe
+    (_KapsoClient(status="DISCONNECTED"), ph.WARN, ph.BAD),
+    (_KapsoClient(error="network_error:ConnectError"), ph.WARN, ph.BAD),
+])
+async def test_check_kapso(kapso_on, client, expected_check, expected_number):
+    check, numbers = await ph.check_kapso(_ChannelSession(), client)
+    assert check["status"] == expected_check
+    assert numbers[0]["status"] == expected_number and "error" not in numbers[0]
+
+
+async def test_health_solo_super_admin(session):
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=_app(session, role="workspace_owner")),
+                                 base_url="http://t") as client:
+        assert (await client.get("/admin/health")).status_code == 403

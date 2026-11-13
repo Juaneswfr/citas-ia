@@ -87,6 +87,48 @@ export interface AdminWorkspaceFilters {
   status: '' | 'active' | 'suspended';
 }
 
+export type HealthStatus = 'ok' | 'warn' | 'bad';
+
+export interface HealthCheck {
+  id: string;
+  label: string;
+  status: HealthStatus;
+  detail: string;
+  latency_ms: number | null;
+  action_url: string | null;
+}
+
+export interface HealthNumber {
+  channel_id: string;
+  workspace_name: string;
+  phone_number: string;
+  status: HealthStatus;
+  detail: string;
+}
+
+export interface HealthError {
+  id: string;
+  severity: string;
+  reason: string | null;
+  created_at: string;
+  workspace_name: string;
+}
+
+export interface AdminHealth {
+  checks: HealthCheck[];
+  numbers: HealthNumber[];
+  activity: {
+    inbound_24h: number;
+    outbound_24h: number;
+    last_inbound_at: string | null;
+    last_outbound_at: string | null;
+    runs_ok_24h: number;
+    runs_error_24h: number;
+    unanswered_24h: number;
+    recent_errors: HealthError[];
+  };
+}
+
 export interface AdminUserRow {
   id: string;
   email: string;

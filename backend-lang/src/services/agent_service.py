@@ -166,7 +166,7 @@ class AgentService:
                     )
                     if not sent.ok:
                         # va al except: run en error + alerta, sin guardar outbound no entregado
-                        raise RuntimeError(f"envio_whatsapp_fallido: {sent.error}")
+                        raise RuntimeError(f"envio_whatsapp_fallido: {sent.error} {sent.code}".strip())
                     from services.conversation_service import ConversationService
                     await ConversationService.save_message(
                         conversation_id=conversation["id"],

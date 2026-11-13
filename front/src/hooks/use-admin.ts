@@ -13,6 +13,17 @@ export function useAdminOverview() {
   return useQuery({ queryKey: ['admin', 'overview'], queryFn: adminService.getOverview });
 }
 
+/** Cada consulta hace una llamada real a Anthropic y a Kapso: no se repite sola, solo con «Volver a comprobar». */
+export function useAdminHealth() {
+  return useQuery({
+    queryKey: ['admin', 'health'],
+    queryFn: adminService.getHealth,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
 export function useAdminWorkspaces(filters: AdminWorkspaceFilters, page: number) {
   return useQuery({
     queryKey: ['admin', 'workspaces', filters, page],

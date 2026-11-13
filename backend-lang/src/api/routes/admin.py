@@ -15,10 +15,10 @@ from core.business_types import BUSINESS_PROFILES
 from core.database import get_db
 from core.security import require_role
 from schemas.admin import (
-    AdminOverviewOut, AdminUserList, AdminUserUpdate,
+    AdminHealthOut, AdminOverviewOut, AdminUserList, AdminUserUpdate,
     AdminWorkspaceDetail, AdminWorkspaceList, AdminWorkspaceUpdate,
 )
-from services import admin_service
+from services import admin_service, platform_health
 from services.admin_service import AdminForbiddenAction, AdminNotFound
 from services.audit_service import AuditService
 
@@ -33,6 +33,12 @@ router = APIRouter(
 @router.get("/overview", response_model=AdminOverviewOut, summary="Totales de la plataforma")
 async def get_overview(db: AsyncSession = Depends(get_db)):
     return await admin_service.overview(db)
+
+
+@router.get("/health", response_model=AdminHealthOut, summary="Estado de Anthropic, Kapso y los envíos")
+async def get_health(db: AsyncSession = Depends(get_db)):
+    """Prueba las claves con una llamada real a cada proveedor y resume las últimas 24 h de mensajes."""
+    return await platform_health.health(db)
 
 
 @router.get("/business-types", summary="Catálogo de tipos de negocio")

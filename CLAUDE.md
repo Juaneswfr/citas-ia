@@ -147,6 +147,7 @@ Cada calendario puede estar ligado a un `workspace_member` vía `calendars.membe
 Vista de toda la plataforma para el equipo de Hilo. Solo `super_admin` (guard a nivel de router en `api/routes/admin.py`; en el front, ítem «Plataforma» del menú).
 
 - Resumen (negocios, usuarios, canales, citas y mensajes de 30 días, reparto por tipo y por suscripción, altas por semana), lista de negocios con filtros y ficha, lista de usuarios.
+- Pestaña «Estado» (`GET /admin/health`, `services/platform_health.py`): prueba la clave de Anthropic (llamada de 1 token; detecta clave inválida y cuenta sin saldo) y la de Kapso (consulta cada número conectado), y resume las últimas 24 h: recibidos, enviados, chats sin respuesta y alertas del agente. El saldo de Kapso no se obtiene por API: se revisa en su panel. No detecta un mensaje que Kapso aceptó y Meta rechazó después.
 - Acciones: corregir el tipo de un negocio, suspenderlo o reactivarlo (`workspaces.is_active`) y bloquear o desbloquear un usuario (`users.is_active`). Todas quedan en `audit_logs`.
 - Negocio suspendido: su equipo no puede iniciar sesión (403 en `/auth/login`) y el agente no responde. **Las sesiones ya abiertas siguen vivas hasta que venza el JWT** (el refresh no consulta la BD).
 - `is_active` ya no se puede cambiar desde `PATCH /workspaces/{id}`: un negocio no puede reactivarse solo.

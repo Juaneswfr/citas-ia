@@ -1,6 +1,19 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-12]
+**Agregado — pestaña «Estado» en el panel de plataforma**
+- backend-lang/src/services/platform_health.py (nuevo), api/routes/admin.py, schemas/admin.py — `GET /admin/health` (solo `super_admin`): prueba la clave de Anthropic con una llamada de 1 token al modelo del agente (distingue clave inválida, sin saldo, límite y caída), prueba la clave de Kapso consultando cada número conectado, y resume las últimas 24 h (recibidos, enviados, chats sin respuesta, errores del agente y las últimas alertas). No devuelve claves ni cuerpos de los proveedores.
+- front/src/components/admin/HealthTab.tsx (nuevo), routes/_authenticated/admin.tsx, hooks/use-admin.ts, lib/api/admin.ts, lib/types/admin.ts, components/admin/labels.ts, Admin.module.css — pestaña «Estado» con las tres tarjetas, las cifras de 24 h, los números y los errores recientes en palabras del equipo. Solo consulta al abrir y con «Volver a comprobar».
+- backend-lang/tests/test_admin.py — clasificación de respuestas de Anthropic y Kapso y guard de rol.
+
+**Corregido**
+- backend-lang/src/api/main.py — no había `logging.basicConfig`: los `log.info` del agente, de Kapso y de los webhooks no salían en `docker compose logs` (solo se veían las líneas de acceso de uvicorn). Ahora nivel INFO con fecha y módulo.
+- backend-lang/src/services/agent_service.py — la alerta de envío fallido guarda también el código corto del proveedor.
+
+**Limitación conocida**
+- El saldo de Kapso no se consulta por API (no se pudo verificar un endpoint): la tarjeta enlaza a su panel. Un envío que Kapso acepta y Meta rechaza después no se detecta: el webhook del número no está suscrito a eventos de fallo de entrega.
+
+### [AGENTE: claude] [FECHA: 2026-11-12]
 **Agregado — panel apto para móvil (base para PWA)**
 - front/src/components/layout/BottomTabs.tsx, MobileMenu.tsx (nuevo) — la barra inferior solo mostraba 5 secciones: desde el teléfono no se llegaba a Finanzas, Conversaciones, WhatsApp, Equipo, Ajustes, Plataforma ni a «Cerrar sesión». Ahora son 4 accesos (Inicio, Agenda, Chats, Clientes) + «Más», que abre una hoja con todo el menú filtrado por rol, los contadores, «Termina de configurar» y cerrar sesión.
 - front/src/routes/_authenticated.tsx, components/layout/TopBar.tsx, PanelLayout.module.css — el menú lateral, la barra inferior y la barra superior cambian por media query (880px), no por JS: servidor y cliente pintan lo mismo. Alto del panel en `100dvh` (con `100vh` la barra del navegador tapaba la barra inferior y la caja del chat). Zonas seguras del notch y de la barra de gestos.

@@ -40,6 +40,33 @@ export function syncTone(status: string): Tone {
   return status === 'paused' ? 'warn' : 'bad';
 }
 
+const HEALTH_LABEL: Record<string, string> = { ok: 'Funciona', warn: 'Revisar', bad: 'Falla' };
+
+export function healthLabel(status: string): string {
+  return HEALTH_LABEL[status] ?? status;
+}
+
+/** Motivos que guarda el agente en `agent_alerts`, en palabras del equipo. El primero que coincide gana. */
+const ERROR_REASONS: [string, string][] = [
+  ['credit balance', 'Anthropic sin saldo: el agente no pudo responder'],
+  ['AuthenticationError', 'La clave de Anthropic fue rechazada'],
+  ['RateLimitError', 'Anthropic limitó las solicitudes'],
+  ['envio_whatsapp_fallido: not_configured', 'Falta la clave de Kapso o el número del canal'],
+  ['envio_whatsapp_fallido: http_401', 'Kapso rechazó la clave al enviar'],
+  ['envio_whatsapp_fallido: http_402', 'Kapso sin créditos: el mensaje no salió'],
+  ['envio_whatsapp_fallido: timeout', 'Kapso no respondió a tiempo al enviar'],
+  ['envio_whatsapp_fallido: network_error', 'No se pudo conectar con Kapso al enviar'],
+  ['envio_whatsapp_fallido', 'WhatsApp rechazó el mensaje'],
+  ['tool_limit', 'El agente dio demasiadas vueltas sin terminar'],
+  ['create_failed', 'El agente no pudo crear la cita'],
+  ['agent_', 'El modelo del agente falló'],
+];
+
+export function errorReasonLabel(reason: string | null): string {
+  if (!reason) return 'Error sin detalle';
+  return ERROR_REASONS.find(([needle]) => reason.includes(needle))?.[1] ?? 'Error del agente';
+}
+
 export function shortDate(iso: string): string {
   return format(parseISO(iso), "d MMM yyyy", { locale: es });
 }
