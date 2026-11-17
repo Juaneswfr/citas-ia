@@ -2,7 +2,9 @@
 .constitution/backend.md               # Backend Express o FastAPI
 .constitution/database.md              # Base de datos / ORM / queries
 
-# CitasIA / Hilo
+# Zumit (agente: Hilo)
+
+La plataforma se llama **Zumit**; el agente conversacional se llama **Hilo**. Los identificadores técnicos (dominio `hilo.esjuanez.com`, plantillas `hilo_*_v1`, `sent_via='hilo'`, carpetas `hilo`) conservan el nombre antiguo.
 
 SaaS multi-tenant de citas por WhatsApp para cualquier negocio que atienda con cita: barberías, salones, spas, consultorios, veterinarias, etc. (ver «Tipos de negocio»).
 Backend FastAPI + LangGraph en `backend-lang/`, front TanStack Start en `front/`, datos en PostgreSQL (servidor propio, sin Supabase).
@@ -262,6 +264,9 @@ Qué agregan las últimas:
 - Requiere la migración 020. En Google Cloud, la pantalla de consentimiento debe permitir los alcances `openid`, `email` y `profile` (el de calendario ya estaba).
 
 ## Buscador, historial y dashboard
+
+- **No asistió**: desde el detalle de la cita (Agenda, Historial, Clientes), `manager`+, solo si está `pending|confirmed` y su hora ya empezó (el backend valida con 422). Cuenta como pérdida igual que `cancelled`. **Cancelar** pide un motivo (`CancelDialog`, `cancellation_reason` ≤255).
+- **Alertas** también muestra «Para hacer hoy» (derivado de `dashboard/insights`, no son filas de `agent_alerts`) y el contador de la barra lo suma.
 
 - **Buscador global** (icono en la barra superior; `Ctrl/⌘+K`): `GET /workspaces/{id}/search?q=` (`staff`+) devuelve hasta 6 citas, clientes y servicios, acotados al negocio, con `%`, `_` y `\` del usuario escapados y teléfonos con formato (`300 111` encuentra `573001112233`). Cada resultado abre su pantalla con `?client=`, `?service=` o `?date=&cita=` (la página aplica el parámetro y lo limpia).
 - **Historial de citas** (`/historial`, `GET /workspaces/{id}/appointment-history`): filtros por texto, estado, rango de días (en la zona del negocio), profesional, servicio y cliente; paginado de 25; los contadores muestran el reparto por estado de todo el filtro y filtran al pulsarlos; exportar CSV (`…/export`, `manager`+, hasta 5 000 filas, celdas a salvo de fórmulas de Excel). El dinero (cobrado en completadas) solo se devuelve a `manager`+. Se abre ya filtrado con `?customer=`, `?status=`, `?to=`, `?order=`. La ruta no es `/appointments/history` porque `/appointments/{id}` la capturaría.

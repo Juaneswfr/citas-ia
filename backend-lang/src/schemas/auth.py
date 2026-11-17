@@ -1,5 +1,5 @@
 """Schemas de autenticación y sesión."""
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -13,6 +13,19 @@ class RegisterRequest(BaseModel):
     workspace_name: str = Field(..., description="Nombre del negocio, ej: Barbería Juanes")
     workspace_slug: str = Field(..., description="Slug URL-friendly, ej: barberia-juanes")
     timezone: str = Field(default="America/Bogota", description="Zona horaria IANA")
+
+
+class ProfileUpdate(BaseModel):
+    """Datos que la propia persona puede cambiar de su cuenta."""
+    name: str = Field(..., min_length=1, max_length=120, description="Nombre de la persona")
+
+    @field_validator("name")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("El nombre no puede estar vacío.")
+        return v
 
 
 class TokenResponse(BaseModel):

@@ -8,10 +8,13 @@ import { Icon } from "@/components/hilo/icons";
 import { Button, Tag } from "@/components/hilo/primitives";
 import { listAgentAlerts, resolveAgentAlert } from "@/lib/api/alerts";
 import { useAuth } from "@/lib/auth-context";
+import { useDashboardInsights } from "@/hooks/use-dashboard-insights";
+import { useActionTarget } from "@/hooks/use-action-target";
+import { actionItems, type ActionItem } from "@/lib/dashboard-insights";
 import type { AgentAlertOut } from "@/lib/types/api";
 
 export const Route = createFileRoute("/_authenticated/alertas")({
-  head: () => ({ meta: [{ title: "Alertas · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Alertas · Zumit" }] }),
   component: AlertasPage,
 });
 
@@ -51,8 +54,33 @@ function AlertRow({ alert, onResolve }: { alert: AgentAlertOut; onResolve: (id: 
   );
 }
 
+/** Pendiente de «Para hacer hoy»: no se resuelve a mano, desaparece al atender la causa. */
+function TodoRow({ item, onOpen }: { item: ActionItem; onOpen: (item: ActionItem) => void }) {
+  const cfg = SEVERITY_CFG[item.urgent ? 'warning' : 'info'];
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
+      <span style={{ width: 32, height: 32, borderRadius: 'var(--r-sm)', flexShrink: 0, display: 'grid', placeItems: 'center', background: cfg.bg, color: cfg.color }}>
+        <Icon name={cfg.icon} size={16} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ marginBottom: 3 }}>
+          <Tag hue={item.urgent ? 'clay' : 'steel'} style={{ fontSize: 11 }}>Para hacer hoy</Tag>
+        </div>
+        <div style={{ font: '500 13.5px/1.5 var(--font-sans)', color: 'var(--ink-1)' }}>{item.label}</div>
+        <div style={{ font: '400 12.5px/1.4 var(--font-sans)', color: 'var(--ink-3)' }}>{item.hint}</div>
+      </div>
+      <Button variant={item.urgent ? 'primary' : 'secondary'} size="sm" iconRight="arrowR" onClick={() => onOpen(item)}>
+        {item.cta}
+      </Button>
+    </div>
+  );
+}
+
 function AlertasPage() {
   const { workspaceId } = useAuth();
+  const insights = useDashboardInsights();
+  const openTodo = useActionTarget(insights.data);
+  const todos = insights.data ? actionItems(insights.data.actions) : [];
   const qc = useQueryClient();
   const [showResolved, setShowResolved] = useState(false);
 
@@ -73,11 +101,17 @@ function AlertasPage() {
     onError: () => toast.error('No se pudo resolver la alerta.'),
   });
 
-  const bySeverity = (s: AgentAlertOut['severity']) => alerts.filter(a => a.severity === s);
-  const critical = bySeverity('critical');
-  const errors   = bySeverity('error');
-  const warnings = bySeverity('warning');
-  const infos    = bySeverity('info');
+  const shownTodos = showResolved ? [] : todos;
+  const bySeverity = (s: AgentAlertOut['severity']) =>
+    alerts.filter(a => a.severity === s).length;
+  const todoBySeverity = (s: AgentAlertOut['severity']) =>
+    shownTodos.filter(t => (t.urgent ? 'warning' : 'info') === s).length;
+  const countOf = (s: AgentAlertOut['severity']) => bySeverity(s) + todoBySeverity(s);
+  const bySeverityList = (s: AgentAlertOut['severity']) => alerts.filter(a => a.severity === s);
+  const critical = bySeverityList('critical');
+  const errors   = bySeverityList('error');
+  const warnings = bySeverityList('warning');
+  const infos    = bySeverityList('info');
 
   const ordered = [...critical, ...errors, ...warnings, ...infos];
 
@@ -89,7 +123,7 @@ function AlertasPage() {
         <div>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Agente IA</div>
           <h2 style={{ margin: 0, font: '400 28px/1.08 var(--font-serif)', letterSpacing: '-0.01em', color: 'var(--ink-1)' }}>
-            Alertas <span className="serif-i">del agente</span>
+            Alertas <span className="serif-i">y pendientes</span>
           </h2>
         </div>
         <Button
@@ -106,7 +140,7 @@ function AlertasPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 20 }}>
           {(['critical', 'error', 'warning', 'info'] as const).map(sev => {
             const cfg = SEVERITY_CFG[sev];
-            const count = bySeverity(sev).length;
+            const count = countOf(sev);
             return (
               <div key={sev} className="card" style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ width: 28, height: 28, borderRadius: 'var(--r-sm)', display: 'grid', placeItems: 'center', background: cfg.bg, color: cfg.color, flexShrink: 0 }}>
@@ -128,7 +162,7 @@ function AlertasPage() {
           <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--ink-3)', font: '400 13px/1 var(--font-sans)' }}>
             Cargando alertas…
           </div>
-        ) : ordered.length === 0 ? (
+        ) : ordered.length === 0 && shownTodos.length === 0 ? (
           <div style={{ padding: '48px 20px', textAlign: 'center' }}>
             <Icon name="check" size={28} style={{ color: 'var(--success)', marginBottom: 10 }} />
             <div style={{ font: '500 14px/1.4 var(--font-sans)', color: 'var(--ink-2)' }}>
@@ -136,9 +170,12 @@ function AlertasPage() {
             </div>
           </div>
         ) : (
-          ordered.map(a => (
-            <AlertRow key={a.id} alert={a} onResolve={resolve} />
-          ))
+          <>
+            {shownTodos.map(t => <TodoRow key={t.key} item={t} onOpen={openTodo} />)}
+            {ordered.map(a => (
+              <AlertRow key={a.id} alert={a} onResolve={resolve} />
+            ))}
+          </>
         )}
       </div>
     </div>

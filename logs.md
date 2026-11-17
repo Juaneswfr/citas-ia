@@ -1,5 +1,31 @@
 # Cambios por agente
 
+### [AGENTE: claude] [FECHA: 2026-11-17]
+**Agregado — guardar Zumit en la pantalla de inicio del celular (enlace directo, sin PWA)**
+- front/public/manifest.webmanifest (nuevo), src/routes/__root.tsx — nombre «Zumit», íconos 192/512 y `start_url=/dashboard` con `display: browser` (abre en el navegador, como un enlace). Etiqueta `apple-mobile-web-app-title` para iOS. Sin service worker ni modo standalone, a propósito.
+- Campana de Alertas: ahora abre un panel con alertas y pendientes (components/layout/AlertsBell.tsx).
+
+### [AGENTE: claude] [FECHA: 2026-11-17]
+**Corregido / Agregado — campana de Alertas, logo y favicon de Zumit**
+- front/src/components/layout/TopBar.tsx, routes/_authenticated.tsx — la campana del encabezado no tenía `onClick`: ahora abre `/alertas` y muestra un punto con el número de alertas y pendientes sin atender.
+- front/public/ (nueva) — `ico-logo.png` (original, blanco y transparente), `logo-mark.png`, `favicon.ico/png`, `apple-touch-icon.png`, `icon-192.png`; el logo es blanco, así que el icono va sobre tile borgoña #2C0F20. `HiloMark` (icons.tsx) ahora pinta ese PNG; `__root.tsx` declara favicon y `theme-color` #2C0F20; la barra lateral dice «Zumit».
+- Identidad visual guardada en la memoria del proyecto (no en `.constitution`, que es un submódulo compartido). Los tokens del panel (`--wine` #593240) aún no coinciden con la paleta nueva.
+
+### [AGENTE: claude] [FECHA: 2026-11-17]
+**Agregado — cada persona puede cambiar su nombre; el nombre del negocio se valida**
+- backend-lang/src/api/routes/auth.py, schemas/auth.py — `GET /auth/me` devuelve `name`; `PATCH /auth/me` cambia solo el nombre de quien tiene la sesión (sin id en la URL).
+- backend-lang/src/schemas/workspace.py — el nombre del negocio no puede quedar vacío (se recorta) ni pasar de 120 caracteres.
+- front/src/routes/_authenticated/settings.tsx, lib/display-name.ts (nuevo), lib/auth-context.tsx (`refreshMe`) — Ajustes › Cuenta permite editar el nombre; el nombre del negocio solo lo edita dueño o administrador. Encabezado, menú y dashboard usan el nombre elegido (antes la parte del correo antes de @).
+
+### [AGENTE: claude] [FECHA: 2026-11-17]
+**Agregado — «No asistió», motivo de cancelación, pendientes en Alertas, edición de correo y marca Zumit**
+- front/src/hooks/use-appointment-detail.ts, components/agenda/AppointmentDetail.tsx — botón «No asistió» (manager+, cita pendiente/confirmada cuya hora ya empezó). Cuenta como pérdida igual que cancelada y no genera venta. Cubre Agenda, Historial y Clientes (mismo panel).
+- backend-lang/src/api/routes/appointments.py, schemas/appointment.py — el PATCH valida `noshow` (solo pending/confirmed y `start_at` ya pasado, 422 si no); `status` es `Literal`.
+- front/src/components/agenda/CancelDialog.tsx (nuevo) — cancelar pide motivo (lista + detalle, «Otro» obliga a escribirlo) y queda en `cancellation_reason`; el detalle de la cita lo muestra. El motivo se limita a 255 caracteres (columna varchar(255); antes el schema aceptaba 500).
+- front/src/routes/_authenticated/alertas.tsx, hooks/use-action-target.ts (nuevo), routes/_authenticated.tsx — «Para hacer hoy» aparece en Alertas y suma al contador de la barra. Son derivados: se van solos al atender la causa.
+- front/src/components/clientes/ClientDetail.tsx — correo editable en la ficha y filtros (completadas, canceladas, no asistió) en la pestaña Citas. backend-lang/src/schemas/conversation.py: valida correo y nombre; correo vacío se guarda como NULL.
+- Marca: la plataforma pasa a **Zumit** (títulos, logo, landing, legales, correos, evento de Calendar, título de la API) y el agente sigue siendo **Hilo**. No se tocó: dominio `hilo.esjuanez.com`, plantillas `hilo_*_v1` (aprobadas en Meta), `sent_via='hilo'`, nombres de código.
+
 ### [AGENTE: claude] [FECHA: 2026-11-13]
 **Agregado — crear cuenta o entrar con Google, con el calendario sincronizado en el mismo paso**
 - backend-lang/migrations/020_google_signin.sql (nueva), src/api/routes/auth.py, src/integrations/google_calendar.py, src/core/oauth_state.py (nuevo), src/schemas/auth.py — `GET /auth/google/login/url`, rama `kind=signin` del callback y `POST /auth/google/ticket`. Cuenta nueva = usuario + negocio + miembro dueño + calendario en una transacción. Un correo que ya existe con contraseña no se enlaza solo (sin verificación de correo habría toma de cuenta). La sesión viaja en un ticket de 2 min en el fragmento de la URL, no el JWT.

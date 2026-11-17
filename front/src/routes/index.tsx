@@ -4,7 +4,7 @@ import { HiloMark, Icon } from "@/components/hilo/icons";
 
 export const Route = createFileRoute("/")({
   head: () => ({
-    meta: [{ title: "Hilo · Tu agenda vive en WhatsApp" }],
+    meta: [{ title: "Zumit · Tu agenda vive en WhatsApp" }],
   }),
   component: LandingPage,
 });
@@ -40,7 +40,7 @@ function LandingPage() {
                 <circle cx="18" cy="21" r="1.4" fill="#fff" stroke="none" />
               </svg>
             </span>
-            <span className="l-brand-name">Hilo</span>
+            <span className="l-brand-name">Zumit</span>
           </Link>
           <div className="l-nav-links">
             <a className="l-nav-link" href="#producto">Producto</a>
@@ -78,7 +78,7 @@ function LandingPage() {
           <div>
             <span className="eyebrow-pill"><span className="tagdot">Nuevo</span> Agente de citas por WhatsApp</span>
             <h1 className="display">Tu agenda<br />se llena sola.<br /><span className="wine">Por WhatsApp.</span></h1>
-            <p className="lede">Hilo es un agente que conversa con tus clientes por WhatsApp y agenda, reagenda y confirma citas — sin que dejes de atender.</p>
+            <p className="lede">Zumit es la plataforma de citas donde Hilo, tu agente, conversa con tus clientes por WhatsApp y agenda, reagenda y confirma citas — sin que dejes de atender.</p>
             <ul className="checklist">
               <li><span className="check"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span><span><b>Conserva tu número.</b> Coexistencia: sigues usando tu WhatsApp de siempre.</span></li>
               <li><span className="check"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span><span><b>Sincronizado con Google Calendar.</b> Nunca dos citas a la misma hora.</span></li>
@@ -161,7 +161,7 @@ function LandingPage() {
           <div className="sec-head">
             <div className="sec-eyebrow">Un solo hilo</div>
             <h2 className="sec-title">Todo tu negocio, <span className="muted">un solo agente.</span></h2>
-            <p className="sec-sub">Desde la conversación hasta la cita, el cliente y el cobro. Hilo conecta cada punto sin que cambies tu forma de trabajar.</p>
+            <p className="sec-sub">Desde la conversación hasta la cita, el cliente y el cobro. Zumit conecta cada punto sin que cambies tu forma de trabajar.</p>
           </div>
           <div className="features">
             {/* Agenda */}
@@ -291,7 +291,7 @@ function LandingPage() {
       <section className="section alt" id="recursos">
         <div className="l-container">
           <div className="sec-head">
-            <div className="sec-eyebrow">Por qué Hilo</div>
+            <div className="sec-eyebrow">Por qué Zumit</div>
             <h2 className="sec-title">Menos chats. <span className="muted">Más citas.</span></h2>
           </div>
           <div className="bento">
@@ -339,16 +339,16 @@ function LandingPage() {
                 <span style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--wine)', display: 'grid', placeItems: 'center' }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3v6a4 4 0 0 0 8 0 4 4 0 0 1 4 4v8" /><circle cx="6" cy="3" r="1.4" fill="#fff" stroke="none" /><circle cx="18" cy="21" r="1.4" fill="#fff" stroke="none" /></svg>
                 </span>
-                <span className="l-brand-name">Hilo</span>
+                <span className="l-brand-name">Zumit</span>
               </div>
               <p className="foot-tag">El agente de citas por WhatsApp para barberías, spas, estéticas y consultorios.</p>
             </div>
             <div className="foot-col"><h4>Producto</h4><Link to="/dashboard">Agenda</Link><Link to="/services">Servicios</Link><Link to="/clients">Clientes</Link><Link to="/dashboard">Ver panel</Link></div>
-            <div className="foot-col"><h4>Empresa</h4><a href="#recursos">Sobre Hilo</a><a href="#precios">Precios</a><a href="#">Contacto</a><a href="#">Soporte</a></div>
+            <div className="foot-col"><h4>Empresa</h4><a href="#recursos">Sobre Zumit</a><a href="#precios">Precios</a><a href="#">Contacto</a><a href="#">Soporte</a></div>
             <div className="foot-col"><h4>Cuenta</h4><Link to="/login">Iniciar sesión</Link><Link to="/signup">Crear cuenta</Link><a href="#">Privacidad</a><a href="#">Términos</a></div>
           </div>
           <div className="foot-bottom">
-            <span>© 2026 Hilo. Hecho en Medellín.</span>
+            <span>© 2026 Zumit. Hecho en Medellín.</span>
             <span>Tu agenda vive en WhatsApp.</span>
           </div>
         </div>

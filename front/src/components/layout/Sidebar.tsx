@@ -40,7 +40,7 @@ export function Sidebar({
       <div className={styles.sidebar__header}>
         <HiloMark size={30} />
         <div>
-          <div className={styles['sidebar__logo-name']}>Hilo</div>
+          <div className={styles['sidebar__logo-name']}>Zumit</div>
           <div className={styles['sidebar__logo-business']}>{businessName}</div>
         </div>
       </div>

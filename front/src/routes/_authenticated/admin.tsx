@@ -9,7 +9,7 @@ import { isPlatformAdmin } from "@/lib/nav";
 import styles from "@/components/admin/Admin.module.css";
 
 export const Route = createFileRoute("/_authenticated/admin")({
-  head: () => ({ meta: [{ title: "Plataforma · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Plataforma · Zumit" }] }),
   component: AdminPage,
 });
 
@@ -35,14 +35,14 @@ function AdminPage() {
 
   // El backend responde 403 a cualquier otro rol; aquí solo evitamos una pantalla rota.
   if (!isPlatformAdmin(role)) {
-    return <div className={styles.admin}><p className={styles.admin__sub}>Esta sección es solo para el equipo de Hilo.</p></div>;
+    return <div className={styles.admin}><p className={styles.admin__sub}>Esta sección es solo para el equipo de Zumit.</p></div>;
   }
 
   return (
     <div className={`${styles.admin} page-enter`}>
       <header className={styles.admin__head}>
         <h2 className={styles.admin__title}>Plataforma</h2>
-        <p className={styles.admin__sub}>Todos los negocios y usuarios de Hilo.</p>
+        <p className={styles.admin__sub}>Todos los negocios y usuarios de Zumit.</p>
       </header>
       <nav className={styles.admin__tabs} aria-label="Secciones del panel de plataforma">
         {TABS.map((item) => (

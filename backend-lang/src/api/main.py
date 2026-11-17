@@ -49,7 +49,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("[startup] CitasIA API iniciando")
+    log.info("[startup] Zumit API iniciando")
     settings = get_settings()
     await init_db()
     log.info("[startup] Pool PostgreSQL creado")
@@ -67,11 +67,11 @@ async def lifespan(app: FastAPI):
     except BaseException:
         pass
     await close_db()
-    log.info("[shutdown] CitasIA API detenida")
+    log.info("[shutdown] Zumit API detenida")
 
 
 app = FastAPI(
-    title="CitasIA API",
+    title="Zumit API",
     description="Backend del SaaS de agendamiento por WhatsApp.",
     version="1.0.0",
     lifespan=lifespan,

@@ -13,7 +13,7 @@ interface HistorySearch {
 }
 
 export const Route = createFileRoute("/_authenticated/historial")({
-  head: () => ({ meta: [{ title: "Historial · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Historial · Zumit" }] }),
   // El historial se abre ya filtrado desde otras pantallas: la ficha de un cliente, o los pendientes del dashboard.
   validateSearch: (search: Record<string, unknown>): HistorySearch => ({
     ...(typeof search.customer === 'string' && search.customer ? { customer: search.customer } : {}),

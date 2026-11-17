@@ -1,0 +1,14 @@
+{
+  "name": "Zumit",
+  "short_name": "Zumit",
+  "description": "Agenda de citas por WhatsApp",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "browser",
+  "background_color": "#2C0F20",
+  "theme_color": "#2C0F20",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/logo-mark.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

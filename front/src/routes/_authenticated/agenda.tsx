@@ -23,7 +23,7 @@ import { BlockDetail } from '@/components/agenda/BlockDetail';
 import styles from './agenda.module.css';
 
 export const Route = createFileRoute('/_authenticated/agenda')({
-  head: () => ({ meta: [{ title: 'Agenda · Hilo' }] }),
+  head: () => ({ meta: [{ title: 'Agenda · Zumit' }] }),
   // ?date=YYYY-MM-DD&cita=<id>: lo usan el buscador global y el historial para abrir una cita en su día.
   validateSearch: (search: Record<string, unknown>): { date?: string; cita?: string } => ({
     ...(typeof search.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(search.date) ? { date: search.date } : {}),

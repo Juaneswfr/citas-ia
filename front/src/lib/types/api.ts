@@ -14,6 +14,8 @@ export interface TokenResponse {
 export interface MeResponse {
   user_id: string;
   email: string;
+  /** Nombre que la persona eligió; si falta se usa la parte local del correo. */
+  name?: string | null;
   role: string; // 'workspace_owner' | 'manager' | 'staff' | 'viewer'
   workspace_id: string;
 }

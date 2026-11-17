@@ -1,5 +1,6 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
+import { displayNameOf } from '@/lib/display-name';
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,7 @@ export function AppHeader() {
   const navigate = useNavigate();
   const title = TITLES[path] ?? "Panel";
 
-  const displayName = me?.email?.split('@')[0] ?? '';
+  const displayName = displayNameOf(me);
   const initials = displayName.slice(0, 2).toUpperCase() || '?';
 
   return (

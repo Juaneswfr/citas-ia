@@ -4,8 +4,8 @@ import { useState } from "react";
 export const Route = createFileRoute("/politicas-de-privacidad")({
   head: () => ({
     meta: [
-      { title: "Política de Privacidad · Hilo" },
-      { name: "description", content: "Conoce cómo Hilo recopila, usa y protege tu información personal." },
+      { title: "Política de Privacidad · Zumit" },
+      { name: "description", content: "Conoce cómo Zumit recopila, usa y protege tu información personal." },
     ],
   }),
   component: PrivacyPage,
@@ -67,7 +67,7 @@ function NavBar() {
               <circle cx="18" cy="21" r="1.4" fill="#fff" stroke="none" />
             </svg>
           </span>
-          <span className="l-brand-name">Hilo</span>
+          <span className="l-brand-name">Zumit</span>
         </Link>
         <div className="l-nav-cta">
           <Link className="btn btn-ghost btn-sm" to="/login">Iniciar sesión</Link>
@@ -95,7 +95,7 @@ function Footer() {
       <div className="l-container">
         <div className="foot-grid">
           <div className="foot-brand">
-            <span className="l-brand-name" style={{ color: '#fff', font: '800 21px/1 var(--font-serif)', letterSpacing: '-0.03em' }}>Hilo</span>
+            <span className="l-brand-name" style={{ color: '#fff', font: '800 21px/1 var(--font-serif)', letterSpacing: '-0.03em' }}>Zumit</span>
             <p className="foot-tag">Tu agenda vive en WhatsApp. El agente que agenda, reagenda y confirma por ti.</p>
           </div>
           <div className="foot-col">
@@ -150,7 +150,7 @@ function PrivacyPage() {
       <div className="l-container" style={{ maxWidth: 780, padding: '64px 28px 96px' }}>
 
         <p style={{ ...pStyle, font: '400 17px/1.65 var(--font-sans)', color: 'var(--ink-1)', marginBottom: 40, padding: '20px 24px', background: 'var(--wine-50)', border: '1px solid var(--wine-100)', borderRadius: 'var(--r-lg)' }}>
-          En <strong>{COMPANY}</strong> operamos la plataforma <strong>Hilo</strong> disponible en <strong>{DOMAIN}</strong>. Esta Política de Privacidad explica cómo recopilamos, usamos, almacenamos y protegemos tu información cuando usas nuestro servicio.
+          En <strong>{COMPANY}</strong> operamos la plataforma <strong>Zumit</strong> disponible en <strong>{DOMAIN}</strong>. Esta Política de Privacidad explica cómo recopilamos, usamos, almacenamos y protegemos tu información cuando usas nuestro servicio.
         </p>
 
         {/* 1 */}
@@ -307,7 +307,7 @@ function PrivacyPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>10. Datos de clientes finales</h2>
           <p style={pStyle}>
-            Cuando usas Hilo, tu negocio actúa como responsable del tratamiento de los datos personales de tus clientes (números de teléfono, nombres, conversaciones). Hilo actúa como encargado del tratamiento en tu nombre.
+            Cuando usas Zumit, tu negocio actúa como responsable del tratamiento de los datos personales de tus clientes (números de teléfono, nombres, conversaciones). Zumit actúa como encargado del tratamiento en tu nombre.
           </p>
           <p style={pStyle}>
             Eres responsable de contar con la base legal adecuada para tratar los datos de tus clientes y de informarles sobre el uso de sistemas automatizados de atención por WhatsApp.
@@ -334,7 +334,7 @@ function PrivacyPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>12. Menores de edad</h2>
           <p style={pStyle}>
-            Hilo está dirigido exclusivamente a personas mayores de 18 años que actúen en calidad de comerciantes o empresarios. No recopilamos conscientemente datos de menores de edad. Si detectamos que hemos recopilado datos de un menor, los eliminaremos de inmediato.
+            Zumit está dirigido exclusivamente a personas mayores de 18 años que actúen en calidad de comerciantes o empresarios. No recopilamos conscientemente datos de menores de edad. Si detectamos que hemos recopilado datos de un menor, los eliminaremos de inmediato.
           </p>
         </div>
 

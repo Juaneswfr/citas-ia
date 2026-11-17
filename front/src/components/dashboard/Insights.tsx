@@ -1,13 +1,12 @@
 import { useNavigate } from '@tanstack/react-router';
-import { addDays, format, parseISO } from 'date-fns';
 import { Icon } from '@/components/hilo/icons';
 import { Button } from '@/components/hilo/primitives';
 import { CountUp } from '@/components/hilo/CountUp';
 import { useDashboardInsights } from '@/hooks/use-dashboard-insights';
-import type { DashboardInsights } from '@/lib/api/dashboard';
+import { useActionTarget } from '@/hooks/use-action-target';
 import {
   actionItems, busiestDay, busiestInsight, cop, customersInsight, dayName, lostInsight, pct, rates, revenueInsight,
-  servicesInsight, weekInsight, type ActionItem,
+  servicesInsight, weekInsight,
 } from '@/lib/dashboard-insights';
 import { AreaChart, Donut, HBars, Heatmap, StackedBars } from './charts';
 import styles from './Insights.module.css';
@@ -17,28 +16,6 @@ function Skeleton({ height }: { height: number }) {
 }
 
 // ── Para hacer hoy ────────────────────────────────────────────────────────────
-
-/** Qué se abre al pulsar el botón de cada pendiente. */
-function useActionTarget(data: DashboardInsights | undefined) {
-  const navigate = useNavigate();
-  return (item: ActionItem) => {
-    if (!data) return;
-    switch (item.key) {
-      case 'to_complete':
-        // Las más viejas primero: así se cierran en orden.
-        navigate({ to: '/historial', search: { status: 'pending,confirmed', to: data.today, order: 'asc' } });
-        break;
-      case 'unconfirmed_tomorrow':
-        navigate({ to: '/agenda', search: { date: format(addDays(parseISO(data.today), 1), 'yyyy-MM-dd') } });
-        break;
-      case 'lapsed_customers':
-        navigate({ to: '/clients' });
-        break;
-      default:
-        navigate({ to: '/finanzas' });
-    }
-  };
-}
 
 export function ActionsPanel() {
   const { data, isLoading, isError, refetch } = useDashboardInsights();

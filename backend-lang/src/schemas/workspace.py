@@ -25,9 +25,19 @@ class WorkspaceCreate(BaseModel):
     def _check_business_type(cls, value: Optional[str]) -> Optional[str]:
         return validate_business_type(value)
 
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("El nombre del negocio no puede estar vacío.")
+        return value
+
 
 class WorkspaceUpdate(BaseModel):
-    name: Optional[str] = Field(None, description="Nombre comercial del negocio")
+    name: Optional[str] = Field(None, max_length=120, description="Nombre comercial del negocio")
     legal_name: Optional[str] = None
     business_type: Optional[str] = Field(None, description=_BUSINESS_TYPE_DOC)
     timezone: Optional[str] = None

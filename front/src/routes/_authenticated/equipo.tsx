@@ -13,7 +13,7 @@ import { roleLabel } from "@/lib/roles";
 
 
 export const Route = createFileRoute("/_authenticated/equipo")({
-  head: () => ({ meta: [{ title: "Equipo · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Equipo · Zumit" }] }),
   component: EquipoPage,
 });
 
@@ -132,7 +132,7 @@ function EquipoPage() {
             <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>Cancelar</Button>
           </div>
           <p style={{ margin: 0, font: '400 11.5px/1.4 var(--font-sans)', color: 'var(--ink-3)' }}>
-            El usuario debe tener cuenta registrada en Hilo para poder ser agregado.
+            El usuario debe tener cuenta registrada en Zumit para poder ser agregado.
           </p>
         </div>
       )}

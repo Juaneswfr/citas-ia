@@ -1,7 +1,8 @@
 """Schemas para Conversaciones, Mensajes y Clientes."""
+import re
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CustomerOut(BaseModel):
@@ -23,11 +24,34 @@ class CustomerCreate(BaseModel):
     name: str  = Field(..., description="Nombre del cliente — requerido")
 
 
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$")
+
+
 class CustomerUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=120)
+    email: Optional[str] = Field(None, max_length=254, description="Correo; cadena vacía lo borra")
     notes: Optional[str] = None
     agent_enabled: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("El nombre no puede estar vacío.")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def _email_format(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip().lower()
+        if v and not _EMAIL_RE.match(v):
+            raise ValueError("El correo no tiene un formato válido.")
+        return v
 
 
 class ConversationOut(BaseModel):

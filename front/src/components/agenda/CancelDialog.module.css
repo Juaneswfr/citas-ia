@@ -1,0 +1,13 @@
+.cancel__intro { margin: 0 0 12px; font: 400 13.5px/1.45 var(--font-sans); color: var(--ink-2); }
+.cancel__reasons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.cancel__reason {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer;
+  font: 500 12.5px/1.2 var(--font-sans); padding: 8px 12px; border-radius: 99px; text-align: left;
+}
+.cancel__reason:hover { border-color: var(--wine); }
+.cancel__reason--on { background: var(--wine); color: var(--wine-fg); border-color: var(--wine); }
+.cancel__detail {
+  width: 100%; padding: 10px 12px; border-radius: var(--r-md); resize: vertical; border: 1px solid var(--line);
+  background: var(--surface-tint); color: var(--ink-1); font: 400 13.5px/1.5 var(--font-sans); outline: none;
+}
+.cancel__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }

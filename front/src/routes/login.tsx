@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/login")({
-  head: () => ({ meta: [{ title: "Hilo · Inicia sesión" }] }),
+  head: () => ({ meta: [{ title: "Zumit · Inicia sesión" }] }),
   component: LoginPage,
 });
 
@@ -85,7 +85,7 @@ function LoginPage() {
                 <circle cx="18" cy="21" r="1.4" fill="#fff" stroke="none" />
               </svg>
             </span>
-            <span className="auth-brand-name">Hilo</span>
+            <span className="auth-brand-name">Zumit</span>
           </Link>
           <Link className="auth-back" to="/">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>

@@ -43,6 +43,11 @@ export async function getMe(): Promise<MeResponse> {
   return apiFetch<MeResponse>('/auth/me');
 }
 
+/** PATCH /auth/me — cambia el nombre de la propia cuenta. */
+export async function updateMyName(name: string): Promise<{ name: string }> {
+  return apiFetch<{ name: string }>('/auth/me', { method: 'PATCH', body: JSON.stringify({ name }) });
+}
+
 /**
  * GET /auth/google/calendar/url — obtiene la URL de autorización OAuth de Google Calendar.
  * El frontend redirige al usuario a esa URL para conectar su calendario.

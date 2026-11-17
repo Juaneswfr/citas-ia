@@ -9,7 +9,7 @@ import { useServices, useUpdateService, useCreateService } from "@/hooks/use-ser
 import type { ServiceUpdate, ServiceCreate } from "@/lib/types/api";
 
 export const Route = createFileRoute("/_authenticated/services")({
-  head: () => ({ meta: [{ title: "Servicios · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Servicios · Zumit" }] }),
   // ?service=<id>: lo usa el buscador global para abrir directamente la edición de un servicio.
   validateSearch: (search: Record<string, unknown>): { service?: string } =>
     typeof search.service === 'string' && search.service ? { service: search.service } : {},

@@ -8,6 +8,7 @@ import { fmtCOP } from '@/lib/hilo-data';
 import { usePayWithReceipt, useVoidMovement } from '@/hooks/use-accounting';
 import { useAppointmentDetail } from '@/hooks/use-appointment-detail';
 import { useBusinessTerms } from '@/hooks/use-workspace';
+import { CancelDialog } from './CancelDialog';
 import { PaymentDialog } from '@/components/finanzas/PaymentDialog';
 import { PaymentsList } from '@/components/finanzas/PaymentsList';
 import { AsyncState, Modal, PaymentProgress, PaymentStatusTag } from '@/components/finanzas/ui';
@@ -61,7 +62,7 @@ interface AppointmentDetailProps {
 
 export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailProps) {
   const { appointment, service, customer, sale, canManage, isCompleted, complete, isCompleting,
-          canCancel, cancel, isCancelling } = useAppointmentDetail(appointmentId);
+          canCancel, cancel, isCancelling, canNoShow, markNoShow } = useAppointmentDetail(appointmentId);
   const pay = usePayWithReceipt('sales');
   const voidMovement = useVoidMovement();
   const [paying, setPaying] = useState<SalesOrderOut | null>(null);
@@ -83,11 +84,22 @@ export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailP
     }
   };
 
-  const handleCancel = async () => {
-    const who = customer?.name ?? customer?.phone ?? 'el cliente';
-    if (!window.confirm(`¿Cancelar la cita de ${who}? Se le avisará por WhatsApp y el horario quedará libre.`)) return;
+  const [cancelling, setCancelling] = useState(false);
+  const handleCancel = async (reason: string) => {
     try {
-      await cancel();
+      await cancel(reason);
+      setCancelling(false);
+      onClose();
+    } catch {
+      // El onError de la mutación ya mostró el toast.
+    }
+  };
+
+  const handleNoShow = async () => {
+    const who = customer?.name ?? customer?.phone ?? 'el cliente';
+    if (!window.confirm(`¿Marcar que ${who} no asistió? Quedará en su historial y no se genera venta.`)) return;
+    try {
+      await markNoShow();
       onClose();
     } catch {
       // El onError de la mutación ya mostró el toast.
@@ -119,6 +131,7 @@ export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailP
               <Item label="Hora" value={`${format(parseISO(apt.start_at), 'h:mm a')} – ${format(parseISO(apt.end_at), 'h:mm a')}`} />
               {service && <Item label="Duración" value={`${service.duration_minutes} min`} />}
               {canManage && isCompleted && <Item label={terms.Staff} value={staffName} />}
+              {apt.status === 'cancelled' && <Item wide label="Motivo de cancelación" value={apt.cancellation_reason ?? 'Sin motivo registrado'} />}
               {apt.is_home_service && <Item wide label="Domicilio" value={apt.home_address ?? 'Sin dirección'} />}
               {service?.description && <Item wide label="Descripción del servicio" value={service.description} />}
             </div>
@@ -167,13 +180,22 @@ export function AppointmentDetail({ appointmentId, onClose }: AppointmentDetailP
         )}
       </AsyncState>
       <div className={styles.detail__actions}>
+        {canNoShow && (
+          <Button variant="secondary" disabled={isCompleting || isCancelling} onClick={handleNoShow}>
+            No asistió
+          </Button>
+        )}
         {canCancel && (
-          <Button variant="danger" disabled={isCancelling || isCompleting} onClick={handleCancel}>
-            {isCancelling ? 'Cancelando…' : 'Cancelar cita'}
+          <Button variant="danger" disabled={isCancelling || isCompleting} onClick={() => setCancelling(true)}>
+            Cancelar cita
           </Button>
         )}
         <Button variant="ghost" onClick={onClose}>Cerrar</Button>
       </div>
+      {cancelling && (
+        <CancelDialog who={customer?.name ?? customer?.phone ?? 'el cliente'} submitting={isCancelling}
+                      onConfirm={handleCancel} onClose={() => setCancelling(false)} />
+      )}
       {paying && (
         <PaymentDialog title={`Cobrar venta #${paying.number}`} balanceCop={paying.balance_cop}
                        submitting={pay.isPending} onClose={() => setPaying(null)}

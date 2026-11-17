@@ -1,6 +1,7 @@
 // Datos y acciones del panel de detalle de una cita: cita, servicio, cliente, venta asociada, completar y cancelar.
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { parseISO } from 'date-fns';
 import { useAuth } from '@/lib/auth-context';
 import { getAppointment } from '@/lib/api/appointments';
 import { listCustomers } from '@/lib/api/conversations';
@@ -59,10 +60,27 @@ export function useAppointmentDetail(appointmentId: string) {
   const cancelMutation = useCancelAppointment(appointmentId);
   const status = appointment.data?.status;
 
+  // «No asistió»: cita en pie cuyo horario ya empezó.
+  const started = !!appointment.data && parseISO(appointment.data.start_at) <= new Date();
+  const canNoShow = canManage && (status === 'pending' || status === 'confirmed') && started;
+
+  /** Marca la cita como no asistida (cuenta como pérdida, no genera venta). */
+  const markNoShow = async (): Promise<void> => {
+    await update.mutateAsync({ body: { status: 'noshow' } });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['appointment', workspaceId, appointmentId] }),
+      queryClient.invalidateQueries({ queryKey: ['appointment-history', workspaceId] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard-insights', workspaceId] }),
+      queryClient.invalidateQueries({ queryKey: ['accounting', workspaceId] }),
+    ]);
+  };
+
   return {
+    canNoShow,
+    markNoShow,
     canCancel: canCancelAppointments(role) && (status === 'pending' || status === 'confirmed'),
     /** Cancela la cita; el backend avisa al cliente por WhatsApp. Lanza si falla (el toast ya salió). */
-    cancel: () => cancelMutation.mutateAsync(),
+    cancel: (reason?: string) => cancelMutation.mutateAsync({ reason }),
     isCancelling: cancelMutation.isPending,
     appointment,
     service: services.data?.find((s) => s.id === appointment.data?.service_id) ?? null,

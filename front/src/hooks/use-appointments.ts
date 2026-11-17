@@ -150,6 +150,8 @@ export function useCancelAppointment(appointmentId: string) {
       qc.invalidateQueries({ queryKey: ['appointments', workspaceId] });
       qc.invalidateQueries({ queryKey: ['appointments-week', workspaceId] });
       qc.invalidateQueries({ queryKey: ['appointment', workspaceId, appointmentId] });
+      qc.invalidateQueries({ queryKey: ['dashboard-insights', workspaceId] });
+      qc.invalidateQueries({ queryKey: ['appointment-history', workspaceId] });
       if (result.customer_notified) {
         toast.success('Cita cancelada. Se avisó al cliente por WhatsApp.');
       } else {
@@ -174,6 +176,8 @@ export function useUpdateAppointment(appointmentId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['appointments', workspaceId] });
       qc.invalidateQueries({ queryKey: ['appointments-week', workspaceId] });
+      qc.invalidateQueries({ queryKey: ['dashboard-insights', workspaceId] });
+      qc.invalidateQueries({ queryKey: ['appointment-history', workspaceId] });
       toast.success('Cita actualizada');
     },
     onError: (error) => {

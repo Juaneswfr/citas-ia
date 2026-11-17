@@ -26,6 +26,8 @@ interface AuthContextType {
   initializing: boolean;
   workspaceId: string | null;
   role: string | null;
+  /** Vuelve a pedir los datos de la sesión (p. ej. tras cambiar el nombre). */
+  refreshMe: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<'verify-email' | 'authenticated'>;
   register: (email: string, password: string, workspaceName: string) => Promise<void>;
@@ -167,6 +169,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = url;
   }, []);
 
+  const refreshMe = useCallback(async () => { setMe(await getMe()); }, []);
+
   const completeGoogleSignIn = useCallback(async (ticket: string) => {
     const tokenResp = await exchangeGoogleTicket(ticket);
     applyToken(tokenResp.access_token);
@@ -190,9 +194,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     register,
     signInWithGoogle,
     completeGoogleSignIn,
+    refreshMe,
     signInWithFacebook,
     logout,
-  }), [backendJwt, me, initializing, login, signup, register, signInWithGoogle, completeGoogleSignIn, signInWithFacebook, logout]);
+  }), [backendJwt, me, initializing, login, signup, register, signInWithGoogle, completeGoogleSignIn, refreshMe, signInWithFacebook, logout]);
 
   if (initializing) {
     return (

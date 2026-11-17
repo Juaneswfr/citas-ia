@@ -13,7 +13,7 @@ import { ThirdPartiesTab } from "@/components/finanzas/ThirdPartiesTab";
 import styles from "@/components/finanzas/Finanzas.module.css";
 
 export const Route = createFileRoute("/_authenticated/finanzas")({
-  head: () => ({ meta: [{ title: "Finanzas · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Finanzas · Zumit" }] }),
   component: FinanzasPage,
 });
 

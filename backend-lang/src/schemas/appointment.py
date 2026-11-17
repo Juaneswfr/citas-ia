@@ -1,6 +1,6 @@
 """Schemas para Citas (appointments) y Bloques de disponibilidad."""
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -19,7 +19,7 @@ class AppointmentCreate(BaseModel):
 class AppointmentUpdate(BaseModel):
     """Solo el dueño/manager puede actualizar. Sujeto a confirmación explícita (Principio IX)."""
     start_at: Optional[datetime] = None
-    status: Optional[str] = Field(
+    status: Optional[Literal["pending", "confirmed", "cancelled", "completed", "noshow", "rescheduled"]] = Field(
         None, description="pending|confirmed|cancelled|completed|noshow|rescheduled"
     )
     cancellation_reason: Optional[str] = None
@@ -52,7 +52,7 @@ class AppointmentOut(BaseModel):
 
 class AppointmentCancel(BaseModel):
     """Cancelación desde el panel por cualquier miembro del equipo."""
-    reason: Optional[str] = Field(None, max_length=500, description="Motivo interno de la cancelación")
+    reason: Optional[str] = Field(None, max_length=255, description="Motivo interno de la cancelación")
 
 
 class AppointmentCancelOut(AppointmentOut):

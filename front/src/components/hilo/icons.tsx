@@ -73,19 +73,10 @@ interface HiloMarkProps {
   bg?: string;
 }
 
-export function HiloMark({ size = 26, color = 'var(--wine-fg)', bg = 'var(--wine)' }: HiloMarkProps) {
+/** Isotipo de Zumit (check blanco/turquesa) sobre su tile borgoña. El PNG ya trae el fondo: el logo original es blanco. */
+export function HiloMark({ size = 26 }: HiloMarkProps) {
   return (
-    <span style={{
-      width: size, height: size, borderRadius: size * 0.32, background: bg,
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      boxShadow: '0 1px 2px rgba(58,40,40,0.25)',
-    }}>
-      <svg width={size * 0.62} height={size * 0.62} viewBox="0 0 24 24" fill="none"
-        stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M6 3v6a4 4 0 0 0 8 0 4 4 0 0 1 4 4v8" />
-        <circle cx="6" cy="3" r="1.4" fill={color} stroke="none" />
-        <circle cx="18" cy="21" r="1.4" fill={color} stroke="none" />
-      </svg>
-    </span>
+    <img src="/logo-mark.png" alt="Zumit" width={size} height={size}
+         style={{ width: size, height: size, borderRadius: size * 0.22, flexShrink: 0, display: 'block' }} />
   );
 }

@@ -71,8 +71,8 @@ class CalendarService:
         antes de confirmar la cita.
         """
         client = await self._get_client()
-        summary = f"Cita: {service_name}" if service_name else "Cita (CitasIA)"
-        description_parts = ["Cita agendada via CitasIA"]
+        summary = f"Cita: {service_name}" if service_name else "Cita (Zumit)"
+        description_parts = ["Cita agendada via Zumit"]
         if customer_name:
             description_parts.append(f"Cliente: {customer_name}")
         event = {

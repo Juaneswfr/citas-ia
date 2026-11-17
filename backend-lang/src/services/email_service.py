@@ -33,12 +33,12 @@ def _base_template(content: str, footer_extra: str = "") -> str:
 <body style="margin:0;padding:0;background:#f5f5f5">
 <div style="{_BASE_STYLE}">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px">
-    <span style="background:{_WINE};color:#fff;font-weight:700;font-size:15px;padding:6px 12px;border-radius:8px;letter-spacing:-0.02em">Hilo</span>
+    <span style="background:{_WINE};color:#fff;font-weight:700;font-size:15px;padding:6px 12px;border-radius:8px;letter-spacing:-0.02em">Zumit</span>
   </div>
   {content}
   <div style="{_FOOTER_STYLE}">
     {footer_extra}
-    <br>Hilo · Agendamiento inteligente por WhatsApp
+    <br>Zumit · Agendamiento inteligente por WhatsApp
   </div>
 </div>
 </body>
@@ -104,7 +104,7 @@ class EmailService:
         </div>
         <p>Si necesitas cancelar o reagendar, escríbenos directamente por WhatsApp.</p>
         """
-        html = _base_template(content, "Este correo fue generado automáticamente por Hilo.")
+        html = _base_template(content, "Este correo fue generado automáticamente por Zumit.")
         return await cls._send(
             to=customer_email,
             subject=f"Cita confirmada en {business_name}",

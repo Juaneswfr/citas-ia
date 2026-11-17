@@ -9,7 +9,7 @@ import { canManageFinance } from "@/lib/nav";
 import { FollowupsSection } from "@/components/seguimiento/FollowupsSection";
 
 export const Route = createFileRoute("/_authenticated/whatsapp")({
-  head: () => ({ meta: [{ title: "WhatsApp · Hilo" }] }),
+  head: () => ({ meta: [{ title: "WhatsApp · Zumit" }] }),
   component: WhatsAppAgentPage,
 });
 

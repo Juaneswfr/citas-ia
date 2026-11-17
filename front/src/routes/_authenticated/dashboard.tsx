@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { displayNameOf } from '@/lib/display-name';
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format, parseISO, formatDistanceToNow } from "date-fns";
@@ -19,7 +20,7 @@ import type { CustomerOut } from "@/lib/types/api";
 import { ActionsPanel, InsightsCharts } from "@/components/dashboard/Insights";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  head: () => ({ meta: [{ title: "Inicio · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Inicio · Zumit" }] }),
   component: DashboardPage,
 });
 
@@ -304,7 +305,7 @@ function DashboardPage() {
   const activeCalendar = calendars.find(c => c.sync_status === 'active') ?? calendars[0] ?? null;
   const reviewConvs    = conversations.filter(c => c.needs_review);
 
-  const ownerName = me?.email?.split('@')[0] ?? '';
+  const ownerName = displayNameOf(me);
   const hour      = new Date().getHours();
   const greeting  = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
   const todayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es });

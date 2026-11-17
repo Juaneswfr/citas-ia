@@ -4,8 +4,8 @@ import { useState } from "react";
 export const Route = createFileRoute("/condiciones-del-servicio")({
   head: () => ({
     meta: [
-      { title: "Condiciones del Servicio · Hilo" },
-      { name: "description", content: "Lee los términos y condiciones que rigen el uso de la plataforma Hilo." },
+      { title: "Condiciones del Servicio · Zumit" },
+      { name: "description", content: "Lee los términos y condiciones que rigen el uso de la plataforma Zumit." },
     ],
   }),
   component: TermsPage,
@@ -67,7 +67,7 @@ function NavBar() {
               <circle cx="18" cy="21" r="1.4" fill="#fff" stroke="none" />
             </svg>
           </span>
-          <span className="l-brand-name">Hilo</span>
+          <span className="l-brand-name">Zumit</span>
         </Link>
         <div className="l-nav-cta">
           <Link className="btn btn-ghost btn-sm" to="/login">Iniciar sesión</Link>
@@ -95,7 +95,7 @@ function Footer() {
       <div className="l-container">
         <div className="foot-grid">
           <div className="foot-brand">
-            <span className="l-brand-name" style={{ color: '#fff', font: '800 21px/1 var(--font-serif)', letterSpacing: '-0.03em' }}>Hilo</span>
+            <span className="l-brand-name" style={{ color: '#fff', font: '800 21px/1 var(--font-serif)', letterSpacing: '-0.03em' }}>Zumit</span>
             <p className="foot-tag">Tu agenda vive en WhatsApp. El agente que agenda, reagenda y confirma por ti.</p>
           </div>
           <div className="foot-col">
@@ -150,14 +150,14 @@ function TermsPage() {
       <div className="l-container" style={{ maxWidth: 780, padding: '64px 28px 96px' }}>
 
         <p style={{ ...pStyle, font: '400 17px/1.65 var(--font-sans)', color: 'var(--ink-1)', marginBottom: 40, padding: '20px 24px', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)' }}>
-          Bienvenido a <strong>Hilo</strong>, operado por <strong>{COMPANY}</strong>. Al registrarte o usar cualquier parte de nuestro servicio disponible en <strong>{DOMAIN}</strong>, aceptas quedar vinculado por estas Condiciones del Servicio. Lee este documento detenidamente antes de usar la plataforma.
+          Bienvenido a <strong>Zumit</strong>, operado por <strong>{COMPANY}</strong>. Al registrarte o usar cualquier parte de nuestro servicio disponible en <strong>{DOMAIN}</strong>, aceptas quedar vinculado por estas Condiciones del Servicio. Lee este documento detenidamente antes de usar la plataforma.
         </p>
 
         {/* 1 */}
         <div style={sectionStyle}>
           <h2 style={h2Style}>1. Descripción del servicio</h2>
           <p style={pStyle}>
-            Hilo es una plataforma SaaS (Software como Servicio) que permite a negocios de servicios —especialmente barberías, salones de belleza y similares— automatizar el agendamiento de citas a través de WhatsApp mediante un agente de inteligencia artificial.
+            Zumit es una plataforma SaaS (Software como Servicio) que permite a negocios de servicios —especialmente barberías, salones de belleza y similares— automatizar el agendamiento de citas a través de WhatsApp mediante un agente de inteligencia artificial.
           </p>
           <p style={pStyle}>El servicio incluye, entre otros:</p>
           <ul style={ulStyle}>
@@ -175,7 +175,7 @@ function TermsPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>2. Aceptación de las condiciones</h2>
           <p style={pStyle}>
-            Al crear una cuenta, acceder o usar Hilo, declaras que:
+            Al crear una cuenta, acceder o usar Zumit, declaras que:
           </p>
           <ul style={ulStyle}>
             <li style={liStyle}>Tienes al menos 18 años y capacidad legal para celebrar contratos.</li>
@@ -195,7 +195,7 @@ function TermsPage() {
           <h2 style={h2Style}>3. Registro y cuenta</h2>
           <h3 style={h3Style}>3.1 Creación de cuenta</h3>
           <p style={pStyle}>
-            Para usar Hilo debes crear una cuenta con un correo electrónico válido y una contraseña segura. Cada cuenta corresponde a un único espacio de trabajo (workspace) vinculado a un negocio.
+            Para usar Zumit debes crear una cuenta con un correo electrónico válido y una contraseña segura. Cada cuenta corresponde a un único espacio de trabajo (workspace) vinculado a un negocio.
           </p>
           <h3 style={h3Style}>3.2 Seguridad de la cuenta</h3>
           <p style={pStyle}>
@@ -213,7 +213,7 @@ function TermsPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>4. Uso de WhatsApp Business API</h2>
           <p style={pStyle}>
-            Hilo utiliza la API oficial de WhatsApp Business de Meta. Al conectar tu número de WhatsApp, también aceptas los <a href="https://www.whatsapp.com/legal/business-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--wine)' }}>Términos de Servicio de WhatsApp Business</a> y las <a href="https://developers.facebook.com/policy/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--wine)' }}>Políticas de Plataforma de Meta</a>.
+            Zumit utiliza la API oficial de WhatsApp Business de Meta. Al conectar tu número de WhatsApp, también aceptas los <a href="https://www.whatsapp.com/legal/business-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--wine)' }}>Términos de Servicio de WhatsApp Business</a> y las <a href="https://developers.facebook.com/policy/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--wine)' }}>Políticas de Plataforma de Meta</a>.
           </p>
           <h3 style={h3Style}>4.1 Responsabilidades del usuario</h3>
           <ul style={ulStyle}>
@@ -235,7 +235,7 @@ function TermsPage() {
           <h2 style={h2Style}>5. Planes, precios y pagos</h2>
           <h3 style={h3Style}>5.1 Período de prueba</h3>
           <p style={pStyle}>
-            Hilo ofrece un período de prueba gratuito de 14 días sin necesidad de tarjeta de crédito. Al finalizar el período de prueba, deberás suscribirte a un plan de pago para continuar usando el servicio.
+            Zumit ofrece un período de prueba gratuito de 14 días sin necesidad de tarjeta de crédito. Al finalizar el período de prueba, deberás suscribirte a un plan de pago para continuar usando el servicio.
           </p>
           <h3 style={h3Style}>5.2 Facturación</h3>
           <p style={pStyle}>
@@ -243,7 +243,7 @@ function TermsPage() {
           </p>
           <h3 style={h3Style}>5.3 Reembolsos</h3>
           <p style={pStyle}>
-            Los pagos realizados no son reembolsables salvo que la ley aplicable lo exija o que Hilo haya incumplido materialmente el servicio. En caso de cancelación antes del fin del período facturado, el acceso continuará hasta el final de dicho período.
+            Los pagos realizados no son reembolsables salvo que la ley aplicable lo exija o que Zumit haya incumplido materialmente el servicio. En caso de cancelación antes del fin del período facturado, el acceso continuará hasta el final de dicho período.
           </p>
           <h3 style={h3Style}>5.4 Impuestos</h3>
           <p style={pStyle}>
@@ -256,12 +256,12 @@ function TermsPage() {
         {/* 6 */}
         <div style={sectionStyle}>
           <h2 style={h2Style}>6. Conducta del usuario y usos prohibidos</h2>
-          <p style={pStyle}>Al usar Hilo te comprometes a <strong>no</strong>:</p>
+          <p style={pStyle}>Al usar Zumit te comprometes a <strong>no</strong>:</p>
           <ul style={ulStyle}>
             <li style={liStyle}>Violar leyes o regulaciones aplicables, incluyendo las de protección de datos.</li>
             <li style={liStyle}>Usar el servicio para enviar mensajes de spam, phishing o cualquier comunicación no solicitada masiva.</li>
             <li style={liStyle}>Intentar acceder sin autorización a sistemas, cuentas o datos de otros usuarios.</li>
-            <li style={liStyle}>Realizar ingeniería inversa, descompilar o desensamblar el software de Hilo.</li>
+            <li style={liStyle}>Realizar ingeniería inversa, descompilar o desensamblar el software de Zumit.</li>
             <li style={liStyle}>Revender, sublicenciar o transferir el acceso al servicio a terceros sin autorización expresa.</li>
             <li style={liStyle}>Usar el servicio para actividades ilegales, fraudulentas o que perjudiquen a terceros.</li>
             <li style={liStyle}>Sobrecargar intencionalmente la infraestructura del servicio (ataques DoS/DDoS).</li>
@@ -274,9 +274,9 @@ function TermsPage() {
         {/* 7 */}
         <div style={sectionStyle}>
           <h2 style={h2Style}>7. Propiedad intelectual</h2>
-          <h3 style={h3Style}>7.1 Propiedad de Hilo</h3>
+          <h3 style={h3Style}>7.1 Propiedad de Zumit</h3>
           <p style={pStyle}>
-            Hilo y todo su contenido (software, diseño, logotipos, textos, gráficos) son propiedad exclusiva de {COMPANY} o sus licenciantes y están protegidos por las leyes de propiedad intelectual aplicables. Nada en estas Condiciones te transfiere propiedad sobre dichos elementos.
+            Zumit y todo su contenido (software, diseño, logotipos, textos, gráficos) son propiedad exclusiva de {COMPANY} o sus licenciantes y están protegidos por las leyes de propiedad intelectual aplicables. Nada en estas Condiciones te transfiere propiedad sobre dichos elementos.
           </p>
           <h3 style={h3Style}>7.2 Licencia de uso</h3>
           <p style={pStyle}>
@@ -284,7 +284,7 @@ function TermsPage() {
           </p>
           <h3 style={h3Style}>7.3 Contenido del usuario</h3>
           <p style={pStyle}>
-            Conservas la propiedad de los datos e información que introduces en Hilo (datos de tu negocio, servicios, información de clientes). Nos otorgas una licencia limitada para procesar dicha información únicamente con el fin de prestar el servicio.
+            Conservas la propiedad de los datos e información que introduces en Zumit (datos de tu negocio, servicios, información de clientes). Nos otorgas una licencia limitada para procesar dicha información únicamente con el fin de prestar el servicio.
           </p>
         </div>
 
@@ -294,7 +294,7 @@ function TermsPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>8. Disponibilidad y nivel de servicio</h2>
           <p style={pStyle}>
-            Hilo se presta "tal como está" y nos esforzamos por mantener una disponibilidad del 99,5% mensual, excluidos los mantenimientos programados. No garantizamos que el servicio sea ininterrumpido, libre de errores o que cumpla todos los requisitos específicos de tu negocio.
+            Zumit se presta "tal como está" y nos esforzamos por mantener una disponibilidad del 99,5% mensual, excluidos los mantenimientos programados. No garantizamos que el servicio sea ininterrumpido, libre de errores o que cumpla todos los requisitos específicos de tu negocio.
           </p>
           <p style={pStyle}>
             Podemos realizar mantenimientos programados con al menos 24 horas de aviso previo. En casos de emergencia, podemos interrumpir el servicio sin previo aviso si es necesario para proteger la seguridad o integridad del sistema.
@@ -336,7 +336,7 @@ function TermsPage() {
           <p style={pStyle}>
             Puedes cancelar tu cuenta en cualquier momento desde el panel de configuración o escribiendo a <a href={`mailto:${EMAIL_LEGAL}`} style={{ color: 'var(--wine)' }}>{EMAIL_LEGAL}</a>. La cancelación surte efecto al final del período facturado en curso.
           </p>
-          <h3 style={h3Style}>11.2 Terminación por Hilo</h3>
+          <h3 style={h3Style}>11.2 Terminación por Zumit</h3>
           <p style={pStyle}>
             Podemos suspender o cancelar tu cuenta con efecto inmediato si: (i) incumples estas Condiciones; (ii) realizas actividades fraudulentas o ilegales; (iii) violas las políticas de Meta; o (iv) no pagas las tarifas correspondientes.
           </p>
@@ -378,7 +378,7 @@ function TermsPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>14. Servicios de terceros</h2>
           <p style={pStyle}>
-            Hilo se integra con servicios de terceros (Meta/WhatsApp, Google Calendar, Supabase, Anthropic). Estas integraciones están sujetas a los términos y condiciones de dichos terceros. {COMPANY} no es responsable del funcionamiento, disponibilidad o cambios en los servicios de terceros.
+            Zumit se integra con servicios de terceros (Meta/WhatsApp, Google Calendar, Supabase, Anthropic). Estas integraciones están sujetas a los términos y condiciones de dichos terceros. {COMPANY} no es responsable del funcionamiento, disponibilidad o cambios en los servicios de terceros.
           </p>
         </div>
 

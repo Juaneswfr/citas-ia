@@ -1,6 +1,7 @@
 import { HiloMark } from '@/components/hilo/icons';
 import { Button, Dot } from '@/components/hilo/primitives';
 import { GlobalSearch } from './GlobalSearch';
+import { AlertsBell } from './AlertsBell';
 import styles from './TopBar.module.css';
 
 export interface StatusChip {
@@ -17,13 +18,15 @@ interface TopBarProps {
   title: string;
   onCompose: () => void;
   statusChips?: StatusChip[];
+  /** Alertas + pendientes sin atender; si es 0 no se pinta el punto. */
+  alertCount?: number;
 }
 
 /**
  * Barra superior. La versión móvil se decide por CSS (media query a 880px), no
  * por JS: así el servidor y el cliente pintan lo mismo y no hay salto al cargar.
  */
-export function TopBar({ title, onCompose, statusChips = [] }: TopBarProps) {
+export function TopBar({ title, onCompose, statusChips = [], alertCount = 0 }: TopBarProps) {
   return (
     <header className={styles.topbar}>
       <span className={styles.topbar__mark}><HiloMark size={28} /></span>
@@ -47,9 +50,7 @@ export function TopBar({ title, onCompose, statusChips = [] }: TopBarProps) {
           </span>
         ))}
 
-        <span className={styles['topbar__only-desktop']}>
-          <Button variant="secondary" size="sm" icon="bell" aria-label="Alertas" style={{ padding: 8 }} />
-        </span>
+        <span className={styles['topbar__only-desktop']}><AlertsBell count={alertCount} /></span>
         <Button variant="primary" size="sm" icon="plus" aria-label="Nueva cita" onClick={onCompose} className={styles.topbar__compose}>
           <span className={styles['topbar__only-desktop']}>Nueva cita</span>
         </Button>

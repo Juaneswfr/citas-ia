@@ -12,7 +12,7 @@ import { createCustomer } from "@/lib/api/conversations";
 import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/_authenticated/clients")({
-  head: () => ({ meta: [{ title: "Clientes · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Clientes · Zumit" }] }),
   // ?client=<id>: lo usa el buscador global para abrir directamente la ficha de un cliente.
   validateSearch: (search: Record<string, unknown>): { client?: string } =>
     typeof search.client === 'string' && search.client ? { client: search.client } : {},

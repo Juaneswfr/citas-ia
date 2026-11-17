@@ -7,7 +7,7 @@ Principio IX: Cancelación y bloqueos requieren confirmación explícita del due
 Principio XI: Análisis de seguridad aplicado a cada endpoint.
 """
 import logging
-from datetime import date
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -302,11 +302,18 @@ async def update_appointment(
     data = body.model_dump(exclude_none=True, exclude={"start_at"})
     if data:
         current = (await db.execute(
-            text("SELECT status FROM appointments WHERE id = :appointment_id AND workspace_id = :workspace_id"),
+            text("SELECT status, start_at FROM appointments WHERE id = :appointment_id AND workspace_id = :workspace_id"),
             {"appointment_id": appointment_id, "workspace_id": workspace_id},
         )).mappings().fetchone()
         if not current:
             raise HTTPException(status_code=404, detail="Cita no encontrada.")
+
+        # «No asistió» solo para citas en pie cuyo horario ya empezó.
+        if body.status == "noshow":
+            if current["status"] not in ("pending", "confirmed"):
+                raise HTTPException(status_code=422, detail="Solo una cita pendiente o confirmada puede marcarse como no asistió.")
+            if current["start_at"] > datetime.now(timezone.utc):
+                raise HTTPException(status_code=422, detail="La cita aún no ha llegado: no se puede marcar como no asistió.")
 
         set_clause = ", ".join(f"{f} = :{f}" for f in data.keys())
         params = {"appointment_id": appointment_id, "workspace_id": workspace_id, **data}

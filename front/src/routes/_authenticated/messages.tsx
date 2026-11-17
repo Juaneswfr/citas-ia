@@ -15,7 +15,7 @@ import type { ConversationOut, MessageOut } from "@/lib/types/api";
 import type { HiloClient } from "@/lib/hilo-data";
 
 export const Route = createFileRoute("/_authenticated/messages")({
-  head: () => ({ meta: [{ title: "Mensajes · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Mensajes · Zumit" }] }),
   component: MessagesPage,
 });
 
@@ -128,7 +128,7 @@ function messageOrigin(msg: MessageOut): { icon: string; label: string } | null 
   if (msg.sender_type === 'agent') return { icon: 'sparkle', label: 'Agente' };
   if (msg.sender_type === 'system') return { icon: 'bolt', label: 'Automático' };
   if (msg.sent_via === 'business_app') return { icon: 'phone', label: 'Desde el celular' };
-  if (msg.sent_via === 'hilo') return { icon: 'thread', label: 'Desde Hilo' };
+  if (msg.sent_via === 'hilo') return { icon: 'thread', label: 'Desde Zumit' };
   return null;
 }
 

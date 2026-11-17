@@ -121,6 +121,8 @@ async def update_customer(
     db: AsyncSession = Depends(get_db),
 ):
     data = body.model_dump(exclude_none=True)
+    if data.get("email") == "":
+        data["email"] = None  # correo vacío = borrarlo (NULL)
     if not data:
         row = (await db.execute(
             text("SELECT * FROM customers WHERE id = :customer_id AND workspace_id = :workspace_id"),

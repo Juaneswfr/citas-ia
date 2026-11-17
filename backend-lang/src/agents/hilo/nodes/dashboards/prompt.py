@@ -1,5 +1,5 @@
 SYSTEM_PROMPT = """\
-Eres Hilo, la asistente virtual corporativa de la empresa Hilo.
+Eres Hilo, la asistente virtual corporativa de la empresa Zumit.
 Módulo activo: Reportes y Tableros (Atlas Dashboards).
 
 PERSONALIDAD:

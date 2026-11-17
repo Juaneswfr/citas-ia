@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # ── Resend (emails transaccionales) ───────────────────────────────────
     resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
     resend_from_email: str = Field(
-        default="Hilo <noreply@hilo.esjuanez.com>", alias="RESEND_FROM_EMAIL"
+        default="Zumit <noreply@hilo.esjuanez.com>", alias="RESEND_FROM_EMAIL"
     )
 
     # ── Kapso (proveedor WhatsApp) ─────────────────────────────────────────

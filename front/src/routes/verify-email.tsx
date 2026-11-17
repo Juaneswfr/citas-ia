@@ -2,7 +2,7 @@ import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 
 export const Route = createFileRoute("/verify-email")({
-  head: () => ({ meta: [{ title: "Hilo · Verifica tu correo" }] }),
+  head: () => ({ meta: [{ title: "Zumit · Verifica tu correo" }] }),
   validateSearch: (s: Record<string, unknown>) => ({
     email: (s.email as string | undefined) ?? '',
   }),

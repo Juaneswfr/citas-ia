@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createFileRoute, Outlet, redirect, useNavigate, useRouterState } from '@tanstack/react-router';
+import { displayNameOf } from '@/lib/display-name';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { listChannels, listCalendars, listSandboxSessions } from '@/lib/api/channels';
@@ -7,6 +8,8 @@ import { listServices } from '@/lib/api/services';
 import { getAgentConfig, getAgentHours } from '@/lib/api/agent';
 import { countAgentAlerts } from '@/lib/api/alerts';
 import { usePendingReceiptCount } from '@/hooks/use-receipts';
+import { useDashboardInsights } from '@/hooks/use-dashboard-insights';
+import { actionItems } from '@/lib/dashboard-insights';
 import { useWorkspace } from '@/hooks/use-workspace';
 import type { AgentHoursOut } from '@/lib/types/api';
 import { PATH_TO_ID, TITLES } from '@/lib/nav';
@@ -45,7 +48,7 @@ function PanelLayout() {
 
   const activeId = PATH_TO_ID[location.pathname] || 'inicio';
   const isOnboarding = location.pathname === '/onboarding';
-  const title = TITLES[activeId] || 'Hilo';
+  const title = TITLES[activeId] || 'Zumit';
 
   const { data: workspace } = useWorkspace();
 
@@ -91,7 +94,12 @@ function PanelLayout() {
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
-  const alertCount = alertCountData?.count ?? 0;
+  // «Para hacer hoy» también cuenta como alerta (misma consulta que el dashboard).
+  const { data: insights } = useDashboardInsights();
+  const todos = insights ? actionItems(insights.actions) : [];
+  const alertCount = (alertCountData?.count ?? 0) + todos.length;
+  // Los comprobantes ya se cuentan aparte en «Más»; no sumarlos dos veces.
+  const todoReceipts = todos.some((t) => t.key === 'receipts_pending') ? 1 : 0;
   const receiptCount = usePendingReceiptCount();
 
   const { data: rawSandbox } = useQuery({
@@ -164,7 +172,7 @@ function PanelLayout() {
   };
 
   const businessName  = workspace?.name ?? '';
-  const ownerName     = me?.email?.split('@')[0] ?? '';
+  const ownerName     = displayNameOf(me);
   const ownerInitials = ownerName.slice(0, 2).toUpperCase();
   const ownerRole     = me?.role ?? '';
 
@@ -199,7 +207,7 @@ function PanelLayout() {
         <Sidebar {...sidebarProps} />
       </div>
       <div className={styles.panel__content}>
-        <TopBar title={title} onCompose={() => nav('/agenda')} statusChips={statusChips} />
+        <TopBar title={title} onCompose={() => nav('/agenda')} statusChips={statusChips} alertCount={alertCount} />
         <main className={styles.panel__main}>
           <Outlet />
         </main>
@@ -207,7 +215,7 @@ function PanelLayout() {
           active={activeId}
           onNav={nav}
           onMore={() => setMenuOpen(true)}
-          moreCount={alertCount + receiptCount + (onboardStepsLeft > 0 ? 1 : 0)}
+          moreCount={alertCount - todoReceipts + receiptCount + (onboardStepsLeft > 0 ? 1 : 0)}
         />
       </div>
       <MobileMenu open={menuOpen} onOpenChange={setMenuOpen} {...sidebarProps} />

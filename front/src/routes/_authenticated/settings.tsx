@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
+import { displayNameOf } from '@/lib/display-name';
+import { updateMyName } from '@/lib/api/auth';
 import { useTypography } from "@/lib/typography-context";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -14,7 +16,7 @@ import { getBusinessHours, updateBusinessHours, listMembers } from "@/lib/api/wo
 import type { ChannelOut, CalendarOut, WorkspaceOut, BusinessHoursOut } from "@/lib/types/api";
 
 export const Route = createFileRoute("/_authenticated/settings")({
-  head: () => ({ meta: [{ title: "Ajustes · Hilo" }] }),
+  head: () => ({ meta: [{ title: "Ajustes · Zumit" }] }),
   component: SettingsPage,
 });
 
@@ -577,11 +579,30 @@ function BusinessHoursSection({ workspaceId }: { workspaceId: string }) {
 // ── Página ────────────────────────────────────────────────────────────────────
 
 function SettingsPage() {
-  const { me } = useAuth();
+  const { me, refreshMe } = useAuth();
   const qc = useQueryClient();
   const [bizName, setBizName] = useState('');
   const [saving, setSaving] = useState(false);
-  const displayName = me?.email?.split('@')[0] ?? '';
+  const displayName = displayNameOf(me);
+  const canEditBiz = ['workspace_owner', 'manager', 'super_admin'].includes(me?.role ?? '');
+  const [myName, setMyName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  useEffect(() => { setMyName(displayName); }, [displayName]);
+
+  const handleSaveName = async () => {
+    const next = myName.trim();
+    if (!next || next === displayName) return;
+    setSavingName(true);
+    try {
+      await updateMyName(next);
+      await refreshMe();
+      toast.success('Tu nombre se actualizó.');
+    } catch (err: any) {
+      toast.error(err?.detail ?? 'No se pudo guardar tu nombre.');
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   // Manejar retorno desde OAuth de Google Calendar
   useEffect(() => {
@@ -642,8 +663,19 @@ function SettingsPage() {
       {/* Cuenta */}
       <SettingsCard icon="user" title="Cuenta" description="Tu información de usuario y workspace.">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))', gap: 14 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={labelStyle}>Nombre</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={myName} maxLength={120} onChange={e => setMyName(e.target.value)}
+                     onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); }}
+                     placeholder="Tu nombre" style={inputStyle} />
+              <Button variant="primary" size="sm" onClick={handleSaveName}
+                      disabled={savingName || !myName.trim() || myName.trim() === displayName}>
+                {savingName ? 'Guardando…' : 'Guardar'}
+              </Button>
+            </div>
+          </label>
           {[
-            { label: 'Nombre', value: displayName },
             { label: 'Correo', value: me?.email ?? '—' },
             { label: 'Rol', value: me?.role ? roleLabel(me.role) : '—' },
           ].map(f => (
@@ -660,7 +692,7 @@ function SettingsPage() {
       </SettingsCard>
 
       {/* Negocio */}
-      <SettingsCard icon="gear" title="Negocio" description="Nombre visible en mensajes del agente.">
+      <SettingsCard icon="gear" title="Negocio" description={canEditBiz ? 'Nombre visible en mensajes del agente y en el panel.' : 'Solo el dueño o un administrador puede cambiarlo.'}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={labelStyle}>Nombre del negocio</span>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -668,9 +700,12 @@ function SettingsPage() {
               value={bizName}
               onChange={e => setBizName(e.target.value)}
               placeholder="Ej: Navaja & Tinta"
+              maxLength={120}
+              disabled={!canEditBiz}
               style={inputStyle}
             />
-            <Button variant="primary" size="sm" onClick={handleSaveBiz} disabled={saving}>
+            <Button variant="primary" size="sm" onClick={handleSaveBiz}
+                    disabled={saving || !canEditBiz || !bizName.trim() || bizName.trim() === workspace?.name}>
               {saving ? 'Guardando…' : 'Guardar'}
             </Button>
           </div>

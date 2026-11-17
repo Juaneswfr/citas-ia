@@ -133,7 +133,7 @@ export function actionItems(a: DashboardInsights['actions']): ActionItem[] {
   if (a.to_complete) {
     items.push({ key: 'to_complete', count: a.to_complete, urgent: true,
       label: `${plural(a.to_complete, 'cita pasada', 'citas pasadas')} sin marcar como completada${a.to_complete === 1 ? '' : 's'}`,
-      hint: 'Sin completarlas no se registra la venta ni el cobro.', cta: 'Cerrarlas' });
+      hint: 'Márcalas como completadas (para registrar la venta) o como «No asistió».', cta: 'Cerrarlas' });
   }
   if (a.receivable_orders) {
     items.push({ key: 'receivable', count: a.receivable_orders, urgent: true, amountCop: a.receivable_cop ?? undefined,

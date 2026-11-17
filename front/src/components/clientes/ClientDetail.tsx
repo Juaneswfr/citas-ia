@@ -48,8 +48,50 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Correo del cliente, editable en línea. Vacío lo borra. */
+function EmailFact({ email, onSave, saving }: {
+  email: string | null; onSave: (email: string, done: () => void) => void; saving: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(email ?? '');
+  const [error, setError] = useState('');
+
+  const submit = () => {
+    const next = value.trim();
+    if (next && !EMAIL_RE.test(next)) { setError('Escribe un correo válido.'); return; }
+    setError('');
+    onSave(next, () => setEditing(false));
+  };
+
+  return (
+    <div className={styles.fact}>
+      <span className={styles.fact__label}>Correo</span>
+      {editing ? (
+        <>
+          <div className={styles.fact__edit}>
+            <input className={styles.fact__input} type="email" value={value} autoFocus placeholder="correo@ejemplo.com"
+                   onChange={(e) => setValue(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setEditing(false); setError(''); } }} />
+            <Button variant="primary" size="sm" disabled={saving} onClick={submit}>Ok</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setValue(email ?? ''); setError(''); }}>×</Button>
+          </div>
+          {error && <span className={styles.fact__error}>{error}</span>}
+        </>
+      ) : (
+        <button type="button" className={styles.fact__btn} onClick={() => { setValue(email ?? ''); setEditing(true); }}>
+          <span className={styles.fact__value}>{email ?? 'Agregar correo'}</span>
+          <Icon name="edit" size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SummaryTab({ c, summary }: { c: HiloClient; summary: CustomerSummary }) {
   const updateCustomer = useUpdateCustomer(c.id);
+  const [email, setEmail] = useState(summary.email);
   const terms = useBusinessTerms();
   const [note, setNote] = useState(c.note);
   const [noteSaved, setNoteSaved] = useState(true);
@@ -72,7 +114,10 @@ function SummaryTab({ c, summary }: { c: HiloClient; summary: CustomerSummary })
         <Fact label={`${terms.Staff} favorito`} value={stats.favorite_barber ?? '—'} />
         <Fact label="Canceladas / no asistió" value={`${stats.cancelled} / ${stats.no_show}`} />
         <Fact label="Cliente desde" value={dateOnly(summary.created_at)} />
-        <Fact label="Correo" value={summary.email ?? '—'} />
+        <EmailFact email={email} saving={updateCustomer.isPending}
+                   onSave={(next, done) => updateCustomer.mutate({ email: next }, {
+                     onSuccess: () => { setEmail(next || null); done(); },
+                   })} />
         <Fact label="Canal de origen" value={summary.source_channel ?? '—'} />
       </div>
 
@@ -103,11 +148,34 @@ function SummaryTab({ c, summary }: { c: HiloClient; summary: CustomerSummary })
   );
 }
 
+type AptFilter = 'all' | 'completed' | 'cancelled' | 'noshow';
+
 function AppointmentsTab({ summary, onOpen }: { summary: CustomerSummary; onOpen: (id: string) => void }) {
+  const [filter, setFilter] = useState<AptFilter>('all');
   if (summary.appointments.length === 0) return <div className={styles.client__empty}>Sin citas registradas.</div>;
+
+  const count = (s: string) => summary.appointments.filter((a) => a.status === s).length;
+  const filters: { id: AptFilter; label: string; n: number }[] = [
+    { id: 'all', label: 'Todas', n: summary.appointments.length },
+    { id: 'completed', label: 'Completadas', n: count('completed') },
+    { id: 'cancelled', label: 'Canceladas', n: count('cancelled') },
+    { id: 'noshow', label: 'No asistió', n: count('noshow') },
+  ];
+  const shown = filter === 'all' ? summary.appointments : summary.appointments.filter((a) => a.status === filter);
+
   return (
     <div className={styles.rows}>
-      {summary.appointments.map((a) => (
+      <div className={styles.filters} role="group" aria-label="Filtrar citas">
+        {filters.map((f) => (
+          <button key={f.id} type="button" aria-pressed={filter === f.id}
+                  className={`${styles.filter} ${filter === f.id ? styles['filter--active'] : ''}`}
+                  onClick={() => setFilter(f.id)}>
+            {f.label} ({f.n})
+          </button>
+        ))}
+      </div>
+      {shown.length === 0 && <div className={styles.client__empty}>No hay citas con este estado.</div>}
+      {shown.map((a) => (
         <button key={a.id} type="button" className={styles.row} onClick={() => onOpen(a.id)}>
           <div className={styles.row__main}>
             <span className={styles.row__title}>{a.service_name ?? 'Servicio'}{a.is_home_service ? ' · a domicilio' : ''}</span>

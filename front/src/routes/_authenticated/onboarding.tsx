@@ -22,7 +22,7 @@ import type { BusinessTypeId } from '@/lib/business-types';
 import s from '@/components/onboarding/onboarding.module.css';
 
 export const Route = createFileRoute('/_authenticated/onboarding')({
-  head: () => ({ meta: [{ title: 'Configuración inicial · Hilo' }] }),
+  head: () => ({ meta: [{ title: 'Configuración inicial · Zumit' }] }),
   component: OnboardingPage,
 });
 
@@ -222,7 +222,7 @@ function OnboardingPage() {
         <div className={`${s.wizard__brand} ${isMobile ? s['wizard__brand--mobile'] : ''}`}>
           <HiloMark size={32} />
           <div>
-            <div className={s['wizard__brand-name']}>Hilo</div>
+            <div className={s['wizard__brand-name']}>Zumit</div>
             <div className={s['wizard__brand-sub']}>Configuración inicial</div>
           </div>
         </div>

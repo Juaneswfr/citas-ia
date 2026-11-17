@@ -14,7 +14,7 @@ from core.database import get_db
 from core.oauth_state import sign_state, verify_state
 from core.security import create_access_token, decode_token, get_current_user, require_workspace_access
 from schemas.auth import (
-    GoogleTicketRequest, GoogleTicketResponse, LoginRequest, RefreshRequest, RegisterRequest, TokenResponse,
+    GoogleTicketRequest, GoogleTicketResponse, LoginRequest, ProfileUpdate, RefreshRequest, RegisterRequest, TokenResponse,
 )
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -179,13 +179,34 @@ async def refresh(body: RefreshRequest):
 
 
 @router.get("/me", summary="Datos del usuario autenticado actual")
-async def me(current_user: dict = Depends(get_current_user)):
+async def me(current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    name = (await db.execute(
+        text("SELECT name FROM users WHERE id = :id"), {"id": current_user.get("sub")},
+    )).scalar_one_or_none()
     return {
         "user_id": current_user.get("sub"),
         "email": current_user.get("email"),
+        "name": name,
         "role": current_user.get("role"),
         "workspace_id": current_user.get("workspace_id"),
     }
+
+
+@router.patch("/me", summary="Cambiar el nombre de mi cuenta")
+async def update_me(
+    body: ProfileUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Solo el nombre, y solo el de quien tiene la sesión: nada llega desde la URL.
+    row = (await db.execute(
+        text("UPDATE users SET name = :name WHERE id = :id RETURNING name"),
+        {"name": body.name, "id": current_user.get("sub")},
+    )).mappings().fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    await db.commit()
+    return {"name": row["name"]}
 
 
 GOOGLE_SCOPES = "openid email profile https://www.googleapis.com/auth/calendar"
