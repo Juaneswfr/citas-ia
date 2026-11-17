@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from core.database import AsyncSessionLocal
+from services import agent_guard
 from sqlalchemy import text
 
 log = logging.getLogger(__name__)
@@ -112,6 +113,17 @@ class AgentService:
                                         provider_message_id=sent.message_id or None,
                                     )
                         return None
+
+        # Freno: una conversación cíclica o interminable quema tokens sin llegar a nada. Se revisa antes
+        # de llamar al modelo; si lo es, el agente se pausa con este cliente y avisa al equipo.
+        async with AsyncSessionLocal() as db:
+            loop_detail = agent_guard.detect_loop(
+                await agent_guard.recent_messages(db, workspace_id, conversation["id"]))
+            if loop_detail:
+                await agent_guard.pause_agent(db, conversation, loop_detail)
+        if loop_detail:
+            await AgentService._hand_off(conversation)
+            return None
 
         # Crear registro agent_run (Principio V)
         run_id = None
@@ -230,6 +242,31 @@ class AgentService:
                     await db.commit()
 
             return None
+
+    @staticmethod
+    async def _hand_off(conversation: dict) -> None:
+        """Le dice al cliente que una persona le escribirá. Nunca lanza: la pausa ya quedó guardada."""
+        try:
+            context = await AgentService._build_context(conversation["workspace_id"], conversation)
+            phone = context.get("customer_phone")
+            if not phone:
+                return
+            from services.whatsapp_service import WhatsAppService
+            from services.conversation_service import ConversationService
+            sent = await WhatsAppService.send_text(
+                to=phone, text=agent_guard.HANDOFF,
+                phone_number_id=context.get("channel", {}).get("phone_number_id"),
+                provider=context.get("channel", {}).get("provider"),
+            )
+            if sent.ok:
+                await ConversationService.save_message(
+                    conversation_id=conversation["id"], workspace_id=conversation["workspace_id"],
+                    channel_id=conversation.get("channel_id"), customer_id=conversation.get("customer_id"),
+                    direction="outbound", sender_type="system", content=agent_guard.HANDOFF,
+                    provider_message_id=sent.message_id or None,
+                )
+        except Exception as exc:
+            log.warning("[agent] no se pudo avisar el traspaso | conv=%s | err=%s", conversation["id"], type(exc).__name__)
 
     @staticmethod
     async def _build_context(workspace_id: str, conversation: dict) -> dict:

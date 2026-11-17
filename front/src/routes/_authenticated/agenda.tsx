@@ -1,24 +1,34 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import { startOfWeek, endOfWeek, addDays, addWeeks, addMonths, format, isSameMonth, isSameWeek } from 'date-fns';
+import { startOfWeek, endOfWeek, addDays, addWeeks, addMonths, format, isSameMonth, isSameWeek, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '@/lib/auth-context';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Avatar, Segmented } from '@/components/hilo/primitives';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useWeekAppointments } from '@/hooks/use-appointments';
+import { useBlocks } from '@/hooks/use-blocks';
 import { useTeamMembers } from '@/hooks/use-team';
 import { listCalendars, listChannels } from '@/lib/api/channels';
+import { blockViews, type BlockView } from '@/lib/blocks';
+import { canManageFinance } from '@/lib/nav';
 import { WeekCalendar } from '@/components/agenda/WeekCalendar';
 import { DayView } from '@/components/agenda/DayView';
 import { MonthView } from '@/components/agenda/MonthView';
 import { AppointmentDialog } from '@/components/agenda/AppointmentDialog';
 import { AppointmentDetail } from '@/components/agenda/AppointmentDetail';
+import { BlockDialog } from '@/components/agenda/BlockDialog';
+import { BlockDetail } from '@/components/agenda/BlockDetail';
 import styles from './agenda.module.css';
 
 export const Route = createFileRoute('/_authenticated/agenda')({
   head: () => ({ meta: [{ title: 'Agenda · Hilo' }] }),
+  // ?date=YYYY-MM-DD&cita=<id>: lo usan el buscador global y el historial para abrir una cita en su día.
+  validateSearch: (search: Record<string, unknown>): { date?: string; cita?: string } => ({
+    ...(typeof search.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(search.date) ? { date: search.date } : {}),
+    ...(typeof search.cita === 'string' && search.cita ? { cita: search.cita } : {}),
+  }),
   component: AgendaPage,
 });
 
@@ -26,8 +36,9 @@ const HUES = ['clay', 'wine', 'mustard', 'steel', 'sage', 'plum', 'teal'];
 const memberHue = (id: string) => HUES[id.charCodeAt(0) % HUES.length];
 
 function AgendaPage() {
-  const { workspaceId } = useAuth();
+  const { workspaceId, role } = useAuth();
   const isMobile = useIsMobile();
+  const canBlock = canManageFinance(role); // mismo permiso que el backend: manager o superior
 
   // En el teléfono la semana no cabe: se abre en la vista de día (la semana sigue disponible con scroll).
   const [view,       setView]       = useState<'day' | 'week' | 'month'>(() =>
@@ -37,6 +48,18 @@ function AgendaPage() {
   const [slotTime,   setSlotTime]   = useState<string | undefined>();
   const [anchor,     setAnchor]     = useState(() => new Date());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [selectedBlock, setSelectedBlock] = useState<BlockView | null>(null);
+
+  // Llegó con ?date / ?cita: se muestra ese día, se abre la cita y se limpia el parámetro para poder repetirlo.
+  const { date: wantedDate, cita: wantedCita } = Route.useSearch();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!wantedDate && !wantedCita) return;
+    if (wantedDate) { setAnchor(parseISO(wantedDate)); setView('day'); }
+    if (wantedCita) setSelectedId(wantedCita);
+    navigate({ to: '/agenda', search: {}, replace: true });
+  }, [wantedDate, wantedCita]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: team = [] } = useTeamMembers();
 
@@ -82,7 +105,18 @@ function AgendaPage() {
     if (weekError) toast.error('No se pudo cargar la agenda semanal.');
   }, [weekError]);
 
-  const hasCalendar = calendars.some(c => c.sync_status === 'active');
+  // La semana de `anchor` siempre contiene el día que se ve, así que sirve para la vista de día y la de semana.
+  const { data: blocks = [] } = useBlocks({
+    from_date: format(weekStart, 'yyyy-MM-dd'),
+    to_date:   format(weekEnd, 'yyyy-MM-dd'),
+  });
+
+  const activeCalendars = calendars.filter(c => c.sync_status === 'active');
+  const hasCalendar = activeCalendars.length > 0;
+  const blockList = useMemo(
+    () => blockViews(blocks, new Map(calendars.map(c => [c.id, c.member_name ?? c.name])), activeCalendars.length),
+    [blocks, calendars], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const hasChannel  = channels.some(c => c.status === 'active');
 
   const openNewCita = (date?: string, time?: string) => {
@@ -103,6 +137,14 @@ function AgendaPage() {
 
       {selectedId && <AppointmentDetail appointmentId={selectedId} onClose={() => setSelectedId(null)} />}
 
+      <BlockDialog
+        open={blockDialogOpen}
+        onClose={() => setBlockDialogOpen(false)}
+        initialDate={anchorKey}
+        calendars={activeCalendars}
+      />
+      {selectedBlock && <BlockDetail block={selectedBlock} canManage={canBlock} onClose={() => setSelectedBlock(null)} />}
+
       {/* ── Toolbar ── */}
       <div className={styles['agenda-page__toolbar']}>
         <div className={styles['agenda-page__nav']}>
@@ -117,8 +159,11 @@ function AgendaPage() {
             value={view}
             onChange={v => setView(v as 'day' | 'week' | 'month')}
           />
-          {!isMobile && (
-            <Button variant="secondary" size="sm" icon="block">Bloquear</Button>
+          {canBlock && (
+            <Button variant="secondary" size="sm" icon="block" aria-label="Bloquear horario"
+                    onClick={() => setBlockDialogOpen(true)}>
+              {isMobile ? '' : 'Bloquear'}
+            </Button>
           )}
           <Button variant="primary" size="sm" icon="plus" onClick={() => openNewCita()}>
             {isMobile ? '' : 'Nueva cita'}
@@ -155,7 +200,8 @@ function AgendaPage() {
 
       {/* ── Views ── */}
       {view === 'day' && (
-        <DayView date={anchor} onNewCita={(date) => openNewCita(date)} onEventClick={setSelectedId} />
+        <DayView date={anchor} onNewCita={(date) => openNewCita(date)} onEventClick={setSelectedId}
+                 blocks={blockList} onBlockClick={setSelectedBlock} />
       )}
       {view === 'week' && (
         <div className={styles['agenda-page__scroll']}>
@@ -166,6 +212,8 @@ function AgendaPage() {
             isLoading={weekLoading}
             onSlotClick={(date, time) => openNewCita(date, time)}
             onEventClick={setSelectedId}
+            blocks={blockList}
+            onBlockClick={setSelectedBlock}
           />
         </div>
       )}

@@ -30,6 +30,9 @@ from api.routes.accounting_files import router as accounting_files_router
 from api.routes.receipts import router as receipts_router
 from api.routes.followups import router as followups_router
 from api.routes.admin import router as admin_router
+from api.routes.search import router as search_router
+from api.routes.dashboard import router as dashboard_router
+from api.routes.appointment_history import router as appointment_history_router
 
 # Sin esto el logger raíz queda en WARNING y sin formato: los `log.info` del agente, de Kapso y de los
 # webhooks («enviado», «skip: agente pausado»…) nunca llegaban a `docker compose logs`.
@@ -102,6 +105,9 @@ app.include_router(accounting_files_router)
 app.include_router(receipts_router)
 app.include_router(followups_router)
 app.include_router(admin_router)
+app.include_router(search_router)
+app.include_router(dashboard_router)
+app.include_router(appointment_history_router)
 
 
 @app.get("/", tags=["health"])

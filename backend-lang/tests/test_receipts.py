@@ -134,7 +134,8 @@ async def test_parse_message(msg, expected):
 def chat(monkeypatch):
     """handle_kapso_message sin BD ni red; registra respuestas, mensajes al agente y acciones."""
     log = SimpleNamespace(replies=[], agent=[], saved=[], confirmed=[], opt_outs=[],
-                          ingest={"outcome": "receipt", "amount_cop": 25000}, confirm_ok=True)
+                          ingest={"outcome": "receipt", "amount_cop": 25000}, confirm_ok=True,
+                          last_outbound=None)
 
     async def find_or_create(customer_phone, phone_number_id):
         return {"id": "conv-1", "workspace_id": "ws-1", "channel_id": "ch-1", "customer_id": "c-1"}
@@ -148,6 +149,9 @@ def chat(monkeypatch):
 
     async def reply(conversation, body):
         log.replies.append(body)
+
+    async def last_outbound(conversation):
+        return log.last_outbound
 
     async def ingest(**k):
         return log.ingest
@@ -163,6 +167,7 @@ def chat(monkeypatch):
     monkeypatch.setattr(inbound.ConversationService, "save_message", save_message)
     monkeypatch.setattr(inbound.AgentService, "run", run)
     monkeypatch.setattr(inbound, "_reply", reply)
+    monkeypatch.setattr(inbound, "_last_outbound", last_outbound)
     monkeypatch.setattr(inbound.receipt_service, "ingest", ingest)
     monkeypatch.setattr(inbound.followup_service, "confirm_appointment", confirm)
     monkeypatch.setattr(inbound.followup_service, "set_marketing_opt_out", opt_out)
@@ -198,6 +203,31 @@ async def test_non_receipt_image(chat):
 async def test_audio_gets_only_text_notice(chat):
     await inbound.handle_kapso_message(_item({"type": "audio", "audio": {"id": "A"}}))
     assert chat.replies == [inbound.ONLY_TEXT] and chat.saved == [("inbound", "[audio]", "audio")]
+
+
+async def test_video_gets_its_own_notice_and_never_reaches_the_agent(chat):
+    await inbound.handle_kapso_message(_item({"type": "video", "video": {"id": "V"}}))
+    assert chat.saved == [("inbound", "[video]", "video")]
+    assert chat.replies == [inbound.NO_VIDEO] and "videos" in inbound.NO_VIDEO and chat.agent == []
+
+
+@pytest.mark.parametrize("kind,label", [("sticker", "[sticker]"), ("location", "[ubicación]"), ("contacts", "[contacto]")])
+async def test_sticker_location_and_contact_are_saved_but_get_no_reply(chat, kind, label):
+    await inbound.handle_kapso_message(_item({"type": kind, kind: {"id": "X"}}))
+    assert chat.saved == [("inbound", label, kind)]  # el equipo lo ve en el chat
+    assert chat.replies == [] and chat.agent == []   # y no se responde ni se llama al agente
+
+
+@pytest.mark.parametrize("kind,notice", [("audio", inbound.ONLY_TEXT), ("video", inbound.NO_VIDEO)])
+async def test_the_fixed_notice_is_not_repeated_back_to_back(chat, kind, notice):
+    await inbound.handle_kapso_message(_item({"type": kind, kind: {"id": "A"}}))
+    assert chat.replies == [notice]
+    chat.last_outbound = notice  # ya fue lo último que se le envió: 5 audios seguidos no dan 5 avisos
+    await inbound.handle_kapso_message(_item({"type": kind, kind: {"id": "B"}}))
+    assert chat.replies == [notice] and len(chat.saved) == 2  # ambos quedan guardados, solo un aviso
+    chat.last_outbound = "Hola, ¿qué servicio quieres?"  # después de otra respuesta, el aviso vuelve a salir
+    await inbound.handle_kapso_message(_item({"type": kind, kind: {"id": "C"}}))
+    assert chat.replies == [notice, notice]
 
 
 async def test_confirm_button_marks_appointment(chat):

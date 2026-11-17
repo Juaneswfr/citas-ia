@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useRef, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Icon } from "@/components/hilo/icons";
@@ -10,6 +10,9 @@ import type { ServiceUpdate, ServiceCreate } from "@/lib/types/api";
 
 export const Route = createFileRoute("/_authenticated/services")({
   head: () => ({ meta: [{ title: "Servicios · Hilo" }] }),
+  // ?service=<id>: lo usa el buscador global para abrir directamente la edición de un servicio.
+  validateSearch: (search: Record<string, unknown>): { service?: string } =>
+    typeof search.service === 'string' && search.service ? { service: search.service } : {},
   component: ServicesPage,
 });
 
@@ -205,6 +208,16 @@ function ServicesPage() {
   useEffect(() => {
     if (isError) toast.error('No se pudieron cargar los servicios. Verifica tu conexión.');
   }, [isError]);
+
+  // Llegó desde el buscador global: se abre ese servicio y se limpia el parámetro para poder repetir la búsqueda.
+  const { service: wanted } = Route.useSearch();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!wanted || services.length === 0) return;
+    const found = services.find(s => s.id === wanted);
+    if (found) setEdit(found);
+    navigate({ to: '/services', search: {}, replace: true });
+  }, [wanted, services]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeCount = services.filter(s => s.active).length;
 

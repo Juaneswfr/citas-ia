@@ -24,3 +24,11 @@ class TokenResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(..., description="Token de refresco")
+
+
+class GoogleTicketRequest(BaseModel):
+    ticket: str = Field(..., description="Ticket de un solo uso que entrega el callback de Google")
+
+
+class GoogleTicketResponse(TokenResponse):
+    is_new: bool = Field(default=False, description="True si la cuenta se acaba de crear con Google")

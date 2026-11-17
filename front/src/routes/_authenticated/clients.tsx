@@ -1,5 +1,5 @@
 import { useIsMobile } from '@/hooks/use-is-mobile';
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +13,9 @@ import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/_authenticated/clients")({
   head: () => ({ meta: [{ title: "Clientes · Hilo" }] }),
+  // ?client=<id>: lo usa el buscador global para abrir directamente la ficha de un cliente.
+  validateSearch: (search: Record<string, unknown>): { client?: string } =>
+    typeof search.client === 'string' && search.client ? { client: search.client } : {},
   component: ClientsPage,
 });
 
@@ -31,7 +34,7 @@ function ClientRow({ c, active, onClick }: { c: HiloClient; active: boolean; onC
     }}
     onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--wine-50)'; }}
     onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
-      <Avatar name={c.name} hue={STATUS_HUE[c.status] as any} size={38}/>
+      <Avatar name={c.name} hue={STATUS_HUE[c.status]} size={38}/>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:7 }}>
           <span style={{ font:'500 14px/1.2 var(--font-sans)', color:'var(--ink-1)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{c.name}</span>
@@ -147,6 +150,17 @@ function ClientsPage() {
   useEffect(() => {
     if (isError) toast.error('No se pudieron cargar los clientes.');
   }, [isError]);
+
+  // Llegó desde el buscador global: se abre ese cliente y se limpia el parámetro para poder repetir la búsqueda.
+  const { client: wanted } = Route.useSearch();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!wanted || clients.length === 0) return;
+    const found = clients.find(c => c.id === wanted);
+    if (found) { setQ(''); setSel(isMobile ? { ...found, __open: true } : found); }
+    navigate({ to: '/clients', search: {}, replace: true });
+  }, [wanted, clients, isMobile]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const showDetail = !isMobile || (sel as ClientWithOpen | null)?.__open;
 
   if (!sel && clients.length > 0 && !isMobile) setSel(clients[0]);

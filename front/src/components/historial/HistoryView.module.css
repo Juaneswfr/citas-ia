@@ -1,0 +1,417 @@
+/* Historial de citas. Tokens de la UI; el movimiento usa --dur-* y --ease-*. */
+
+.hv__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.hv__title {
+  margin: 8px 0 0;
+  font: 400 clamp(26px, 4vw, 34px) / 1.08 var(--font-serif);
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+}
+
+.hv__lede {
+  margin: 8px 0 0;
+  max-width: 560px;
+  font: 400 14.5px/1.5 var(--font-sans);
+  color: var(--ink-2);
+}
+
+/* ── Contadores ── */
+.hv__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.hv__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  transition: border-color var(--dur-2) var(--ease-std), box-shadow var(--dur-2) var(--ease-std),
+    transform var(--dur-2) var(--ease-std), background var(--dur-2) var(--ease-std);
+}
+
+.hv__tile:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.hv__tile--on {
+  border-color: var(--wine);
+  background: var(--wine-50);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wine) 12%, transparent);
+}
+
+.hv__tile--static {
+  cursor: default;
+}
+
+.hv__tile--static:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--line);
+}
+
+.hv__tileLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: 500 12px/1 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.hv__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.hv__tileValue {
+  font: 500 26px/1 var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+}
+
+/* ── Filtros ── */
+.hv__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.hv__searchRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.6fr) repeat(3, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.hv__search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  height: 38px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  transition: border-color var(--dur-1) var(--ease-std);
+}
+
+.hv__search:focus-within {
+  border-color: var(--wine);
+  color: var(--wine);
+}
+
+.hv__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: 400 13.5px/1 var(--font-sans);
+  color: var(--ink-1);
+}
+
+.hv__clearInput {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.hv__select {
+  height: 38px;
+  padding: 0 10px;
+  min-width: 0;
+  font: 400 13.5px/1 var(--font-sans);
+  color: var(--ink-1);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.hv__rangeRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Los botones de rango se desplazan de lado si no caben (teléfono). */
+.hv__presets {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.hv__presets::-webkit-scrollbar {
+  display: none;
+}
+
+.hv__dates {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hv__dates label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: 500 12px/1 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.hv__dates input {
+  height: 34px;
+  padding: 0 8px;
+  font: 400 13px/1 var(--font-sans);
+  color: var(--ink-1);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+
+.hv__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  font: 500 12px/1 var(--font-sans);
+  color: var(--wine);
+  background: var(--wine-50);
+  border: 1px solid color-mix(in srgb, var(--wine) 25%, transparent);
+  border-radius: var(--r-full);
+  cursor: pointer;
+}
+
+/* ── Tabla ── */
+.hv__table {
+  position: relative;
+  overflow: hidden;
+}
+
+.hv__header,
+.hv__row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.2fr 1.3fr 1.1fr 0.7fr 44px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.hv__header {
+  height: 40px;
+  background: var(--surface-tint);
+  border-bottom: 1px solid var(--line);
+}
+
+.hv__th {
+  font: 500 10.5px/1 var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+
+/* La columna de precio va alineada a la derecha, igual que sus cifras. */
+.hv__th:nth-child(5) {
+  text-align: right;
+}
+
+.hv__row {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  outline: none;
+  transition: background var(--dur-1) var(--ease-std);
+}
+
+.hv__row:last-child {
+  border-bottom: 0;
+}
+
+.hv__row:hover,
+.hv__row:focus-visible {
+  background: var(--wine-50);
+}
+
+.hv__row--lost .hv__strong {
+  color: var(--ink-3);
+}
+
+.hv__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.hv__cell--num {
+  align-items: flex-end;
+}
+
+.hv__cell--origin {
+  align-items: center;
+  color: var(--ink-3);
+}
+
+.hv__strong {
+  font: 500 13.5px/1.25 var(--font-sans);
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hv__sub {
+  font: 400 12px/1.25 var(--font-sans);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hv__bar {
+  position: absolute;
+  top: 39px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, var(--wine), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: hv-bar 1s var(--ease-std) infinite;
+}
+
+.hv__skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hv__skeleton {
+  height: 62px;
+  background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%);
+  background-size: 200% 100%;
+  animation: hv-shimmer 1.3s var(--ease-std) infinite;
+}
+
+.hv__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 44px 16px;
+  text-align: center;
+  font: 400 14px/1.4 var(--font-sans);
+  color: var(--ink-3);
+}
+
+/* ── Paginación ── */
+.hv__pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.hv__count,
+.hv__pageOf {
+  font: 400 13px/1 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.hv__count strong {
+  font-weight: 500;
+  color: var(--ink-1);
+}
+
+.hv__pages {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+@keyframes hv-bar {
+  from { background-position: -50% 0; }
+  to { background-position: 150% 0; }
+}
+
+@keyframes hv-shimmer {
+  to { background-position: -200% 0; }
+}
+
+/* ── Móvil: cada cita es una tarjeta ── */
+@media (max-width: 879px) {
+  .hv__searchRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hv__search,
+  .hv__select:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .hv__header {
+    display: none;
+  }
+
+  .hv__row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'date  price'
+      'client client'
+      'service service'
+      'status origin';
+    gap: 8px 12px;
+    padding: 14px 16px;
+  }
+
+  .hv__row > :nth-child(1) { grid-area: date; }
+  .hv__row > :nth-child(2) { grid-area: client; }
+  .hv__row > :nth-child(3) { grid-area: service; }
+  .hv__row > :nth-child(4) { grid-area: status; flex-direction: row; align-items: center; flex-wrap: wrap; }
+  .hv__row > :nth-child(5) { grid-area: price; }
+  .hv__row > :nth-child(6) { grid-area: origin; align-items: flex-end; }
+
+  .hv__strong,
+  .hv__sub {
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hv__bar,
+  .hv__skeleton {
+    animation: none;
+  }
+
+  .hv__tile:hover {
+    transform: none;
+  }
+}

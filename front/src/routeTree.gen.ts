@@ -23,6 +23,7 @@ import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEquipoRouteImport } from './routes/_authenticated/equipo'
 import { Route as AuthenticatedFinanzasRouteImport } from './routes/_authenticated/finanzas'
+import { Route as AuthenticatedHistorialRouteImport } from './routes/_authenticated/historial'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticated/services'
@@ -99,6 +100,11 @@ const AuthenticatedFinanzasRoute = AuthenticatedFinanzasRouteImport.update({
   path: '/finanzas',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedHistorialRoute = AuthenticatedHistorialRouteImport.update({
+  id: '/historial',
+  path: '/historial',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMessagesRoute = AuthenticatedMessagesRouteImport.update({
   id: '/messages',
   path: '/messages',
@@ -144,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/equipo': typeof AuthenticatedEquipoRoute
   '/finanzas': typeof AuthenticatedFinanzasRoute
+  '/historial': typeof AuthenticatedHistorialRoute
   '/messages': typeof AuthenticatedMessagesRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/services': typeof AuthenticatedServicesRoute
@@ -165,6 +172,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/equipo': typeof AuthenticatedEquipoRoute
   '/finanzas': typeof AuthenticatedFinanzasRoute
+  '/historial': typeof AuthenticatedHistorialRoute
   '/messages': typeof AuthenticatedMessagesRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/services': typeof AuthenticatedServicesRoute
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/equipo': typeof AuthenticatedEquipoRoute
   '/_authenticated/finanzas': typeof AuthenticatedFinanzasRoute
+  '/_authenticated/historial': typeof AuthenticatedHistorialRoute
   '/_authenticated/messages': typeof AuthenticatedMessagesRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/services': typeof AuthenticatedServicesRoute
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/equipo'
     | '/finanzas'
+    | '/historial'
     | '/messages'
     | '/onboarding'
     | '/services'
@@ -232,6 +242,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/equipo'
     | '/finanzas'
+    | '/historial'
     | '/messages'
     | '/onboarding'
     | '/services'
@@ -254,6 +265,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/equipo'
     | '/_authenticated/finanzas'
+    | '/_authenticated/historial'
     | '/_authenticated/messages'
     | '/_authenticated/onboarding'
     | '/_authenticated/services'
@@ -373,6 +385,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFinanzasRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/historial': {
+      id: '/_authenticated/historial'
+      path: '/historial'
+      fullPath: '/historial'
+      preLoaderRoute: typeof AuthenticatedHistorialRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/messages': {
       id: '/_authenticated/messages'
       path: '/messages'
@@ -426,6 +445,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEquipoRoute: typeof AuthenticatedEquipoRoute
   AuthenticatedFinanzasRoute: typeof AuthenticatedFinanzasRoute
+  AuthenticatedHistorialRoute: typeof AuthenticatedHistorialRoute
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
@@ -441,6 +461,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEquipoRoute: AuthenticatedEquipoRoute,
   AuthenticatedFinanzasRoute: AuthenticatedFinanzasRoute,
+  AuthenticatedHistorialRoute: AuthenticatedHistorialRoute,
   AuthenticatedMessagesRoute: AuthenticatedMessagesRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedServicesRoute: AuthenticatedServicesRoute,

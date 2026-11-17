@@ -3,7 +3,9 @@
 - Texto → agente de citas.
 - Botón de una plantilla (Confirmar / Cancelar / Agendar / No más mensajes) → acción directa o agente.
 - Imagen o documento → posible comprobante de pago (receipt_service).
-- Audio, video, sticker, ubicación... → se avisa que solo se lee texto.
+- Video → «no puedo ver videos». Audio y tipos desconocidos → «solo leo texto». Sticker, ubicación y
+  contacto → se guardan en el chat para el equipo y no se responde nada. Ninguno llega al agente (no
+  gasta tokens) y el aviso fijo no se repite si el último mensaje enviado ya era ese mismo.
 - Mensaje que el negocio envió desde la app de WhatsApp Business (coexistencia) → se guarda en la
   conversación como respuesta de una persona; no pasa por el agente.
 
@@ -25,6 +27,7 @@ from services.whatsapp_service import WhatsAppService
 log = logging.getLogger(__name__)
 
 ONLY_TEXT = "Por ahora solo puedo leer mensajes de texto. ¿Me cuentas por escrito en qué te ayudo?"
+NO_VIDEO = "Por ahora no puedo ver videos. ¿Me cuentas por escrito en qué te ayudo?"
 ONLY_TEXT_OR_RECEIPT = ("Por ahora solo puedo leer texto y comprobantes de pago. "
                         "¿Me cuentas por escrito en qué te ayudo?")
 TOO_LARGE = "El archivo es muy pesado (máximo 5 MB). ¿Puedes enviarlo como foto?"
@@ -37,6 +40,8 @@ _MEDIA_TYPES = ("image", "document")
 _LABELS = {"image": "[imagen]", "document": "[documento]", "audio": "[audio]", "video": "[video]",
            "sticker": "[sticker]", "location": "[ubicación]", "contacts": "[contacto]"}
 _IGNORED = ("reaction", "template", "system", "unsupported")
+# Se guardan en el chat para que el equipo los vea, pero no piden nada que el agente pueda atender.
+_SILENT = ("sticker", "location", "contacts")
 
 
 def parse_message(msg: dict) -> dict:
@@ -102,6 +107,26 @@ async def _reply(conversation: dict, body: str) -> None:
         direction="outbound", sender_type="system", content=body,
         provider_message_id=sent.message_id or None,
     )
+
+
+async def _last_outbound(conversation: dict) -> Optional[str]:
+    """Texto del último mensaje que salió en la conversación, o None si no hay."""
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(
+            text("""
+                SELECT content FROM messages
+                WHERE conversation_id = :c AND workspace_id = :w AND direction = 'outbound'
+                ORDER BY created_at DESC LIMIT 1
+            """),
+            {"c": conversation["id"], "w": conversation["workspace_id"]},
+        )).scalar_one_or_none()
+
+
+async def _reply_once(conversation: dict, body: str) -> None:
+    """Aviso fijo que no se repite: cinco audios seguidos no deben dar cinco avisos iguales."""
+    if await _last_outbound(conversation) == body:
+        return
+    await _reply(conversation, body)
 
 
 async def _save_inbound(conversation: dict, content: str, message_type: str = "text") -> dict:
@@ -233,4 +258,6 @@ async def handle_kapso_message(item: dict) -> None:
         await _handle_media(conversation, parsed, str(phone_number_id))
     else:
         await _save_inbound(conversation, _LABELS.get(parsed["type"], "[archivo]"), parsed["type"])
-        await _reply(conversation, ONLY_TEXT)
+        if parsed["type"] in _SILENT:
+            return
+        await _reply_once(conversation, NO_VIDEO if parsed["type"] == "video" else ONLY_TEXT)

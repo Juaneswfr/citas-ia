@@ -26,6 +26,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7",
     "sqlalchemy>=2.0",
     "alembic>=1.13",
+    "tzdata>=2026.6",
 ]
 
 [dependency-groups]

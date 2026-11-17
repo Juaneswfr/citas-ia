@@ -54,9 +54,13 @@ export function useUpdateCustomer(customerId: string) {
       if (!workspaceId) throw new Error('No workspace');
       await updateCustomer(workspaceId, customerId, body);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['customers', workspaceId] });
-      toast.success('Cliente actualizado');
+      toast.success(
+        variables.agent_enabled === undefined ? 'Cliente actualizado'
+          : variables.agent_enabled ? 'Agente reactivado para este cliente'
+          : 'Agente en pausa para este cliente: ya no le responde solo',
+      );
     },
     onError: (error) => {
       toast.error((error as { detail?: string }).detail ?? error.message ?? 'Error al actualizar cliente');

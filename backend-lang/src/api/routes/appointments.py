@@ -16,11 +16,14 @@ from core.database import get_db
 from core.security import require_workspace_access
 from schemas.appointment import (
     AppointmentCancel, AppointmentCancelOut, AppointmentCreate, AppointmentOut, AppointmentUpdate,
-    AvailabilityBlockCreate, AvailabilityBlockOut,
+    AvailabilityBlockCreate, AvailabilityBlockCreated, AvailabilityBlockOut,
 )
+from services import availability_blocks
+from services.day_bounds import AFTER_TO_DAY as _AFTER_TO_DAY, FROM_DAY as _FROM_DAY
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["appointments"])
+
 
 
 async def _create_sale_for_completed(db: AsyncSession, workspace_id: str, appointment_id: str) -> None:
@@ -59,10 +62,10 @@ async def list_appointments(
         filters.append("status = :status")
         params["status"] = status
     if from_date:
-        filters.append("start_at >= :from_date")
+        filters.append(f"start_at >= {_FROM_DAY}")
         params["from_date"] = from_date
     if to_date:
-        filters.append("start_at < CAST(:to_date AS date) + INTERVAL '1 day'")
+        filters.append(f"start_at < {_AFTER_TO_DAY}")
         params["to_date"] = to_date
 
     where = " AND ".join(filters)
@@ -130,12 +133,19 @@ async def create_appointment(
         )).mappings().fetchone()
         calendar_id = str(active_cal["id"]) if active_cal else None
 
+    # Un bloqueo de agenda cierra el horario para todos: panel y agente.
+    if await availability_blocks.find_overlap(db, workspace_id, calendar_id, body.start_at, end_at):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=availability_blocks.BLOCKED_DETAIL)
+
     google_event_id = None
     if calendar_id:
         cal = (await db.execute(
             text("SELECT * FROM calendars WHERE id = :calendar_id AND workspace_id = :workspace_id"),
             {"calendar_id": calendar_id, "workspace_id": workspace_id},
         )).mappings().fetchone()
+        if cal and cal.get("sync_status") == "disconnected":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="Ese calendario está desconectado. Vuelve a conectarlo en Ajustes.")
         if cal:
             # Verificar disponibilidad y crear evento (Principio VI)
             cal_service = CalendarService(dict(cal))
@@ -390,6 +400,8 @@ async def _notify_rescheduled(db: AsyncSession, workspace_id: str, appointment: 
 
 # ── Bloques de disponibilidad ─────────────────────────────────────────────────
 
+BLOCK_TYPES = ("manual", "system", "travel", "external")  # CHECK de availability_blocks.block_type
+
 @router.get(
     "/workspaces/{workspace_id}/blocks",
     response_model=list[AvailabilityBlockOut],
@@ -398,18 +410,29 @@ async def _notify_rescheduled(db: AsyncSession, workspace_id: str, appointment: 
 )
 async def list_blocks(
     workspace_id: str,
+    from_date: date | None = Query(None),
+    to_date: date | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    """Bloqueos del negocio; con `from_date`/`to_date` solo los que tocan ese rango (días del negocio)."""
+    filters = ["workspace_id = :workspace_id"]
+    params: dict = {"workspace_id": workspace_id}
+    if from_date:
+        filters.append(f"end_at > {_FROM_DAY}")
+        params["from_date"] = from_date
+    if to_date:
+        filters.append(f"start_at < {_AFTER_TO_DAY}")
+        params["to_date"] = to_date
     rows = (await db.execute(
-        text("SELECT * FROM availability_blocks WHERE workspace_id = :workspace_id"),
-        {"workspace_id": workspace_id},
+        text(f"SELECT * FROM availability_blocks WHERE {' AND '.join(filters)} ORDER BY start_at"),
+        params,
     )).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
 @router.post(
     "/workspaces/{workspace_id}/blocks",
-    response_model=AvailabilityBlockOut,
+    response_model=AvailabilityBlockCreated,
     status_code=201,
     summary="Crear bloqueo de agenda. Requiere confirmación del dueño (Principio IX).",
 )
@@ -425,6 +448,16 @@ async def create_block(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="El bloqueo de agenda requiere confirmación explícita del dueño. Pasa confirmed=true.",
         )
+    if body.block_type not in BLOCK_TYPES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Tipo de bloqueo inválido. Usa: {', '.join(BLOCK_TYPES)}.")
+    # El calendario del bloqueo tiene que ser de este negocio.
+    own_calendar = (await db.execute(
+        text("SELECT id FROM calendars WHERE id = :calendar_id AND workspace_id = :workspace_id"),
+        {"calendar_id": body.calendar_id, "workspace_id": workspace_id},
+    )).mappings().fetchone()
+    if not own_calendar:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendario no encontrado.")
 
     data = body.model_dump()
     row = (await db.execute(
@@ -447,9 +480,19 @@ async def create_block(
     if not row:
         raise HTTPException(status_code=500, detail="Error creando bloqueo.")
     await db.commit()
+    # Las citas que ya estaban agendadas en ese rango no se cancelan solas: se avisa para que el equipo decida.
+    in_range = (await db.execute(
+        text("""
+            SELECT COUNT(*) FROM appointments
+            WHERE workspace_id = :workspace_id AND calendar_id = :calendar_id
+              AND status IN ('pending','confirmed') AND start_at < :end_at AND end_at > :start_at
+        """),
+        {"workspace_id": workspace_id, "calendar_id": body.calendar_id,
+         "start_at": body.start_at, "end_at": body.end_at},
+    )).scalar_one()
     log.info("[blocks] created | workspace=%s | start=%s | by=%s",
              workspace_id, body.start_at, current_user.get("sub"))
-    return dict(row)
+    return {**dict(row), "appointments_in_range": int(in_range or 0)}
 
 
 @router.delete(

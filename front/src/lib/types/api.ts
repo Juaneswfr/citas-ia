@@ -7,6 +7,8 @@ export interface TokenResponse {
   token_type: string;
   expires_in: number;
   workspace_id?: string; // presente en /auth/register
+  /** Solo al canjear el ticket de Google: true si la cuenta se acaba de crear. */
+  is_new?: boolean;
 }
 
 export interface MeResponse {
@@ -270,6 +272,36 @@ export interface CalendarOut {
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ── Bloqueos de agenda ────────────────────────────────────────────────────────
+
+/** Horario de un calendario en el que no se reciben citas (ni por el panel ni por el agente). */
+export interface AvailabilityBlockOut {
+  id: string;
+  workspace_id: string;
+  calendar_id: string;
+  start_at: string; // ISO 8601
+  end_at: string;   // ISO 8601
+  block_type: 'manual' | 'system' | 'travel' | 'external';
+  reason: string | null;
+  source: string;
+  google_event_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AvailabilityBlockCreate {
+  calendar_id: string;
+  start_at: string;
+  end_at: string;
+  block_type?: 'manual';
+  reason?: string;
+}
+
+/** Respuesta al crear: además, cuántas citas ya agendadas caen dentro (no se cancelan solas). */
+export interface AvailabilityBlockCreated extends AvailabilityBlockOut {
+  appointments_in_range: number;
 }
 
 // ── Agent Alerts ──────────────────────────────────────────────────────────────

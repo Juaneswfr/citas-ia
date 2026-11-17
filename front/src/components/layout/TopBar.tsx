@@ -1,5 +1,6 @@
-import { Icon, HiloMark } from '@/components/hilo/icons';
+import { HiloMark } from '@/components/hilo/icons';
 import { Button, Dot } from '@/components/hilo/primitives';
+import { GlobalSearch } from './GlobalSearch';
 import styles from './TopBar.module.css';
 
 export interface StatusChip {
@@ -28,15 +29,9 @@ export function TopBar({ title, onCompose, statusChips = [] }: TopBarProps) {
       <span className={styles.topbar__mark}><HiloMark size={28} /></span>
       <h1 className={styles.topbar__title}>{title}</h1>
 
-      <button className={styles.topbar__search}>
-        <Icon name="search" size={15} className={styles['topbar__search-icon']} />
-        <span className={styles['topbar__search-placeholder']}>
-          Buscar cliente, cita, servicio…
-        </span>
-        <kbd className={styles['topbar__search-kbd']}>⌘K</kbd>
-      </button>
-
       <div className={styles.topbar__actions}>
+        <GlobalSearch />
+
         {/* En móvil solo se ve el primer chip (WA/sandbox), con la etiqueta corta */}
         {statusChips.map(chip => (
           <span

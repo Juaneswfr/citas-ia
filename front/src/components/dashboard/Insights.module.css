@@ -1,0 +1,344 @@
+/* Dashboard: pendientes y tarjetas de gráficas. */
+
+/* ── Para hacer hoy ── */
+.actions {
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+
+.actionsHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cardTitle {
+  margin: 6px 0 0;
+  font: 400 21px/1.1 var(--font-serif);
+  color: var(--ink-1);
+}
+
+.actionsCount {
+  font: 500 12.5px/1 var(--font-sans);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.actionList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  transition: border-color var(--dur-2) var(--ease-std), transform var(--dur-2) var(--ease-std);
+}
+
+.actionRow:hover {
+  border-color: var(--line-strong);
+  transform: translateX(2px);
+}
+
+.actionBadge {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  font: 600 16px/1 var(--font-sans);
+  color: var(--steel);
+  background: color-mix(in srgb, var(--steel) 13%, var(--surface));
+}
+
+.actionBadgeUrgent {
+  color: var(--wine);
+  background: var(--wine-50);
+}
+
+.actionText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.actionText strong {
+  font: 500 14px/1.25 var(--font-sans);
+  color: var(--ink-1);
+}
+
+.actionText span {
+  font: 400 12.5px/1.3 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.allClear {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--success) 22%, transparent);
+  border-radius: var(--r-md);
+}
+
+.allClearIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 16%, var(--surface));
+  animation: pop var(--dur-3) var(--ease-out) both;
+}
+
+.allClear strong {
+  display: block;
+  font: 500 14px/1.2 var(--font-sans);
+  color: var(--ink-1);
+}
+
+.allClear div span {
+  font: 400 12.5px/1.3 var(--font-sans);
+  color: var(--ink-3);
+}
+
+/* ── Tarjetas de gráficas ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  min-width: 0;
+}
+
+.span5 { grid-column: span 5; }
+.span7 { grid-column: span 7; }
+.span12 { grid-column: span 12; }
+
+.explain {
+  margin: 6px 0 0;
+  font: 400 12.5px/1.45 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.insight {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: auto 0 0; /* si la tarjeta vecina es más alta, la frase queda abajo y no flotando */
+  padding: 10px 12px;
+  font: 400 13px/1.45 var(--font-sans);
+  color: var(--ink-2);
+  background: var(--surface-tint);
+  border-radius: var(--r-md);
+}
+
+.insight svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--wine);
+}
+
+.tipLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font: 500 12.5px/1.35 var(--font-sans);
+  color: var(--wine);
+  background: var(--wine-50);
+  border: 1px solid color-mix(in srgb, var(--wine) 22%, transparent);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease-std);
+}
+
+.tipLink:hover {
+  background: var(--wine-100, var(--wine-50));
+}
+
+.tipLink svg:first-child {
+  flex-shrink: 0;
+}
+
+.tipLink svg:last-child {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.kpiLine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.kpiLine strong {
+  font: 500 30px/1 var(--font-sans);
+  letter-spacing: -0.03em;
+  color: var(--ink-1);
+}
+
+.kpiSide {
+  font: 400 12.5px/1.3 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font: 500 12.5px/1 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.deltaUp { color: var(--success); }
+.deltaDown { color: var(--danger); }
+
+/* ── Nuevos y recurrentes ── */
+.mix {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mixBar {
+  display: flex;
+  gap: 3px;
+  height: 14px;
+}
+
+.mixBar span {
+  flex-basis: 0;
+  min-width: 6px;
+  border-radius: var(--r-full);
+  transform-origin: left center;
+  animation: grow-x 800ms var(--ease-out) both;
+}
+
+.mixNew { background: var(--clay); }
+.mixBack { background: var(--steel); }
+
+.mixLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font: 400 13px/1.2 var(--font-sans);
+  color: var(--ink-2);
+}
+
+.mixLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mixLegend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.mixLegend b {
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+.mixLegend em {
+  font-style: normal;
+  color: var(--ink-3);
+}
+
+/* ── Estados ── */
+.soft {
+  margin: 0;
+  font: 400 13px/1.4 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.errorCard {
+  margin-top: 18px;
+  padding: 18px 20px;
+  font: 400 13px/1.4 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.skeleton {
+  display: block;
+  width: 100%;
+  border-radius: var(--r-md);
+  background: linear-gradient(90deg, var(--line) 0%, var(--surface-2) 50%, var(--line) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s var(--ease-std) infinite;
+}
+
+@keyframes shimmer {
+  to { background-position: -200% 0; }
+}
+
+@keyframes pop {
+  from { transform: scale(0.6); opacity: 0; }
+}
+
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+}
+
+@media (max-width: 1099px) {
+  .span5,
+  .span7 { grid-column: span 12; }
+}
+
+@media (max-width: 879px) {
+  .actions,
+  .card { padding: 16px; }
+
+  .actionRow {
+    flex-wrap: wrap;
+  }
+
+  .actionText {
+    flex-basis: calc(100% - 56px);
+  }
+
+  .actionRow > button {
+    margin-left: 54px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .allClearIcon,
+  .mixBar span {
+    animation: none;
+  }
+
+  .actionRow:hover {
+    transform: none;
+  }
+}

@@ -33,16 +33,10 @@ def decrypt_token(encrypted_token: str) -> str:
     return f.decrypt(encrypted_token.encode()).decode()
 
 
-async def exchange_oauth_code(code: str) -> Optional[dict]:
-    """
-    Intercambia el código OAuth por access_token + refresh_token.
-
-    Returns:
-        Dict con 'encrypted_refresh_token' listo para persistir, o None si falló.
-    """
+async def _token_request(code: str) -> Optional[dict]:
+    """Intercambia el código en el endpoint de tokens de Google; devuelve la respuesta JSON o None."""
     import httpx
     settings = get_settings()
-
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -56,18 +50,73 @@ async def exchange_oauth_code(code: str) -> Optional[dict]:
                 },
             )
             response.raise_for_status()
-            data = response.json()
-
-        refresh_token = data.get("refresh_token")
-        if not refresh_token:
-            log.error("[google_calendar] no se recibió refresh_token en el intercambio OAuth")
-            return None
-
-        return {"encrypted_refresh_token": encrypt_token(refresh_token)}
-
+            return response.json()
     except Exception as e:
         log.error("[google_calendar] error en intercambio OAuth | err=%s", e)
         return None
+
+
+async def exchange_oauth_code(code: str) -> Optional[dict]:
+    """
+    Intercambia el código OAuth por access_token + refresh_token.
+
+    Returns:
+        Dict con 'encrypted_refresh_token' listo para persistir, o None si falló.
+    """
+    data = await _token_request(code)
+    if not data:
+        return None
+    refresh_token = data.get("refresh_token")
+    if not refresh_token:
+        log.error("[google_calendar] no se recibió refresh_token en el intercambio OAuth")
+        return None
+    return {"encrypted_refresh_token": encrypt_token(refresh_token)}
+
+
+def identity_from_id_token(id_token: str, client_id: str, now: Optional[float] = None) -> Optional[dict]:
+    """Identidad de Google (sub, email, email_verified, name) del `id_token`, o None si no es válido.
+
+    No se verifica la firma: el token llegó directo del endpoint de tokens de Google por TLS y con
+    nuestro client_secret, que es el caso en que OpenID Connect Core (3.1.3.7) lo permite. Sí se
+    comprueban emisor, audiencia y vencimiento.
+    """
+    import json
+    import time
+    try:
+        payload = id_token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except (IndexError, ValueError, AttributeError):
+        return None
+    if claims.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        return None
+    if claims.get("aud") != client_id or claims.get("exp", 0) < (now if now is not None else time.time()):
+        return None
+    if not claims.get("sub"):
+        return None
+    return {
+        "sub": str(claims["sub"]),
+        "email": str(claims.get("email") or "").strip().lower(),
+        "email_verified": claims.get("email_verified") in (True, "true"),
+        "name": str(claims.get("name") or "").strip(),
+    }
+
+
+async def exchange_oauth_code_with_identity(code: str) -> Optional[dict]:
+    """Como `exchange_oauth_code`, y además quién es la persona que autorizó.
+
+    Returns:
+        {'encrypted_refresh_token', 'identity': {sub, email, email_verified, name}} o None si falló.
+    """
+    settings = get_settings()
+    data = await _token_request(code)
+    if not data:
+        return None
+    refresh_token = data.get("refresh_token")
+    identity = identity_from_id_token(data.get("id_token") or "", settings.google_client_id)
+    if not refresh_token or not identity:
+        log.error("[google_calendar] el intercambio no trajo refresh_token o identidad válida")
+        return None
+    return {"encrypted_refresh_token": encrypt_token(refresh_token), "identity": identity}
 
 
 async def build_calendar_client(encrypted_refresh_token: str):

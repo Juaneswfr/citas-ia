@@ -5,12 +5,16 @@ import { Icon } from '@/components/hilo/icons';
 import { Button } from '@/components/hilo/primitives';
 import { useAppointments } from '@/hooks/use-appointments';
 import type { HiloAppointment } from '@/lib/hilo-data';
+import { rangeLabel, type BlockView } from '@/lib/blocks';
 import styles from './DayView.module.css';
 
 interface DayViewProps {
   date: Date;
   onNewCita: (date: string) => void;
   onEventClick: (appointmentId: string) => void;
+  /** Bloqueos de la semana en curso; aquí se muestran solo los de este día. */
+  blocks?: BlockView[];
+  onBlockClick?: (block: BlockView) => void;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -18,8 +22,9 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'Cancelada', noshow: 'No asistió', rescheduled: 'Reagendada',
 };
 
-export function DayView({ date, onNewCita, onEventClick }: DayViewProps) {
+export function DayView({ date, onNewCita, onEventClick, blocks = [], onBlockClick }: DayViewProps) {
   const dateKey = format(date, 'yyyy-MM-dd');
+  const dayBlocks = blocks.filter((b) => b.dayKey === dateKey);
   const { data, isLoading, isError, refetch } = useAppointments({ from_date: dateKey, to_date: dateKey });
   const appointments = useMemo(
     () => [...(data ?? [])].sort((a, b) => (a.startAt ?? '').localeCompare(b.startAt ?? '')),
@@ -38,6 +43,21 @@ export function DayView({ date, onNewCita, onEventClick }: DayViewProps) {
           <span className={styles['day-view__count']}>{active} {active === 1 ? 'cita' : 'citas'}</span>
         )}
       </div>
+
+      {dayBlocks.length > 0 && (
+        <div className={styles['day-view__blocks']}>
+          {dayBlocks.map((b) => (
+            <button key={b.key} type="button" className={styles['day-view__block']} onClick={() => onBlockClick?.(b)}>
+              <Icon name="block" size={15} />
+              <span className={styles['day-view__block-info']}>
+                <span className={`tnum ${styles['day-view__block-time']}`}>{rangeLabel(b)}</span>
+                <span className={styles['day-view__block-meta']}>{b.who}{b.reason ? ` · ${b.reason}` : ''}</span>
+              </span>
+              <span className={styles['day-view__block-tag']}>Bloqueado</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <div className={styles['day-view__skeleton']}>

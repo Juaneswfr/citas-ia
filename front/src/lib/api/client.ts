@@ -42,7 +42,7 @@ interface ApiFetchOptions extends RequestInit {
  * - Llama _onUnauthorized en 401
  */
 export async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> {
-  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000';
+  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:9001';
   const url = `${base}${path}`;
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -91,7 +91,7 @@ async function toApiError(response: Response): Promise<ApiError> {
 
 /** fetch autenticado para respuestas no-JSON (subidas multipart y descargas). */
 async function authedFetch(path: string, init: RequestInit): Promise<Response> {
-  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000';
+  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:9001';
   const headers: Record<string, string> = {};
   if (_apiToken) headers['Authorization'] = `Bearer ${_apiToken}`;
 

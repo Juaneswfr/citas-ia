@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/login")({
@@ -7,9 +7,19 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+/** Motivos que devuelve el callback de Google (?google_error=…), en palabras del usuario. */
+const GOOGLE_ERRORS: Record<string, string> = {
+  oauth: 'No pudimos conectar con Google. Inténtalo de nuevo y acepta los permisos, incluido el del calendario.',
+  unverified: 'Tu correo de Google no está verificado, así que no podemos usarlo.',
+  exists: 'Ya existe una cuenta con ese correo. Entra con tu contraseña.',
+  blocked: 'Esta cuenta está bloqueada. Escríbenos si crees que es un error.',
+  suspended: 'Este negocio está suspendido. Escríbenos para reactivarlo.',
+  server: 'Algo salió mal al entrar con Google. Inténtalo de nuevo en un momento.',
+};
+
 function LoginPage() {
   const navigate = useNavigate();
-  const { login, signInWithGoogle } = useAuth();
+  const { login, signInWithGoogle, completeGoogleSignIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,6 +27,23 @@ function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   const anyLoading = loading || googleLoading;
+  const handledReturn = useRef(false);
+
+  // Al volver de Google el callback deja un ticket en el fragmento (#google_ticket=…) o un motivo en ?google_error=…
+  useEffect(() => {
+    if (handledReturn.current) return;
+    handledReturn.current = true;
+    const ticket = new URLSearchParams(window.location.hash.slice(1)).get('google_ticket');
+    const reason = new URLSearchParams(window.location.search).get('google_error');
+    if (!ticket && !reason) return;
+    // Se limpia la URL ya: el ticket no debe quedar en el historial ni en un enlace copiado.
+    window.history.replaceState(null, '', window.location.pathname);
+    if (reason) { setError(GOOGLE_ERRORS[reason] ?? GOOGLE_ERRORS.server); return; }
+    setGoogleLoading(true);
+    completeGoogleSignIn(ticket!)
+      .then(({ isNew }) => navigate({ to: isNew ? '/onboarding' : '/dashboard' }))
+      .catch((err) => { setError((err as Error).message ?? GOOGLE_ERRORS.server); setGoogleLoading(false); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

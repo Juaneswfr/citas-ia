@@ -1,5 +1,77 @@
 # Cambios por agente
 
+### [AGENTE: claude] [FECHA: 2026-11-13]
+**Agregado — crear cuenta o entrar con Google, con el calendario sincronizado en el mismo paso**
+- backend-lang/migrations/020_google_signin.sql (nueva), src/api/routes/auth.py, src/integrations/google_calendar.py, src/core/oauth_state.py (nuevo), src/schemas/auth.py — `GET /auth/google/login/url`, rama `kind=signin` del callback y `POST /auth/google/ticket`. Cuenta nueva = usuario + negocio + miembro dueño + calendario en una transacción. Un correo que ya existe con contraseña no se enlaza solo (sin verificación de correo habría toma de cuenta). La sesión viaja en un ticket de 2 min en el fragmento de la URL, no el JWT.
+- front/src/lib/auth-context.tsx, lib/api/auth.ts, routes/login.tsx — «Continuar con Google» (login y registro) funciona de nuevo; al volver entra directo (cuenta nueva → onboarding) y los errores salen en español.
+- **Pendiente de despliegue**: aplicar la migración 020 (`uv run python migrate.py`).
+
+**Corregido — calendarios: duplicados, sin forma de eliminarlos y `state` de OAuth sin firma**
+- Causa del duplicado: el onboarding conectaba sin persona y Ajustes arrancaba en «Sin asignar» → fila huérfana (`member_id` nulo); Equipo solo marca «conectado» con `member_id` propio, así que seguía pidiendo conectar y creaba la segunda conexión.
+- backend-lang/src/api/routes/auth.py — la URL de autorización exige sesión y el servidor decide la persona (la de quien conecta); el `state` va firmado (antes cualquiera podía fabricar uno con el `workspace_id` de otro negocio y colgarle su calendario).
+- backend-lang/src/api/routes/channels.py, services/appointment_service.py, routes/appointments.py — eliminar de verdad (borra la fila o, con historial, desconecta y descarta el token); la lista oculta los desconectados; un calendario desconectado no se usa.
+- front/src/routes/_authenticated/settings.tsx — sin «Sin asignar», solo personas sin calendario, reconectar, eliminar con confirmación y aviso para calendarios huérfanos que ya existan (eliminarlos y reconectar).
+
+**Agregado — buscador global, historial de citas y dashboard con datos accionables**
+- backend-lang/src/api/routes/search.py, appointment_history.py, dashboard.py, services/day_bounds.py (nuevos) — ver CLAUDE.md. Cortes por día en la zona del negocio compartidos.
+- front: components/layout/GlobalSearch.tsx (icono que se abre en campo con resultados en vivo, teclado completo, móvil), components/historial/* + routes/_authenticated/historial.tsx (módulo nuevo en el menú), components/dashboard/* (panel «Para hacer hoy» + 6 gráficas animadas en SVG con explicación y frase de interpretación), enlaces directos `?client=`, `?service=`, `?date=&cita=` en Clientes, Servicios y Agenda.
+- front/src/routes/_authenticated/dashboard.tsx — «Ingresos del mes» se llama ahora «Valor de las citas del mes» (suma citas no canceladas, futuras incluidas; no es dinero cobrado). Lo cobrado está en la gráfica nueva.
+
+**Corregido (ya existían)**
+- front/src/components/agenda/WeekCalendar.tsx — las citas que empiezan a y media mostraban horas como «11.5:00 am» y «0.5:00 pm».
+- front/src/routes/_authenticated/clients.tsx, messages.tsx — quitados `as any` de `STATUS_HUE`.
+
+**Verificado**
+- backend: 652 tests pasan, 5 omitidos (antes 535).
+- **Postgres real** (embebido, migraciones 001-020 + datos sembrados): 52 comprobaciones del SQL nuevo y de los flujos (búsqueda, historial, exportar, bloqueos, insights, eliminar calendarios, alta con Google, ticket, reconectar). La cita de las 21:00 de Bogotá (02:00 UTC de mañana) cuenta como «hoy».
+- **Interfaz** con Chrome real sobre esa base, escritorio y móvil: dashboard, historial, buscador (teclado, vacío, móvil), agenda con bloqueos, ajustes, mensajes; sin errores de JavaScript. Se corrigieron en esa revisión tooltips que tapaban texto, ejes ilegibles en tarjetas angostas, mayúsculas en «De»/«Pm», botones cortados en móvil y colores de estado incoherentes.
+- No probado: el viaje real con Google (consentimiento y redirección), el envío real por WhatsApp y el despliegue en la VPS.
+
+### [AGENTE: claude] [FECHA: 2026-11-13]
+**Cambiado — mensajes que no son texto (video, sticker, ubicación, contacto)**
+- backend-lang/src/services/inbound_message_service.py — el video responde «por ahora no puedo ver videos»; sticker, ubicación y contacto se guardan en el chat y no se responde nada; el audio sigue con «solo leo texto». El aviso fijo no se repite si el último mensaje enviado ya era ese (antes cinco audios seguidos daban cinco avisos iguales). Ninguno pasa por el agente.
+- backend-lang/tests/test_receipts.py — 8 casos nuevos. Backend: 535 pasan, 5 omitidos.
+- **Audio sin soporte todavía.** Opciones evaluadas (precios y límites de fuentes de terceros, a confirmar en las páginas oficiales): faster-whisper en la VPS (gratis, ~1,5 GB de RAM con el modelo `small`), Groq con Whisper (capa gratuita limitada) y OpenAI (`whisper-1` ~0,006 USD/min, `gpt-4o-mini-transcribe` ~0,003 USD/min). MOSS-TTS no sirve: genera voz, no transcribe.
+
+### [AGENTE: claude] [FECHA: 2026-11-13]
+**Agregado — alcance del agente y freno de conversaciones cíclicas (ahorro de tokens)**
+- backend-lang/src/services/agent_guard.py (nuevo), services/agent_service.py — antes de llamar al modelo se revisa el historial: 3 respuestas casi idénticas seguidas o 14 respuestas sin agendar/mover/cancelar pausan al agente con ese cliente (`customers.agent_enabled = FALSE`), dejan una alerta `warning` y avisan al cliente que una persona le escribirá. Detectarlo no gasta tokens. Se reinicia con cita confirmada/movida/cancelada, mensaje de una persona o 6 h de silencio.
+- backend-lang/src/services/appointment_agent.py — el prompt trae `ALCANCE` (solo citas; no inventa datos del negocio; ignora cambios de rol); mensajes recortados a 1500 caracteres y respuesta con `max_tokens=700` (antes 64 000, o sea sin tope).
+- backend-lang/tests/test_agent_guard.py (nuevo, 15 casos), tests/test_appointment_agent.py (+4) — incluye que ofrecer horas distintas no cuenta como repetirse y que una conversación en bucle no llega al modelo.
+- Verificado: backend 529 pasan, 5 omitidos. Los umbrales (3 repeticiones, 14 respuestas) son una estimación: conviene mirar las alertas de las primeras semanas y ajustarlos.
+
+### [AGENTE: claude] [FECHA: 2026-11-13]
+**Agregado — pausar el agente desde Conversaciones**
+- front/src/components/mensajes/AgentToggle.tsx + .module.css (nuevos), routes/_authenticated/messages.tsx — interruptor «Agente» (activo / en pausa) en el encabezado del chat, mismo `customers.agent_enabled` de la ficha del cliente, y chip «Agente en pausa» en la lista. Se quitaron además tres `as any` de `STATUS_HUE`.
+- front/src/hooks/use-customers.ts — el aviso al guardar dice si el agente quedó reactivado o en pausa (antes siempre «Cliente actualizado»).
+
+**Agregado — bloqueos de agenda**
+- backend-lang/src/services/availability_blocks.py (nuevo) — `find_overlap`. Lo usan `consultar_disponibilidad`, `create_appointment` (panel y agente, 409) y `appointment_service.reschedule`.
+- backend-lang/src/api/routes/appointments.py, schemas/appointment.py — `GET /blocks` acepta `from_date`/`to_date` y ordena; `POST /blocks` valida que el calendario sea del negocio, que el fin sea posterior al inicio y el tipo (antes una violación del CHECK daba 500 y se podía bloquear el calendario de otro negocio), `block_type` pasa a ser `manual` por defecto y la respuesta trae `appointments_in_range`.
+- front/src/lib/blocks.ts, lib/api/blocks.ts, hooks/use-blocks.ts, components/agenda/BlockDialog.tsx, BlockDetail.tsx (nuevos), WeekCalendar.tsx, DayView.tsx, routes/_authenticated/agenda.tsx — el botón «Bloquear» no hacía nada: ahora abre el diálogo (profesional o todo el equipo, rango de fechas u horas, todo el día, motivo), el bloqueo se dibuja rayado en el día y la semana y un clic abre la ficha para quitarlo. Solo `manager` o superior ve el botón; ahora también aparece en el móvil.
+- backend-lang/tests/test_availability_blocks.py (nuevo) — 13 casos.
+
+**Corregido**
+- backend-lang/src/services/appointment_agent.py — el prompt solo traía la fecha: ahora trae día, fecha y hora actual del negocio (Bogotá si el workspace no tiene zona válida) y la regla de no agendar una hora que ya pasó. Una hora pasada daba «No pude agendar la cita… un asesor te contactará» (tratada como fallo técnico): ahora el modelo recibe «esa hora ya pasó» y se lo explica al cliente. `consultar_disponibilidad` responde `ya pasó` / `ocupado` por hora en vez de fallar toda la consulta. Tests nuevos en tests/test_appointment_agent.py.
+- backend-lang/src/api/routes/appointments.py — `GET /appointments?from_date&to_date` cortaba el día en UTC: la cita de las 19:00 en adelante (Bogotá) aparecía en el día siguiente y faltaba en el de hoy. Ahora corta con `workspaces.timezone`.
+- front/src/routes/_authenticated/dashboard.tsx — «Citas de hoy» contaba las canceladas y las mostraba como «Atendida» porque el adaptador mapea `cancelled` a `done`. Ahora solo cuentan las citas en pie, «atendida» es solo `completed`, una pasada sin completar dice «Por completar» y la cancelada sale tachada con su propio estado. El resumen agrega «N canceladas».
+
+**Verificado**
+- backend: 510 pasan, 5 omitidos (antes 487). front: `tsc` sin errores nuevos (quedan 2 en `lib/api/example.functions.ts`, ya existían). `npm run build` falla en local con «Could not resolve entry module index.html» **también en HEAD**, no es de estos cambios.
+- No probado contra una BD real: los filtros por zona horaria usan SQL estándar de Postgres pero no se ejecutaron aquí.
+
+### [AGENTE: claude] [FECHA: 2026-11-12]
+**Corregido — 502 en producción cuando front y backend se reinician sin nginx**
+- nginx/nginx.conf — los bloques `upstream` resolvían `frontend` y `backend` solo al arrancar nginx. El 2026-11-13 (UTC) los dos contenedores se reiniciaron, intercambiaron IP (front .3, backend .2) y nginx siguió con las viejas: 502 en todo el sitio hasta `docker compose restart nginx`. Ahora los destinos van en variables (`$frontend_upstream`, `$backend_upstream`) y nginx los resuelve en cada petición con el DNS de Docker (caché de 10 s). `/api/` quita el prefijo con `rewrite ... break`; el resto de rutas pasa la URI tal cual, igual que antes.
+- CLAUDE.md — nota en «Producción»: un cambio en `nginx.conf` exige `docker compose restart nginx`.
+
+### [AGENTE: claude] [FECHA: 2026-11-12]
+**Cambiado — puertos de desarrollo local (front 8001, backend 9001)**
+- front/package.json — el script `dev` arranca en el puerto 8001 (`--strictPort`: si está ocupado falla en vez de saltar a otro). `build` no cambia, así que la VPS sigue igual.
+- front/.env.development (no versionado), front/.env.example, front/src/lib/api/client.ts — la API local es `http://localhost:9001`. En producción manda `VITE_API_URL` de `front/.env`.
+- backend-lang/.env.development (no versionado) — `FRONTEND_URL=http://localhost:8001`.
+- CLAUDE.md — comandos de desarrollo con los puertos nuevos. Dockerfiles, `docker-compose.yml` y nginx sin tocar.
+
 ### [AGENTE: claude] [FECHA: 2026-11-12]
 **Agregado — pestaña «Estado» en el panel de plataforma**
 - backend-lang/src/services/platform_health.py (nuevo), api/routes/admin.py, schemas/admin.py — `GET /admin/health` (solo `super_admin`): prueba la clave de Anthropic con una llamada de 1 token al modelo del agente (distingue clave inválida, sin saldo, límite y caída), prueba la clave de Kapso consultando cada número conectado, y resume las últimas 24 h (recibidos, enviados, chats sin respuesta, errores del agente y las últimas alertas). No devuelve claves ni cuerpos de los proveedores.

@@ -36,41 +36,6 @@
   display: none;
 }
 
-.topbar__search {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 12px;
-  margin-left: 10px;
-  background: var(--surface-tint);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  flex: 1 1 0;
-  max-width: 360px;
-  cursor: pointer;
-  text-align: left;
-  transition: background var(--dur-2) var(--ease-std), border-color var(--dur-2) var(--ease-std);
-}
-
-.topbar__search:hover {
-  border-color: var(--line-strong);
-}
-
-.topbar__search-placeholder {
-  flex: 1;
-  font: 400 13px/1 var(--font-sans);
-  color: var(--ink-3);
-}
-
-.topbar__search-kbd {
-  font: 500 11px/1 var(--font-mono);
-  color: var(--ink-3);
-  padding: 3px 6px;
-  background: var(--surface);
-  border-radius: 5px;
-  border: 1px solid var(--line);
-}
-
 .topbar__actions {
   margin-left: auto;
   flex-shrink: 0;
@@ -94,11 +59,6 @@
   color: var(--wa-ink);
 }
 
-.topbar__search-icon {
-  color: var(--ink-3);
-  flex-shrink: 0;
-}
-
 .topbar__bell-btn {
   /* shortcut: Button usa inline style para padding; clase no puede sobreescribir.
      Mantener style={{ padding: 8 }} hasta que Button migre a BEM. */
@@ -107,7 +67,6 @@
 @media (max-width: 879px) {
   .topbar { gap: 10px; }
   .topbar__mark { display: inline-flex; }
-  .topbar__search { display: none; }
   .topbar__only-desktop { display: none; }
   .topbar__only-mobile { display: inline; }
   .topbar__status:not(:first-child) { display: none; }

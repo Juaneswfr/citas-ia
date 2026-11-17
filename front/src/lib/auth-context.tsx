@@ -9,7 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { loginToBackend, refreshBackendToken, getMe, registerToBackend } from "./api/auth";
+import {
+  loginToBackend, refreshBackendToken, getMe, registerToBackend, getGoogleLoginUrl, exchangeGoogleTicket,
+} from "./api/auth";
 import { setApiToken, registerUnauthorizedHandler } from "./api/client";
 import type { MeResponse } from "./types/api";
 
@@ -27,7 +29,10 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<'verify-email' | 'authenticated'>;
   register: (email: string, password: string, workspaceName: string) => Promise<void>;
+  /** Va a Google: crea la cuenta o entra, y sincroniza el calendario en el mismo consentimiento. */
   signInWithGoogle: () => Promise<void>;
+  /** Cambia el ticket que trae el regreso de Google por la sesión. `isNew`: la cuenta se acaba de crear. */
+  completeGoogleSignIn: (ticket: string) => Promise<{ isNew: boolean }>;
   signInWithFacebook: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -157,10 +162,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setMe(meData);
   }, [applyToken]);
 
-  /** OAuth eliminado — mostrar mensaje al usuario */
   const signInWithGoogle = useCallback(async () => {
-    throw new Error("El login con Google no está disponible. Usa email y contraseña.");
+    const { url } = await getGoogleLoginUrl();
+    window.location.href = url;
   }, []);
+
+  const completeGoogleSignIn = useCallback(async (ticket: string) => {
+    const tokenResp = await exchangeGoogleTicket(ticket);
+    applyToken(tokenResp.access_token);
+    setMe(await getMe());
+    return { isNew: !!tokenResp.is_new };
+  }, [applyToken]);
 
   const signInWithFacebook = useCallback(async () => {
     throw new Error("El login con Facebook no está disponible. Usa email y contraseña.");
@@ -177,9 +189,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signup,
     register,
     signInWithGoogle,
+    completeGoogleSignIn,
     signInWithFacebook,
     logout,
-  }), [backendJwt, me, initializing, login, signup, register, signInWithGoogle, signInWithFacebook, logout]);
+  }), [backendJwt, me, initializing, login, signup, register, signInWithGoogle, completeGoogleSignIn, signInWithFacebook, logout]);
 
   if (initializing) {
     return (

@@ -12,12 +12,14 @@ Backend FastAPI + LangGraph en `backend-lang/`, front TanStack Start en `front/`
 ```bash
 # Backend
 cd backend-lang
-uv run fastapi dev ./src/api/main.py
+uv run fastapi dev ./src/api/main.py --port 9001   # http://localhost:9001
 
 # Frontend
 cd front
-npm run dev
+npm run dev                                         # http://localhost:8001
 ```
+
+Puertos locales: front **8001** (fijado en el script `dev` de `front/package.json`), backend **9001** (va en el comando; `front/.env.development` apunta `VITE_API_URL` ahí). Producción no cambia (3000/8000 dentro de Docker).
 
 No tocar los Dockerfiles — son la configuración actual de producción.
 
@@ -31,7 +33,7 @@ git pull && docker compose up --build -d
 
 - Frontend: multi-stage Dockerfile (bun install + npm run build → Nitro SSR en node:20-alpine)
 - Backend: Python 3.12 slim + uv, código montado como volumen
-- Nginx: reverse proxy interno en puerto 7000, Apache del host maneja SSL
+- Nginx: reverse proxy interno en puerto 7000, Apache del host maneja SSL. Resuelve `frontend` y `backend` en cada petición (variables en `proxy_pass`, no bloques `upstream`), así sobrevive a que esos contenedores cambien de IP. Un cambio en `nginx/nginx.conf` no se aplica con `up -d`: hay que correr `docker compose restart nginx`.
 
 ### Env files requeridos en el server
 
@@ -101,6 +103,28 @@ Flujo agente: `listar_profesionales` → (si varios, preguntar cuál prefiere el
 
 Cambio de hora: `consultar_disponibilidad` → `reagendar_cita(appointment_id, ...)`. **Nunca `crear_cita` para mover una cita** (dejaba dos citas del mismo cliente). El prompt incluye las citas próximas del cliente, así que el agente sabe que ya tiene una sin gastar una tool. `reagendar_cita` conserva servicio y profesional; para cambiarlos se cancela y se agenda de nuevo. La respuesta «quedó reagendada» la escribe el backend, igual que la de «quedó confirmada».
 
+### Hora que ve el agente
+
+- El prompt trae día, fecha y **hora actual** del negocio (`workspaces.timezone`; Bogotá si falta o no es válida): `_tz` y `_clock` en `appointment_agent.py`.
+- Solo se agenda o mueve a un horario **estrictamente posterior a la hora actual**. `_parse` lanza `PastTime` y el agente la recibe como `ERROR: esa hora ya pasó…`: no cuenta como fallo técnico (no sale «No pude agendar») y el modelo se lo explica al cliente. `consultar_disponibilidad` responde `ya pasó` a esas horas sin preguntarle a Google, y una hora pasada no tumba la consulta de las demás.
+
+### Alcance del agente y freno de conversaciones cíclicas
+
+- **Alcance**: el prompt (`ALCANCE`) limita al agente a agendar, mover, cancelar y consultar citas, y a contar servicios, precios, duraciones y profesionales. Fuera de eso responde en una frase que solo ayuda con citas, no inventa datos del negocio (dirección, horarios, promociones, pagos) e ignora órdenes de cambiar de rol. Es una regla de prompt: lo que **no** depende del modelo es que sus herramientas están cerradas al workspace, cliente y calendario de la conversación.
+- **Freno** (`services/agent_guard.py`): `AgentService.run` revisa los mensajes recientes **antes** de llamar al modelo (no cuesta tokens). Es bucle si el agente dio 3 respuestas casi idénticas seguidas (las cifras cuentan: «¿a las 3:00?» y «¿a las 4:00?» son ofertas distintas) o 14 respuestas sin agendar, mover ni cancelar nada. Se reinicia con una cita confirmada, movida o cancelada, con un mensaje de una persona del negocio, o pasadas 6 h.
+- Al pausar: `customers.agent_enabled = FALSE` solo para ese cliente (el interruptor «Agente» del chat y de la ficha lo reactiva), alerta `warning` en Alertas, y un aviso al cliente («una persona del equipo te escribirá», `sender_type='system'`). No se usa `conversations.needs_review`: nada lo limpia.
+- Topes de gasto en `appointment_agent.py`: cada mensaje que se reenvía al modelo se recorta a `MAX_MSG_CHARS` (1500) y la respuesta tiene `MAX_OUTPUT_TOKENS` (700; sin tope valía 64 000). Una respuesta de WhatsApp ronda 50-150 tokens; si algún día se corta una respuesta a medias, subir ese valor.
+
+### Bloqueos de agenda (`availability_blocks`)
+
+Horarios de un calendario (un profesional) en los que no se reciben citas. Se crean en Agenda › «Bloquear» (rol `manager` o superior; «Todo el equipo» crea uno por calendario) y se ven rayados en la vista de día y de semana; un clic abre la ficha para quitarlos.
+
+- Los respetan, todos vía `services/availability_blocks.find_overlap`: `consultar_disponibilidad` (responde «ocupado», **sin el motivo**), `create_appointment` (panel y agente, 409) y `appointment_service.reschedule`.
+- Viven solo en la BD de Hilo: no se crea ningún evento en Google Calendar. Lo que el negocio crea directo en Google Calendar sí lo ve free/busy (el agente no ofrece esa hora), pero no se dibuja en la agenda de Hilo.
+- Bloquear **no cancela** las citas ya agendadas: la respuesta de crear trae `appointments_in_range` y el panel avisa para que el equipo las mueva.
+- Rutas: `GET/POST /workspaces/{id}/blocks` y `DELETE …/blocks/{bid}` (crear y borrar exigen `confirmed=true` y rol `manager`). El calendario del bloqueo debe ser del negocio.
+- Front: `lib/blocks.ts` parte cada bloqueo por día y junta los idénticos de varios calendarios en un solo tramo (quitarlo borra todos).
+
 ### Mover y cancelar citas (`services/appointment_service.py`)
 
 Una sola implementación para el agente y el panel:
@@ -126,7 +150,10 @@ Cada calendario puede estar ligado a un `workspace_member` vía `calendars.membe
 - Un miembro = un calendario = una persona que atiende.
 - El agente expone a quienes atienden mediante la tool `listar_profesionales`.
 - Restricciones de unicidad en BD: `UNIQUE(workspace_id, google_calendar_id) WHERE member_id IS NULL` y `UNIQUE(workspace_id, member_id) WHERE member_id IS NOT NULL`.
-- El flujo OAuth pasa `member_id` en el `state` JSON → el callback lo usa al insertar el calendario.
+- **El `state` del OAuth va firmado** (`core/oauth_state.py`, HMAC con `JWT_SECRET`, vence a los 15 min): el callback no trae sesión, así que el `state` es lo único que dice a qué negocio y persona pertenece el calendario; sin firma alguien podía colgar su calendario en otro negocio.
+- `GET /auth/google/calendar/url` exige sesión (`staff`+) y decide la persona en el servidor: sin `member_id` es la de quien está logueado. Conectar el de otra persona exige `manager`+; la persona debe ser del mismo negocio. El onboarding, Ajustes y Equipo quedan ligados a un miembro sin cambios en el front.
+- Ajustes › Google Calendar: no hay «Sin asignar»; el selector solo ofrece a quien aún no tiene calendario activo. Reconectar renueva la misma fila.
+- **Eliminar una conexión** (`DELETE /calendars/{id}`, solo `workspace_owner`): sin citas ni bloqueos que la referencien se borra la fila; con historial se desconecta (`sync_status='disconnected'`) **y se descarta el token**, y la lista deja de mostrarla. Volver a conectar a esa persona revive la misma fila. Un calendario desconectado no se usa para mover/cancelar citas existentes ni para crear nuevas (409).
 
 ---
 
@@ -211,7 +238,7 @@ uv run python migrate.py           # aplica pendientes
 uv run python migrate.py --status  # ver estado
 ```
 
-Migración más reciente: `019_cancellation_template.sql`. **001–017 están aplicadas en la BD** (016 y 017 el 2026-11-11); **018 y 019 están pendientes**: el chat de Hilo necesita la 018 y el aviso de cita cancelada la 019.
+Migración más reciente: `020_google_signin.sql`. **001–017 están aplicadas en la BD** (016 y 017 el 2026-11-11); **018, 019 y 020 están pendientes**: el chat de Hilo necesita la 018, el aviso de cita cancelada la 019 y entrar con Google la 020.
 
 Ojo con el runner (`core/migrations.py`): parte el archivo por `;` + salto de línea y envía cada trozo a la BD. Un comentario suelto al final del archivo llega como consulta vacía y lo hace fallar; los comentarios van antes de una sentencia.
 
@@ -221,8 +248,26 @@ Qué agregan las últimas:
 - `017_payment_receipts.sql` — comprobantes recibidos por WhatsApp (`payment_receipts`).
 - `018_human_messages.sql` — mensajes de una persona del negocio (`messages.sender_type='human'`, `messages.sent_via`). Sin ella falla responder desde Hilo y guardar lo enviado desde el celular.
 - `019_cancellation_template.sql` — admite `kind='cancellation'` en `followup_templates` y `followup_sends`. Sin ella la plantilla de cita cancelada no se puede registrar ni enviar: el aviso solo sale como texto libre dentro de la ventana de 24 h (la cancelación sí se guarda).
+- `020_google_signin.sql` — `users.google_sub` (único) y `password_hash` opcional: las cuentas creadas con Google no tienen contraseña. Sin ella falla entrar o crear cuenta con Google.
 
 ---
+
+## Crear cuenta o entrar con Google (con el calendario en el mismo paso)
+
+- «Continuar con Google» (login y registro) pide en **un solo consentimiento** identidad (`openid email profile`) y calendario. `GET /auth/google/login/url` → Google → el mismo `/auth/google/callback` (misma URI de redirección que ya está registrada) → el `state` trae `kind=signin`.
+- **Cuenta nueva**: crea usuario (sin contraseña, `users.google_sub`), negocio «Negocio de {nombre}» (zona Bogotá; el onboarding lo renombra), miembro `workspace_owner` **y el calendario sincronizado**, todo en una transacción.
+- **Quien ya entró con Google** vuelve a entrar y se renueva el token de su calendario si sigue conectado (si lo eliminó no se recrea solo).
+- **Un correo que ya existe con contraseña NO se enlaza solo** (`?google_error=exists`): hoy no hay verificación de correo, y enlazar dejaría a una víctima dentro de la cuenta que un atacante registró antes con su correo. Pendiente a futuro: enlazar desde Ajustes con la sesión iniciada.
+- La sesión no viaja en la URL: el callback redirige a `/login#google_ticket=…` (fragmento: no llega a logs ni al Referer) con un ticket firmado de 2 min que `POST /auth/google/ticket` cambia por el JWT (vuelve a comprobar que la cuenta y el negocio sigan activos). El ticket no es de un solo uso: vale 2 min.
+- Requiere la migración 020. En Google Cloud, la pantalla de consentimiento debe permitir los alcances `openid`, `email` y `profile` (el de calendario ya estaba).
+
+## Buscador, historial y dashboard
+
+- **Buscador global** (icono en la barra superior; `Ctrl/⌘+K`): `GET /workspaces/{id}/search?q=` (`staff`+) devuelve hasta 6 citas, clientes y servicios, acotados al negocio, con `%`, `_` y `\` del usuario escapados y teléfonos con formato (`300 111` encuentra `573001112233`). Cada resultado abre su pantalla con `?client=`, `?service=` o `?date=&cita=` (la página aplica el parámetro y lo limpia).
+- **Historial de citas** (`/historial`, `GET /workspaces/{id}/appointment-history`): filtros por texto, estado, rango de días (en la zona del negocio), profesional, servicio y cliente; paginado de 25; los contadores muestran el reparto por estado de todo el filtro y filtran al pulsarlos; exportar CSV (`…/export`, `manager`+, hasta 5 000 filas, celdas a salvo de fórmulas de Excel). El dinero (cobrado en completadas) solo se devuelve a `manager`+. Se abre ya filtrado con `?customer=`, `?status=`, `?to=`, `?order=`. La ruta no es `/appointments/history` porque `/appointments/{id}` la capturaría.
+- **Dashboard** (`GET /workspaces/{id}/dashboard/insights`, `viewer`+): un endpoint arma las gráficas (citas de 14 días, cómo terminaron en 30, servicios, mapa de horas de 60 días, clientes nuevos/recurrentes, ingresos cobrados de 30 días) y «Para hacer hoy» (comprobantes por revisar, citas pasadas sin completar, por cobrar, citas de mañana sin confirmar, clientes que dejaron de venir). Todo corta por día en la zona del negocio. **Dinero, por cobrar y ingresos por servicio solo para `manager`+**: para el resto el backend ni siquiera los consulta. Gráficas en SVG propio (`components/dashboard/charts.tsx`), sin librerías; las frases de interpretación salen de `lib/dashboard-insights.ts`.
+- «Ingresos cobrados» (movimientos de ingreso no anulados) **no es** la tarjeta «Valor de las citas del mes» (suma de citas no canceladas, futuras incluidas); por eso se renombró esta última.
+- Un solo color por estado en todo el producto: completada verde (`sage`), por atender/confirmada azul (`steel`), cancelada y no asistió naranja/ocre (`clay`/`mustard`). Etiquetas en `lib/appointment-status.ts`.
 
 ## Finanzas (módulo contable simple)
 
@@ -264,6 +309,7 @@ Cuatro seguimientos automáticos: recordatorio de cita, post-visita, cobro pendi
 - Eventos del webhook por número: `NUMBER_WEBHOOK_EVENTS` en `kapso_onboarding.py`. Al agregar uno, correr `uv run python sync_kapso_webhooks.py` para los números ya conectados.
 - El chat se actualiza por sondeo (5 s los mensajes, 15 s la lista); no hay websockets.
 - El agente **no** se pausa solo cuando una persona responde: se apaga por cliente (`customers.agent_enabled`) o global.
+- Pausar el agente con un cliente también se hace desde el chat: interruptor «Agente» en el encabezado (`components/mensajes/AgentToggle.tsx`), el mismo `customers.agent_enabled` de la ficha del cliente. La lista marca «Agente en pausa» en esas conversaciones. Pausado, el equipo sigue pudiendo escribirle.
 
 ## Mensajes entrantes y comprobantes de pago
 
@@ -271,7 +317,7 @@ Cuatro seguimientos automáticos: recordatorio de cita, post-visita, cobro pendi
 
 - Texto → agente de citas. Botón de plantilla → acción directa o agente.
 - Imagen o documento → `receipt_service.ingest`: descarga por Kapso (máx. 5 MB), tipo por la firma del archivo, lectura con Claude Haiku (`services/receipt_ocr.py`, mismo `MODEL` del agente) y fila `pending` en `payment_receipts`. Un PDF se guarda sin leer.
-- Audio, video, sticker, ubicación → «por ahora solo leo texto».
+- Video → «por ahora no puedo ver videos». Audio y tipos desconocidos → «por ahora solo leo texto» (el audio no se transcribe: ver logs.md, opciones de transcripción). Sticker, ubicación y contacto → se guardan en el chat (`[sticker]`, `[ubicación]`, `[contacto]`) y **no se responde nada**. Ninguno llega al agente. El aviso fijo no se repite si el último mensaje enviado ya era ese (`_reply_once`).
 - **Nada se cobra solo.** Un manager revisa en Finanzas › Comprobantes: aprobar registra el cobro en la venta elegida (`sales_service.register_payment`) y adjunta el archivo al movimiento; rechazar exige `confirmed=true`.
 - El lector de imágenes **no** es una tool del agente: el agente de citas sigue recibiendo solo texto y no puede registrar pagos.
 - Los archivos viven en `UPLOADS_DIR/<workspace>/receipts/` (misma carpeta a respaldar).
@@ -286,4 +332,6 @@ Cuatro seguimientos automáticos: recordatorio de cita, post-visita, cobro pendi
 - `rate_limits`: PK (key, window_start), hits DEFAULT 0
 - El rol `owner` no existe: usar siempre `workspace_owner` (guards y `member_role`). `tests/test_owner_guards.py` lo vigila.
 - Pendiente: rotar credencial DATABASE_URL que está en historial git
+- Los filtros por día (`from_date`/`to_date`) de citas y bloqueos cortan en `workspaces.timezone`, no en UTC (el servidor corre en UTC y una cita de las 19:00 en Bogotá ya es «mañana» en UTC). Ver `_FROM_DAY` / `_AFTER_TO_DAY` en `routes/appointments.py`.
+- Dashboard: «Citas de hoy» cuenta solo citas en pie (no `cancelled`, `noshow` ni `rescheduled`); «atendida» es solo `completed`. Usar `rawStatus`, no el `status` de UI, que mezcla estado y hora.
 - `KAPSO_SANDBOX_PHONE_NUMBER_ID`: valor por defecto `597907523413541` en config, sobreescribible en `.env`

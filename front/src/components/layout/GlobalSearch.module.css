@@ -1,0 +1,272 @@
+/* Buscador global: un icono que se abre en un campo con resultados en vivo. Usa los tokens de movimiento. */
+
+.gs {
+  position: relative;
+  display: inline-flex;
+  margin-right: 2px;
+}
+
+.gs__trigger {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface-tint);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: border-color var(--dur-2) var(--ease-std), color var(--dur-2) var(--ease-std),
+    background var(--dur-2) var(--ease-std);
+}
+
+.gs__trigger:hover {
+  border-color: var(--line-strong);
+  color: var(--ink-1);
+  background: var(--surface);
+}
+
+/* El campo crece desde el icono hacia la izquierda y cubre el botón. */
+.gs__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 30;
+  width: min(440px, calc(100vw - 32px));
+  animation: gs-grow var(--dur-3) var(--ease-out) both;
+}
+
+.gs__field {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  padding: 0 10px 0 12px;
+  background: var(--surface);
+  border: 1px solid var(--wine);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--wine) 14%, transparent), var(--shadow-md);
+}
+
+.gs__lens {
+  color: var(--wine);
+  flex-shrink: 0;
+}
+
+.gs__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: 400 14px/1 var(--font-sans);
+  color: var(--ink-1);
+}
+
+.gs__input::placeholder {
+  color: var(--ink-3);
+}
+
+.gs__kbd {
+  font: 500 10.5px/1 var(--font-mono);
+  color: var(--ink-3);
+  padding: 3px 6px;
+  background: var(--surface-tint);
+  border-radius: 5px;
+  border: 1px solid var(--line);
+}
+
+.gs__spinner {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--wine);
+  animation: gs-spin 0.7s linear infinite;
+}
+
+/* ── Resultados ── */
+.gs__results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: min(70dvh, 520px);
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  animation: gs-drop var(--dur-3) var(--ease-out) both;
+}
+
+/* Barra de progreso fina mientras llega la respuesta: lo anterior sigue visible. */
+.gs__bar {
+  position: sticky;
+  top: -6px;
+  display: block;
+  height: 2px;
+  margin: -6px -6px 4px;
+  background: linear-gradient(90deg, transparent, var(--wine), transparent);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: gs-bar 1s var(--ease-std) infinite;
+}
+
+.gs__hint {
+  padding: 22px 14px;
+  text-align: center;
+  font: 400 13px/1.45 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.gs__skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.gs__skeleton {
+  height: 38px;
+  border-radius: var(--r-md);
+  background: linear-gradient(90deg, var(--line) 0%, var(--surface-2) 50%, var(--line) 100%);
+  background-size: 200% 100%;
+  animation: gs-shimmer 1.2s var(--ease-std) infinite;
+}
+
+.gs__section + .gs__section {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.gs__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 4px;
+  font: 500 10.5px/1 var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+
+.gs__heading span {
+  font: 500 10.5px/1 var(--font-mono);
+  letter-spacing: 0;
+}
+
+.gs__row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  animation: gs-row var(--dur-3) var(--ease-out) both;
+  transition: background var(--dur-1) var(--ease-std);
+}
+
+.gs__row--active {
+  background: var(--wine-50);
+}
+
+.gs__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--wine);
+}
+
+.gs__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.gs__title {
+  font: 500 13.5px/1.2 var(--font-sans);
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs__sub {
+  font: 400 12px/1.2 var(--font-sans);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gs__mark {
+  background: color-mix(in srgb, var(--mustard) 28%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+@keyframes gs-grow {
+  from { width: 36px; }
+}
+
+@keyframes gs-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+
+@keyframes gs-row {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes gs-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes gs-bar {
+  from { background-position: -100% 0; }
+  to { background-position: 200% 0; }
+}
+
+@keyframes gs-shimmer {
+  to { background-position: -200% 0; }
+}
+
+/* En el teléfono el campo cubre toda la barra superior. */
+@media (max-width: 879px) {
+  .gs__panel {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: calc(env(safe-area-inset-top) + 6px);
+    width: auto;
+    animation-name: gs-drop;
+  }
+
+  .gs__field {
+    height: 46px;
+  }
+
+  .gs__results {
+    max-height: calc(100dvh - 80px - env(safe-area-inset-top));
+  }
+
+  .gs__kbd {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs__panel, .gs__results, .gs__row, .gs__bar, .gs__skeleton, .gs__spinner {
+    animation: none;
+  }
+}

@@ -236,7 +236,8 @@ async def list_calendars(
         FROM calendars c
         LEFT JOIN workspace_members wm ON wm.id = c.member_id
         LEFT JOIN users u ON u.id = wm.user_id
-        WHERE c.workspace_id = :workspace_id
+        WHERE c.workspace_id = :workspace_id AND c.sync_status <> 'disconnected'
+        ORDER BY c.created_at
         """),
         {"workspace_id": workspace_id},
     )).mappings().fetchall()
@@ -291,7 +292,7 @@ async def connect_calendar(
 @router.delete(
     "/workspaces/{workspace_id}/calendars/{calendar_id}",
     status_code=204,
-    summary="Desconectar calendario.",
+    summary="Eliminar la conexión de un calendario.",
     dependencies=[Depends(require_workspace_access("workspace_owner"))],
 )
 async def disconnect_calendar(
@@ -300,10 +301,38 @@ async def disconnect_calendar(
     current_user: dict = Depends(require_workspace_access("workspace_owner")),
     db: AsyncSession = Depends(get_db),
 ):
-    await db.execute(
-        text("UPDATE calendars SET sync_enabled=FALSE, sync_status='disconnected' WHERE id=:calendar_id AND workspace_id=:workspace_id"),
-        {"calendar_id": calendar_id, "workspace_id": workspace_id},
-    )
+    """Quita la conexión: el agente deja de ofrecer a esa persona y el calendario sale de la lista.
+
+    Sin citas ni bloqueos que lo referencien se borra la fila. Con historial no se puede borrar (las
+    citas apuntan a ella): se desconecta y se descarta el token de Google, y volver a conectar a la
+    misma persona reactiva esa misma fila.
+    """
+    exists = (await db.execute(
+        text("SELECT id FROM calendars WHERE id = :c AND workspace_id = :w"),
+        {"c": calendar_id, "w": workspace_id},
+    )).scalar_one_or_none()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Calendario no encontrado.")
+
+    referenced = (await db.execute(
+        text("""
+            SELECT (SELECT COUNT(*) FROM appointments WHERE calendar_id = :c)
+                 + (SELECT COUNT(*) FROM availability_blocks WHERE calendar_id = :c)
+        """),
+        {"c": calendar_id},
+    )).scalar_one()
+    if referenced:
+        await db.execute(
+            text("""
+                UPDATE calendars
+                SET sync_enabled = FALSE, sync_status = 'disconnected', oauth_refresh_token_encrypted = ''
+                WHERE id = :c AND workspace_id = :w
+            """),
+            {"c": calendar_id, "w": workspace_id},
+        )
+    else:
+        await db.execute(text("DELETE FROM calendars WHERE id = :c AND workspace_id = :w"),
+                         {"c": calendar_id, "w": workspace_id})
     await db.commit()
-    log.info("[calendars] disconnected | workspace=%s | cal=%s | by=%s",
-             workspace_id, calendar_id, current_user.get("sub"))
+    log.info("[calendars] eliminado | workspace=%s | cal=%s | historial=%s | by=%s",
+             workspace_id, calendar_id, bool(referenced), current_user.get("sub"))

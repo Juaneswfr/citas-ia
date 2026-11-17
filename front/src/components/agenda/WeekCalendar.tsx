@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { addDays, format, getDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { CalendarEvent } from '@/hooks/use-appointments';
+import { rangeLabel, type BlockView } from '@/lib/blocks';
 import styles from './WeekCalendar.module.css';
 
 const HOURS_START = 7;
@@ -20,6 +21,9 @@ interface WeekCalendarProps {
   onSlotClick: (date: string, time: string) => void;
   /** Se llama con el id de la cita al hacer clic (o Enter) sobre un evento. */
   onEventClick?: (appointmentId: string) => void;
+  /** Horarios bloqueados: se dibujan rayados, debajo de las citas. */
+  blocks?: BlockView[];
+  onBlockClick?: (block: BlockView) => void;
 }
 
 function yToTime(offsetY: number): { hour: number; min: number } {
@@ -41,7 +45,7 @@ function fmt12(hour: number, min: number): string {
   return `${h}:${String(min).padStart(2, '0')} ${suffix}`;
 }
 
-export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, onSlotClick, onEventClick }: WeekCalendarProps) {
+export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, onSlotClick, onEventClick, blocks = [], onBlockClick }: WeekCalendarProps) {
   const today = new Date();
   const todayStr = format(today, 'yyyy-MM-dd');
 
@@ -162,6 +166,31 @@ export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, o
               );
             })()}
 
+            {/* Horarios bloqueados */}
+            {blocks.filter(b => b.dayKey === d.dateStr).map(b => {
+              const topPx    = Math.max(0, (b.startMin / 60 - HOURS_START) * PX_PER_HOUR);
+              const bottomPx = Math.min(TOTAL_H, (b.endMin / 60 - HOURS_START) * PX_PER_HOUR);
+              if (bottomPx <= topPx) return null; // fuera del horario que muestra la agenda
+              const heightPx = bottomPx - topPx;
+              const label = `Bloqueado · ${b.who}${b.reason ? ` · ${b.reason}` : ''}`;
+              return (
+                <div
+                  key={b.key}
+                  className={styles['week-calendar__block']}
+                  role="button"
+                  tabIndex={0}
+                  style={{ top: topPx, height: heightPx }}
+                  title={`${label} (${rangeLabel(b)})`}
+                  onMouseMove={e => { e.stopPropagation(); setGhost(null); }}
+                  onClick={e => { e.stopPropagation(); onBlockClick?.(b); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); onBlockClick?.(b); } }}
+                >
+                  <div className={styles['week-calendar__block-title']}>Bloqueado</div>
+                  {heightPx >= 40 && <div className={styles['week-calendar__block-meta']}>{b.reason || b.who}</div>}
+                </div>
+              );
+            })}
+
             {/* Skeleton while loading */}
             {isLoading && (
               <div
@@ -178,8 +207,12 @@ export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, o
                 const topPx    = (ev.s - HOURS_START) * PX_PER_HOUR;
                 const heightPx = (ev.m / 60) * PX_PER_HOUR - 2;
                 if (topPx < 0 || topPx > TOTAL_H) return null;
-                const endH  = ev.s + Math.floor(ev.m / 60);
-                const endM  = ev.m % 60;
+                // `ev.s` es la hora decimal (12.5 = 12:30): se separa en hora y minutos antes de escribirla.
+                const startH = Math.floor(ev.s);
+                const startM = Math.round((ev.s - startH) * 60);
+                const endAt  = startH * 60 + startM + ev.m;
+                const endH   = Math.floor(endAt / 60);
+                const endM   = endAt % 60;
                 return (
                   <div
                     key={i}
@@ -199,7 +232,7 @@ export function WeekCalendar({ weekStart, cols = 6, events, isLoading = false, o
                     <div className={styles['week-calendar__event-client']}>{ev.status === 'completed' ? '✓ ' : ''}{ev.client}</div>
                     {ev.m >= 30 && (
                       <div className={styles['week-calendar__event-time']}>
-                        {fmt12(ev.s, 0)} – {fmt12(endH, endM)}
+                        {fmt12(startH, startM)} – {fmt12(endH, endM)}
                       </div>
                     )}
                     {ev.m >= 45 && (

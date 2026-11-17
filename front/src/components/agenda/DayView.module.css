@@ -186,3 +186,63 @@
   .day-view__time-col { padding-right: 8px; }
   .day-view__card { flex-wrap: wrap; }
 }
+
+/* ── Horarios bloqueados ── */
+.day-view__blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 0 12px;
+}
+
+.day-view__block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-2);
+  cursor: pointer;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--line-strong);
+  border-left: 3px solid var(--ink-3);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ink-3) 12%, transparent) 0 6px,
+    color-mix(in srgb, var(--ink-3) 4%, transparent) 6px 12px
+  );
+  transition: border-color var(--dur-1) var(--ease-std);
+}
+
+.day-view__block:hover {
+  border-color: var(--ink-3);
+}
+
+.day-view__block-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.day-view__block-time {
+  font: 500 14px/1.2 var(--font-sans);
+  color: var(--ink-1);
+}
+
+.day-view__block-meta {
+  font: 400 12.5px/1.3 var(--font-sans);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day-view__block-tag {
+  flex-shrink: 0;
+  font: 500 11.5px/1 var(--font-sans);
+  color: var(--ink-3);
+}

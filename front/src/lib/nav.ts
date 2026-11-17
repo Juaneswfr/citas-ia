@@ -52,6 +52,7 @@ export const NAV: NavGroup[] = [
   { group: 'Operación', items: [
     { id: 'inicio',    path: '/dashboard', icon: 'home',     label: 'Inicio' },
     { id: 'agenda',    path: '/agenda',    icon: 'calendar', label: 'Agenda' },
+    { id: 'historial', path: '/historial', icon: 'clock',    label: 'Historial' },
     { id: 'alertas',   path: '/alertas',   icon: 'bell',     label: 'Alertas' },
     { id: 'servicios', path: '/services',  icon: 'scissors', label: 'Servicios' },
     { id: 'clientes',  path: '/clients',   icon: 'users',    label: 'Clientes' },
@@ -75,6 +76,7 @@ export const NAV: NavGroup[] = [
 export const PATH_TO_ID: Record<string, string> = {
   '/dashboard': 'inicio',
   '/agenda':    'agenda',
+  '/historial': 'historial',
   '/alertas':   'alertas',
   '/services':  'servicios',
   '/clients':   'clientes',
@@ -90,6 +92,7 @@ export const PATH_TO_ID: Record<string, string> = {
 export const TITLES: Record<string, string> = {
   inicio:         'Inicio',
   agenda:         'Agenda',
+  historial:      'Historial de citas',
   alertas:        'Alertas del agente',
   servicios:      'Servicios',
   clientes:       'Clientes',

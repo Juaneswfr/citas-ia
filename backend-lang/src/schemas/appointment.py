@@ -1,7 +1,7 @@
 """Schemas para Citas (appointments) y Bloques de disponibilidad."""
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AppointmentCreate(BaseModel):
@@ -69,9 +69,15 @@ class AvailabilityBlockCreate(BaseModel):
     start_at: datetime = Field(..., description="Inicio del bloqueo")
     end_at: datetime = Field(..., description="Fin del bloqueo")
     block_type: str = Field(
-        ..., description="manual|system|travel|external"
+        "manual", description="manual|system|travel|external"
     )
-    reason: Optional[str] = Field(None, description="Motivo del bloqueo")
+    reason: Optional[str] = Field(None, max_length=500, description="Motivo del bloqueo")
+
+    @model_validator(mode="after")
+    def _end_after_start(self):
+        if self.end_at <= self.start_at:
+            raise ValueError("El fin del bloqueo debe ser posterior al inicio.")
+        return self
 
 
 class AvailabilityBlockOut(BaseModel):
@@ -86,3 +92,8 @@ class AvailabilityBlockOut(BaseModel):
     google_event_id: Optional[str]
     created_by: Optional[str]
     created_at: datetime
+
+
+class AvailabilityBlockCreated(AvailabilityBlockOut):
+    """El bloqueo creado y cuántas citas ya agendadas caen dentro (no se cancelan solas)."""
+    appointments_in_range: int = 0

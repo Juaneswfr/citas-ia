@@ -212,6 +212,48 @@
   50%       { opacity: 0.6; }
 }
 
+/* ── Horario bloqueado: rayado gris debajo de las citas ── */
+.week-calendar__block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  padding: 4px 7px;
+  overflow: hidden;
+  cursor: pointer;
+  border-left: 3px solid var(--ink-3);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ink-3) 16%, transparent) 0 6px,
+    color-mix(in srgb, var(--ink-3) 6%, transparent) 6px 12px
+  );
+  transition: background var(--dur-1) var(--ease-std);
+}
+
+.week-calendar__block:hover {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ink-3) 24%, transparent) 0 6px,
+    color-mix(in srgb, var(--ink-3) 10%, transparent) 6px 12px
+  );
+}
+
+.week-calendar__block-title {
+  font: 500 10.5px/1.2 var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
+
+.week-calendar__block-meta {
+  margin-top: 2px;
+  font: 400 10.5px/1.3 var(--font-sans);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Cita completada: se atenúa para distinguirla de las pendientes */
 .week-calendar__event--done { opacity: 0.72; }
 

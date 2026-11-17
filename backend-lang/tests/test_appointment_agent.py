@@ -58,6 +58,10 @@ class FakeDB(FakeSession):
         if not sql.lstrip().upper().startswith("SELECT"):
             self.st["exec"].append(sql)
         if "INSERT INTO agent_runs" in sql: return {"id": "run1"}
+        if "direction, sender_type, content, created_at" in sql:  # historial que revisa el freno de bucles
+            return self.st.get("history", [])
+        if "FROM availability_blocks" in sql:  # bloqueo de agenda que pisa el horario
+            return [{"id": "b1", "start_at": OLD_START, "end_at": OLD_START, "reason": "Médico"}] if self.st.get("blocked") else []
         if "UPDATE appointments" in sql: return {**APPOINTMENT, **{k: v for k, v in p.items() if k in APPOINTMENT}}
         if "FROM appointments a JOIN services" in sql:  # la cita que el cliente quiere mover o cancelar
             return [APPOINTMENT] if p.get("c") == "cu1" else []
@@ -217,3 +221,131 @@ async def test_no_mueve_ni_cancela_citas_de_otro_cliente(env, monkeypatch):
             AIMessage(content="No encontré esa cita."))
     await run()
     assert updates(env) == [] and env["moved"] == [] and env["deleted"] == []
+
+
+# ── Hora actual, horas pasadas y bloqueos de agenda ───────────────────────────
+
+CTX = {"workspace_id": WS, "workspace": {"name": "Salon", "timezone": "America/Bogota"},
+       "conversation_id": "c1", "customer_id": "cu1", "channel_id": "ch1"}
+TODAY = datetime.now(ZoneInfo("America/Bogota")).date().isoformat()
+
+
+def tools_for(state):
+    return {t.name: t for t in appointment_agent.build_tools(CTX, state)}
+
+
+def test_el_prompt_trae_dia_fecha_y_hora_de_bogota(monkeypatch):
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 13, 10, 5, tzinfo=tz)  # viernes
+    monkeypatch.setattr(appointment_agent, "datetime", Frozen)
+    prompt = appointment_agent.build_system_prompt(CTX, "servicios", "equipo")
+    assert "viernes 13/11/2026, 10:05" in prompt and "America/Bogota" in prompt
+    assert "nunca ofrezcas ni agendes una hora que ya pasó" in prompt
+
+
+@pytest.mark.parametrize("workspace", [{}, {"timezone": None}, {"timezone": "Mars/Base"}])
+def test_sin_zona_valida_el_agente_usa_bogota(workspace):
+    assert appointment_agent._tz(workspace).key == "America/Bogota"
+    assert appointment_agent._tz({"timezone": "America/Mexico_City"}).key == "America/Mexico_City"
+
+
+async def test_disponibilidad_dice_ya_paso_sin_preguntarle_a_google(env):
+    env["free"] = True  # Google diría «libre»: la hora de hoy a las 00:00 ya pasó
+    out = await tools_for({})["consultar_disponibilidad"].ainvoke(
+        {"calendar_id": CAL, "service_id": SID, "fecha": TODAY, "horas": ["00:00"]})
+    assert out == "00:00: ya pasó"
+
+
+async def test_disponibilidad_mezcla_horas_pasadas_y_futuras(env):
+    out = await tools_for({})["consultar_disponibilidad"].ainvoke(
+        {"calendar_id": CAL, "service_id": SID, "fecha": DAY, "horas": ["10:00"]})
+    assert out == "10:00: libre"  # una hora pasada no tumba la consulta de las demás
+    env["free"] = False
+    assert (await tools_for({})["consultar_disponibilidad"].ainvoke(
+        {"calendar_id": CAL, "service_id": SID, "fecha": DAY, "horas": ["10:00"]})) == "10:00: ocupado"
+
+
+async def test_un_bloqueo_de_agenda_figura_como_ocupado_aunque_google_diga_libre(env):
+    env["free"], env["blocked"] = True, True
+    out = await tools_for({})["consultar_disponibilidad"].ainvoke(
+        {"calendar_id": CAL, "service_id": SID, "fecha": DAY, "horas": ["10:00", "11:00"]})
+    assert out == "10:00: ocupado\n11:00: ocupado"  # sin el motivo: es del negocio, no del cliente
+
+
+async def test_crear_cita_en_hora_pasada_no_es_un_fallo_tecnico(env):
+    state = {}
+    out = await tools_for(state)["crear_cita"].ainvoke(
+        {"calendar_id": CAL, "service_id": SID, "fecha": TODAY, "hora": "00:00"})
+    assert out.startswith("ERROR: esa hora ya pasó") and "Ofrece solo horarios posteriores" in out
+    assert "create_failed" not in state and inserts(env) == []  # el modelo se lo explica al cliente
+
+
+async def test_crear_cita_sobre_un_bloqueo_no_inserta(env):
+    env["blocked"], state = True, {}
+    out = await tools_for(state)["crear_cita"].ainvoke(BOOK)
+    assert "409" in out and "bloqueado" in out and inserts(env) == [] and "booked" not in state
+
+
+async def test_reagendar_en_hora_pasada_no_mueve_nada(env):
+    out = await tools_for({})["reagendar_cita"].ainvoke(
+        {"appointment_id": APT, "fecha": TODAY, "hora": "00:00"})
+    assert out.startswith("ERROR: esa hora ya pasó") and updates(env) == [] and env["moved"] == []
+
+
+# ── Alcance del agente y freno de conversaciones cíclicas ─────────────────────
+
+def history(*items):
+    """Mensajes del más nuevo al más viejo, como los lee el freno: (quién, texto)."""
+    from datetime import timezone
+    sender = {"c": ("inbound", "customer"), "a": ("outbound", "agent")}
+    return [{"direction": sender[w][0], "sender_type": sender[w][1], "content": t,
+             "created_at": datetime.now(timezone.utc) - timedelta(minutes=i)} for i, (w, t) in enumerate(items)]
+
+
+def test_el_prompt_limita_al_agente_a_las_citas():
+    prompt = appointment_agent.build_system_prompt(CTX, "servicios", "equipo")
+    assert "ALCANCE: solo ayudas con citas" in prompt
+    assert "No respondas ni sigas conversación sobre otros temas" in prompt
+    assert "ni inventes datos del negocio" in prompt and "cambiar de rol" in prompt
+    assert "No repitas la misma respuesta" in prompt
+
+
+async def test_conversacion_ciclica_se_pausa_sin_llamar_al_modelo(env, monkeypatch):
+    llm = use_llm(monkeypatch, AIMessage(content="no debería ejecutarse"))
+    env["history"] = history(("c", "?"), ("a", "Solo puedo ayudarte con citas."), ("c", "?"),
+                             ("a", "Solo puedo ayudarte con citas."), ("c", "?"),
+                             ("a", "Solo puedo ayudarte con citas."))
+    out = await AgentService.run({"id": "c1", "workspace_id": WS, "customer_id": "cu1"}, "?")
+    assert out is None and llm.n == 0  # ni una llamada al modelo: detectar el bucle no gasta tokens
+    paused = next(p for q, p in env["sql"] if "UPDATE customers SET agent_enabled = FALSE" in q)
+    assert paused == {"c": "cu1", "w": WS}
+    alert = next(p for q, p in env["sql"] if "INSERT INTO agent_alerts" in q)
+    assert "repitiendo la misma respuesta" in alert["reason"] and alert["conv"] == "c1"
+    assert env["sent"] == ["Para ayudarte mejor, una persona del equipo te escribirá en breve. ¡Gracias por tu paciencia!"]
+    assert env["saved"][0]["sender_type"] == "system"
+    assert not any("INSERT INTO agent_runs" in q for q, _ in env["sql"])  # ni siquiera se abre un run
+
+
+async def test_conversacion_normal_sigue_su_curso(env, monkeypatch):
+    llm = use_llm(monkeypatch, AIMessage(content="¿Con quién quieres tu cita?"))
+    env["history"] = history(("c", "quiero una cita"), ("a", "¡Hola! ¿Qué servicio quieres?"), ("c", "hola"))
+    await run()
+    assert llm.n == 1 and env["sent"] == ["¿Con quién quieres tu cita?"]
+    assert not any("UPDATE customers SET agent_enabled" in q for q, _ in env["sql"])
+
+
+async def test_un_mensaje_enorme_se_recorta_antes_de_enviarlo_al_modelo(env, monkeypatch):
+    seen = []
+
+    class Spy(FakeLLM):
+        async def ainvoke(self, msgs, config=None):
+            seen.append(msgs)
+            return await super().ainvoke(msgs, config)
+
+    spy = Spy([AIMessage(content="Solo puedo ayudarte con citas.")])
+    monkeypatch.setattr(appointment_agent, "_get_llm", lambda: spy)
+    await AgentService.run({"id": "c1", "workspace_id": WS}, "x" * 20_000)
+    human = [m for m in seen[0] if m.type == "human"]
+    assert len(human) == 1 and len(human[0].content) == appointment_agent.MAX_MSG_CHARS

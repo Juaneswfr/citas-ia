@@ -8,7 +8,7 @@ En producción corre con Docker Compose desde la raíz del repo.
 ```bash
 cd backend-lang
 uv sync
-uv run fastapi dev ./src/api/main.py
+uv run fastapi dev ./src/api/main.py --port 9001
 ```
 
 ## Configuración

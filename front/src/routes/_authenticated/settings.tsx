@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
 import { Button } from "@/components/hilo/primitives";
-import { listChannels, updateChannelStatus, listCalendars, createKapsoOnboardingLink, createSandboxSession, getSandboxSession, listSandboxSessions, type SandboxSession } from "@/lib/api/channels";
+import { listChannels, updateChannelStatus, listCalendars, disconnectCalendar, createKapsoOnboardingLink, createSandboxSession, getSandboxSession, listSandboxSessions, type SandboxSession } from "@/lib/api/channels";
 import { getGoogleCalendarUrl } from "@/lib/api/auth";
 import { apiFetch } from "@/lib/api/client";
 import { roleLabel } from "@/lib/roles";
@@ -126,11 +126,15 @@ function WhatsAppSection({ workspaceId }: { workspaceId: string }) {
 
 // ── Sección Google Calendar ───────────────────────────────────────────────────
 
+/** Un calendario por persona: cada miembro conecta el suyo y se puede quitar una conexión. */
 function CalendarSection({ workspaceId }: { workspaceId: string }) {
   const qc = useQueryClient();
+  const { me } = useAuth();
   const [connecting, setConnecting] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [pickedMemberId, setPickedMemberId] = useState('');
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const canRemove = me?.role === 'workspace_owner' || me?.role === 'super_admin'; // espejo del backend
 
   const { data: calendars = [], isLoading } = useQuery<CalendarOut[]>({
     queryKey: ['calendars', workspaceId],
@@ -142,16 +146,36 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
     queryKey: ['members', workspaceId],
     queryFn: () => listMembers(workspaceId),
     staleTime: 60_000,
-    enabled: showPicker,
   });
 
-  const handleConnect = async (memberId?: string) => {
+  const remove = useMutation({
+    mutationFn: (calendarId: string) => disconnectCalendar(workspaceId, calendarId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['calendars', workspaceId] });
+      setConfirmId(null);
+      toast.success('Conexión eliminada. El agente ya no ofrece citas con esa persona.');
+    },
+    onError: (error) => toast.error((error as { detail?: string }).detail ?? 'No se pudo eliminar la conexión.'),
+  });
+
+  // Quien ya tiene su calendario activo no puede conectar otro: es una conexión por persona.
+  const connected = new Set(calendars.filter(c => c.member_id && c.sync_status === 'active').map(c => c.member_id));
+  const available = members.filter(m => !connected.has(m.id));
+  const mine = available.find(m => m.user_id === me?.user_id);
+
+  const openPicker = () => {
+    setPickedMemberId(mine?.id ?? available[0]?.id ?? '');
+    setShowPicker(true);
+  };
+
+  const handleConnect = async (memberId: string) => {
+    if (!memberId) return;
     setConnecting(true);
     try {
-      const { url } = await getGoogleCalendarUrl(workspaceId, 'settings', memberId || undefined);
+      const { url } = await getGoogleCalendarUrl(workspaceId, 'settings', memberId);
       window.location.href = url;
-    } catch {
-      toast.error('No se pudo iniciar la conexión con Google Calendar.');
+    } catch (error) {
+      toast.error((error as { detail?: string }).detail ?? 'No se pudo iniciar la conexión con Google Calendar.');
       setConnecting(false);
     }
   };
@@ -162,24 +186,25 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {calendars.map(cal => (
         <div key={cal.id} style={{
-          display: 'flex', alignItems: 'center', gap: 12,
+          display: 'flex', flexDirection: 'column', gap: 10,
           padding: '12px 14px', borderRadius: 'var(--r-md)',
-          background: 'var(--surface)', border: '1px solid var(--line)',
+          background: 'var(--surface)', border: `1px solid ${confirmId === cal.id ? 'var(--danger)' : 'var(--line)'}`,
         }}>
-          <span style={{
-            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-            background: cal.sync_status === 'active' ? 'var(--success)' : 'var(--ink-4)',
-          }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ font: '500 14px/1.2 var(--font-sans)', color: 'var(--ink-1)' }}>
-              {cal.member_name ?? cal.name}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+              background: cal.sync_status === 'active' ? 'var(--success)' : 'var(--ink-4)',
+            }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ font: '500 14px/1.2 var(--font-sans)', color: 'var(--ink-1)' }}>
+                {cal.member_name ?? cal.name}
+              </div>
+              <div style={{ font: '400 12px/1.3 var(--font-sans)', color: cal.member_id ? 'var(--ink-3)' : 'var(--warning)', marginTop: 2 }}>
+                {cal.member_id
+                  ? `${cal.google_calendar_id}${cal.last_synced_at ? ` · sync ${new Date(cal.last_synced_at).toLocaleDateString('es-CO')}` : ''}`
+                  : 'Sin persona asignada: no cuenta para ningún miembro. Elimínala y conéctala de nuevo.'}
+              </div>
             </div>
-            <div style={{ font: '400 12px/1.3 var(--font-sans)', color: 'var(--ink-3)', marginTop: 2 }}>
-              {cal.google_calendar_id}
-              {cal.last_synced_at ? ` · sync ${new Date(cal.last_synced_at).toLocaleDateString('es-CO')}` : ''}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{
               font: '500 11px/1 var(--font-sans)', padding: '3px 8px',
               borderRadius: 'var(--r-full)', letterSpacing: '0.02em',
@@ -187,10 +212,32 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
               color: cal.sync_status === 'active' ? 'var(--success)' : 'var(--ink-3)',
               border: `1px solid ${cal.sync_status === 'active' ? 'color-mix(in srgb, var(--success) 25%, transparent)' : 'var(--line)'}`,
             }}>
-              {cal.sync_status === 'active' ? 'Sincronizado' : 'Desconectado'}
+              {cal.sync_status === 'active' ? 'Sincronizado' : 'Con error'}
             </span>
-            <Button variant="ghost" size="sm" icon="sync" onClick={() => { setShowPicker(true); setPickedMemberId(cal.member_id ?? ''); }} disabled={connecting} style={{ padding: 7 }} />
+            {cal.member_id && (
+              <Button variant="ghost" size="sm" icon="sync" title="Reconectar con Google" aria-label={`Reconectar ${cal.member_name ?? cal.name}`}
+                      onClick={() => handleConnect(cal.member_id!)} disabled={connecting} style={{ padding: 7 }} />
+            )}
+            {canRemove && (
+              <Button variant="ghost" size="sm" icon="trash" title="Eliminar conexión" aria-label={`Eliminar la conexión de ${cal.member_name ?? cal.name}`}
+                      onClick={() => setConfirmId(confirmId === cal.id ? null : cal.id)} disabled={remove.isPending} style={{ padding: 7 }} />
+            )}
           </div>
+
+          {confirmId === cal.id && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+              <div style={{ font: '400 13px/1.45 var(--font-sans)', color: 'var(--ink-2)' }}>
+                ¿Eliminar la conexión de <strong>{cal.member_name ?? cal.name}</strong>? El agente dejará de ofrecer citas con esa
+                persona. Las citas que ya estén agendadas no se cancelan.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button variant="danger" size="sm" onClick={() => remove.mutate(cal.id)} disabled={remove.isPending}>
+                  {remove.isPending ? 'Eliminando…' : 'Sí, eliminar'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setConfirmId(null)}>Cancelar</Button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -207,7 +254,7 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
               Conecta Google Calendar para sincronizar citas automáticamente
             </div>
           </div>
-          <Button variant="primary" size="sm" onClick={() => setShowPicker(true)} disabled={connecting}>
+          <Button variant="primary" size="sm" onClick={openPicker} disabled={connecting || available.length === 0}>
             Conectar
           </Button>
         </div>
@@ -223,19 +270,22 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
           <select
             value={pickedMemberId}
             onChange={e => setPickedMemberId(e.target.value)}
+            aria-label="Persona dueña del calendario"
             style={{
               padding: '8px 10px', borderRadius: 'var(--r-sm)',
               border: '1px solid var(--line-strong)', background: 'var(--surface)',
               font: '400 14px/1.3 var(--font-sans)', color: 'var(--ink-1)', cursor: 'pointer',
             }}
           >
-            <option value="">Sin asignar</option>
-            {members.map(m => (
-              <option key={m.id} value={m.id}>{m.name ?? m.email}</option>
+            {available.map(m => (
+              <option key={m.id} value={m.id}>{m.name ?? m.email}{m.user_id === me?.user_id ? ' (tú)' : ''}</option>
             ))}
           </select>
+          <div style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--ink-3)' }}>
+            Cada persona tiene un solo calendario. Inicia sesión en Google con la cuenta de esa persona.
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="primary" size="sm" onClick={() => handleConnect(pickedMemberId)} disabled={connecting}>
+            <Button variant="primary" size="sm" onClick={() => handleConnect(pickedMemberId)} disabled={connecting || !pickedMemberId}>
               {connecting ? 'Conectando…' : 'Continuar con Google'}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => { setShowPicker(false); setPickedMemberId(''); }}>
@@ -245,10 +295,15 @@ function CalendarSection({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
-      {calendars.length > 0 && !showPicker && (
-        <Button variant="ghost" size="sm" icon="plus" onClick={() => { setShowPicker(true); setPickedMemberId(''); }} disabled={connecting} style={{ alignSelf: 'flex-start' }}>
+      {calendars.length > 0 && !showPicker && available.length > 0 && (
+        <Button variant="ghost" size="sm" icon="plus" onClick={openPicker} disabled={connecting} style={{ alignSelf: 'flex-start' }}>
           Agregar calendario
         </Button>
+      )}
+      {calendars.length > 0 && !showPicker && members.length > 0 && available.length === 0 && (
+        <span style={{ font: '400 12px/1.4 var(--font-sans)', color: 'var(--ink-3)' }}>
+          Todo el equipo ya tiene su calendario conectado.
+        </span>
       )}
     </div>
   );

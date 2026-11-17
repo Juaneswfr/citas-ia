@@ -16,6 +16,7 @@ import { getWorkspaceStats } from "@/lib/api/workspaces";
 import { countAgentAlerts } from "@/lib/api/alerts";
 import { useAuth } from "@/lib/auth-context";
 import type { CustomerOut } from "@/lib/types/api";
+import { ActionsPanel, InsightsCharts } from "@/components/dashboard/Insights";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Inicio · Hilo" }] }),
@@ -28,6 +29,29 @@ const STATUS = {
   next:     { label: 'Sigue',      color: 'var(--clay)',   dim: false },
   upcoming: { label: 'Programada', color: 'var(--ink-2)',  dim: false },
 };
+
+/**
+ * Cómo se ve una cita en el hilo del día, según su estado real (`rawStatus`) y no solo según la hora:
+ * una cita cancelada no es «atendida» y una pasada sin marcar como completada tampoco.
+ */
+function threadState(a: HiloAppointment): { label: string; color: string; dim: boolean; off: boolean } {
+  switch (a.rawStatus) {
+    case 'cancelled':   return { label: 'Cancelada',  color: 'var(--ink-3)', dim: true, off: true };
+    case 'noshow':      return { label: 'No asistió', color: 'var(--ink-3)', dim: true, off: true };
+    case 'rescheduled': return { label: 'Reagendada', color: 'var(--ink-3)', dim: true, off: true };
+  }
+  if (a.status === 'done' && a.rawStatus !== 'completed') {
+    return { label: 'Por completar', color: 'var(--warning)', dim: false, off: false };
+  }
+  return { ...STATUS[a.status], off: false };
+}
+
+/** Citas del día que siguen en pie: las canceladas, las que no asistieron y las movidas no cuentan. */
+function isActive(a: HiloAppointment): boolean {
+  return a.rawStatus !== 'cancelled' && a.rawStatus !== 'noshow' && a.rawStatus !== 'rescheduled';
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 function StatCard({ eyebrow, value, unit, sub, delta, icon, accent = 'var(--wine)' }: {
   eyebrow: string; value: string | number; unit?: string; sub: string;
@@ -58,7 +82,8 @@ function StatCard({ eyebrow, value, unit, sub, delta, icon, accent = 'var(--wine
 }
 
 function ThreadItem({ a, isLast }: { a: HiloAppointment; isLast: boolean }) {
-  const st = STATUS[a.status];
+  const st = threadState(a);
+  const attended = a.rawStatus === 'completed';
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '58px 28px 1fr', columnGap: 0, position: 'relative' }}>
       <div style={{ textAlign: 'right', paddingRight: 14, paddingTop: 14 }}>
@@ -69,13 +94,14 @@ function ThreadItem({ a, isLast }: { a: HiloAppointment; isLast: boolean }) {
         {!isLast && <span style={{ position: 'absolute', top: 14, bottom: -2, width: 2, background: st.dim ? 'var(--line-strong)' : 'var(--wine-200)', borderRadius: 2 }} />}
         <span style={{
           position: 'relative', marginTop: 14, width: 14, height: 14, borderRadius: '50%',
-          background: a.status === 'done' ? 'var(--surface)' : st.color,
-          border: `2px solid ${a.status === 'done' ? 'var(--line-strong)' : st.color}`,
+          background: attended || st.off ? 'var(--surface)' : st.color,
+          border: `2px solid ${attended || st.off ? 'var(--line-strong)' : st.color}`,
           display: 'grid', placeItems: 'center',
           boxShadow: a.status === 'now' ? '0 0 0 5px color-mix(in srgb, var(--wine) 18%, transparent)' : 'none',
           animation: a.status === 'now' ? 'hilo-pulse 1.8s var(--ease-std) infinite' : 'none',
         }}>
-          {a.status === 'done' && <Icon name="check" size={9} style={{ color: 'var(--ink-3)' }} strokeWidth={2.4} />}
+          {attended && <Icon name="check" size={9} style={{ color: 'var(--ink-3)' }} strokeWidth={2.4} />}
+          {st.off && <Icon name="x" size={9} style={{ color: 'var(--ink-3)' }} strokeWidth={2.4} />}
         </span>
       </div>
       <div style={{ padding: '8px 0 14px' }}>
@@ -88,7 +114,8 @@ function ThreadItem({ a, isLast }: { a: HiloAppointment; isLast: boolean }) {
         }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ font: '500 14.5px/1.2 var(--font-sans)', color: 'var(--ink-1)', whiteSpace: 'nowrap' }}>{a.client}</span>
+              <span style={{ font: '500 14.5px/1.2 var(--font-sans)', color: 'var(--ink-1)', whiteSpace: 'nowrap',
+                textDecoration: st.off ? 'line-through' : 'none' }}>{a.client}</span>
               {a.via === 'wa' && <Icon name="whatsapp" size={14} style={{ color: 'var(--wa-ink)' }} />}
               {a.home && <Tag hue="sage" style={{ padding: '2px 7px', fontSize: 11 }}><Icon name="pin" size={11} />Domicilio</Tag>}
             </div>
@@ -254,9 +281,20 @@ function DashboardPage() {
     if (isError) toast.error('No se pudieron cargar las citas del día.');
   }, [isError]);
 
-  const todayCount    = todayAppointments.length;
-  const doneCount     = todayAppointments.filter(a => a.status === 'done').length;
-  const upcomingCount = todayAppointments.filter(a => a.status === 'upcoming' || a.status === 'next' || a.status === 'now').length;
+  // Solo cuentan las citas que siguen en pie: una cancelada no es un servicio de hoy.
+  const activeToday    = todayAppointments.filter(isActive);
+  const todayCount     = activeToday.length;
+  const doneCount      = activeToday.filter(a => a.rawStatus === 'completed').length;
+  const upcomingCount  = activeToday.filter(a => a.rawStatus !== 'completed' && a.status !== 'done').length;
+  const toCompleteCount = activeToday.filter(a => a.rawStatus !== 'completed' && a.status === 'done').length;
+  const cancelledCount = todayAppointments.length - todayCount;
+
+  const todaySub = [
+    plural(doneCount, 'atendida', 'atendidas'),
+    plural(upcomingCount, 'por venir', 'por venir'),
+    ...(toCompleteCount > 0 ? [`${toCompleteCount} por completar`] : []),
+    ...(cancelledCount > 0 ? [plural(cancelledCount, 'cancelada', 'canceladas')] : []),
+  ].join(' · ');
 
   const revDelta = stats && stats.revenue_prev_month > 0
     ? Math.round((stats.revenue_month - stats.revenue_prev_month) / stats.revenue_prev_month * 100)
@@ -284,7 +322,7 @@ function DashboardPage() {
           {isLoading
             ? 'Cargando datos del día…'
             : todayCount === 0
-              ? 'Sin citas para hoy.'
+              ? `Sin citas para hoy${cancelledCount > 0 ? ` (${plural(cancelledCount, 'cancelada', 'canceladas')})` : ''}.`
               : `Quedan ${upcomingCount} cita${upcomingCount !== 1 ? 's' : ''} por atender hoy.`}
         </p>
       </div>
@@ -294,14 +332,14 @@ function DashboardPage() {
         <StatCard
           eyebrow="Citas de hoy"
           value={isLoading ? '—' : todayCount}
-          sub={isLoading ? 'Cargando…' : `${doneCount} atendidas · ${upcomingCount} por venir`}
+          sub={isLoading ? 'Cargando…' : todaySub}
           icon="calendar"
         />
         <StatCard
-          eyebrow="Ingresos del mes"
+          eyebrow="Valor de las citas del mes"
           value={stats ? fmtCOP(stats.revenue_month) : '—'}
           delta={revDelta}
-          sub="vs. mes anterior"
+          sub="sin canceladas · vs. mes anterior"
           icon="money"
           accent="var(--clay)"
         />
@@ -319,6 +357,11 @@ function DashboardPage() {
           icon="bolt"
           accent="var(--sage)"
         />
+      </div>
+
+      {/* ── Lo que necesita atención hoy ── */}
+      <div style={{ marginTop: 18 }}>
+        <ActionsPanel />
       </div>
 
       {/* ── Grid principal ── */}
@@ -428,6 +471,9 @@ function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* ── Gráficas: cómo va el negocio y qué hacer con eso ── */}
+      <InsightsCharts />
     </div>
   );
 }

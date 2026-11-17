@@ -10,6 +10,7 @@ import { fmtCOP } from "@/lib/hilo-data";
 import { useConversations, useMessages } from "@/hooks/use-conversations";
 import { useCustomers } from "@/hooks/use-customers";
 import { MessageComposer } from "@/components/mensajes/MessageComposer";
+import { AgentToggle } from "@/components/mensajes/AgentToggle";
 import type { ConversationOut, MessageOut } from "@/lib/types/api";
 import type { HiloClient } from "@/lib/hilo-data";
 
@@ -52,7 +53,7 @@ function ConversationItem({ row, active, onClick }: { row: ConvRow; active: bool
       onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
     >
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <Avatar name={name} hue={client ? (STATUS_HUE[client.status] as any) : 'wine'} size={40} />
+        <Avatar name={name} hue={client ? STATUS_HUE[client.status] : 'wine'} size={40} />
         {conv.needs_review && (
           <span style={{ position: 'absolute', top: 0, right: 0, width: 10, height: 10, borderRadius: '50%',
             background: 'var(--wine)', border: '2px solid var(--paper)' }} />
@@ -95,6 +96,14 @@ function ConversationItem({ row, active, onClick }: { row: ConvRow; active: bool
               font: '400 11px/1 var(--font-mono)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
               {client.visits} cita{client.visits !== 1 ? 's' : ''}
             </span>
+            {!client.agent_enabled && (
+              <span title="El agente no responde a este cliente" style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '2px 7px', borderRadius: 'var(--r-full)',
+                background: 'var(--warning-bg)', border: '1px solid color-mix(in srgb, var(--warning) 30%, transparent)',
+                font: '500 10.5px/1 var(--font-sans)', color: 'var(--warning)', whiteSpace: 'nowrap' }}>
+                Agente en pausa
+              </span>
+            )}
             {client.status === 'VIP' && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3,
                 padding: '2px 7px', borderRadius: 'var(--r-full)',
@@ -183,12 +192,12 @@ function ConversationDetail({ conv, client, onBack }: {
           {onBack && (
             <Button variant="ghost" size="sm" icon="chevL" aria-label="Volver a conversaciones" onClick={onBack} className="chat-back" />
           )}
-          <Avatar name={name} hue={client ? (STATUS_HUE[client.status] as any) : 'wine'} size={38} />
+          <Avatar name={name} hue={client ? STATUS_HUE[client.status] : 'wine'} size={38} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ font: '500 15px/1.2 var(--font-sans)', color: 'var(--ink-1)' }}>{name}</span>
               {client?.status && (
-                <Tag hue={STATUS_HUE[client.status] as any} style={{ fontSize: 11 }}>{client.status}</Tag>
+                <Tag hue={STATUS_HUE[client.status]} style={{ fontSize: 11 }}>{client.status}</Tag>
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
@@ -200,6 +209,7 @@ function ConversationDetail({ conv, client, onBack }: {
               )}
             </div>
           </div>
+          {client && <AgentToggle customerId={conv.customer_id} enabled={client.agent_enabled} />}
         </div>
 
         {/* Stat tokens */}

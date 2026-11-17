@@ -14,7 +14,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services import followup_templates as ft
+from services import availability_blocks, followup_templates as ft
 
 log = logging.getLogger(__name__)
 
@@ -47,11 +47,11 @@ async def _calendar_service(db: AsyncSession, workspace_id: str, calendar_id):
     if not calendar_id:
         return None
     cal = (await db.execute(
-        text("SELECT * FROM calendars WHERE id = :id AND workspace_id = :w"),
+        text("SELECT * FROM calendars WHERE id = :id AND workspace_id = :w AND sync_status <> 'disconnected'"),
         {"id": calendar_id, "w": workspace_id},
     )).mappings().fetchone()
     if not cal:
-        return None
+        return None  # sin conexión (o desconectada): la cita se mueve o cancela solo en Hilo
     from services.calendar_service import CalendarService
     return CalendarService(dict(cal))
 
@@ -86,6 +86,9 @@ async def reschedule(db: AsyncSession, workspace_id: str, appointment_id: str, n
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=f"No se puede mover una cita en estado '{current['status']}'.")
     new_end = new_start + timedelta(minutes=current["duration_minutes"])
+
+    if await availability_blocks.find_overlap(db, workspace_id, current["calendar_id"], new_start, new_end):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=availability_blocks.BLOCKED_DETAIL)
 
     calendar = await _calendar_service(db, workspace_id, current["calendar_id"])
     event_id = current["google_event_id"]

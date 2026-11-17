@@ -24,6 +24,20 @@ export async function refreshBackendToken(supabaseRefreshToken: string): Promise
   });
 }
 
+/** GET /auth/google/login/url — URL de Google para crear cuenta o entrar, con el calendario incluido. */
+export async function getGoogleLoginUrl(): Promise<{ url: string }> {
+  return apiFetch<{ url: string }>('/auth/google/login/url', { public: true });
+}
+
+/** POST /auth/google/ticket — cambia el ticket que dejó el callback de Google por la sesión. */
+export async function exchangeGoogleTicket(ticket: string): Promise<TokenResponse> {
+  return apiFetch<TokenResponse>('/auth/google/ticket', {
+    method: 'POST',
+    body: JSON.stringify({ ticket }),
+    public: true,
+  });
+}
+
 /** GET /auth/me — datos del usuario autenticado (requiere JWT en header) */
 export async function getMe(): Promise<MeResponse> {
   return apiFetch<MeResponse>('/auth/me');

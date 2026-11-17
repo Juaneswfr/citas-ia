@@ -1,0 +1,61 @@
+/* BlockDialog — los campos reutilizan AppointmentDialog.module.css. */
+
+.block-dialog__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 13.5px/1.2 var(--font-sans);
+  color: var(--ink-1);
+  cursor: pointer;
+  width: fit-content;
+}
+
+.block-dialog__check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--wine);
+}
+
+/* Ficha del bloqueo (BlockDetail) */
+.block-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.block-detail__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.block-detail__label {
+  font: 500 11px/1 var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.block-detail__value {
+  margin-top: 4px;
+  font: 400 14px/1.4 var(--font-sans);
+  color: var(--ink-1);
+  text-transform: capitalize;
+}
+
+.block-detail__value--plain {
+  text-transform: none;
+}
+
+.block-detail__note {
+  margin: 0;
+  font: 400 12.5px/1.4 var(--font-sans);
+  color: var(--ink-3);
+}
+
+.block-detail__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
