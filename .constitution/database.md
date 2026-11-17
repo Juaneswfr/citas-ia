@@ -68,7 +68,7 @@ DATABASE_URL=postgresql://usuario:contraseña@host:5432/nombre_db
 **Por qué:**
 - Las credenciales de Supabase quedan expuestas en el cliente.
 - No hay validación de negocio entre el frontend y la base de datos.
-- Inconsistente con el patrón del ecosistema (Clarity → Atlas → PostgreSQL).
+- Inconsistente con el patrón del ecosistema (frontend → backend → PostgreSQL).
 - Row Level Security de Supabase no reemplaza lógica de negocio en el servidor.
 
 **Excepción:** Supabase JS client se puede usar en frontend solo para **autenticación pública** (signup/login) si el proyecto no tiene backend propio y no expone datos sensibles. Para cualquier consulta de datos de negocio, debe pasar por Express.
@@ -215,15 +215,11 @@ result = db.execute(
 
 | Proyecto | Stack actual | ORM requerido | Estado |
 |---|---|---|---|
-| **Atlas** | Laravel 12 / PHP | Eloquent | ✅ Correcto |
 | **product_imasd** | FastAPI / Python | SQLAlchemy | ✅ Correcto |
 | **git** | Express / Node.js | Drizzle | 🔄 Migrar de `pg` raw |
 | **SABII** | FastAPI / Python | SQLAlchemy | 🔄 Migrar de `psycopg2` raw |
 | **verus** (backend) | NestJS | Drizzle | 🔄 Agregar cuando tenga BD |
-| **Supply-chain** | React (sin back) | Express + Drizzle | 🔄 Encapsular con backend |
-| **Cobrobot** | React (sin back) | Express + Drizzle | 🔄 Encapsular con backend |
 | **Project-Flow** | React (sin back) | Express + Drizzle | 🔄 Encapsular con backend |
-| **Clarity** | React (sin back) | — (usa Atlas) | ✅ Correcto |
 | **app_dashboards** (operacional) | FastAPI / Python | SQLAlchemy | — |
 | **app_dashboards** (datalake) | FastAPI / Python | `deltalake` + pandas | ✅ Correcto — no aplica ORM |
 

@@ -52,7 +52,7 @@ Todo proyecto del ecosistema  usa esta estructura en la raíz del repositorio:
 [nombre-del-proyecto]/
 ├── backend/
 │   ├── ...       ← todo el código del backend (Express o FastAPI)
-│   └── .env      ← variables del backend (DATABASE_URL, ATLAS_SERVICE_KEY, SharePoint, etc.)
+│   └── .env      ← variables del backend (DATABASE_URL, SharePoint, etc.)
 ├── frontend/
 │   ├── ...       ← todo el código del frontend (React)
 │   └── .env      ← variables del frontend (VITE_API_BASE_URL, VITE_TOOL_KEY, etc.)

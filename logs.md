@@ -1,6 +1,22 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-17]
+**Agregado / Quitado — nuevo home (landing de ventas) portado desde `Zumit/zumit-react`**
+- front/src/routes/index.tsx — reescrita: solo `head` (título, Nunito, `landing.css`) y ensamblado de secciones. Se quita la landing vieja.
+- front/src/components/landing/ (nuevo) — Header, Hero (carrusel), Intro, Steps, Benefits, Platform (+ `mocks/Mocks.tsx`), Founders, Faq, Cta, Footer, y `ui/` (Logo, Tag, Photo). Todo en BEM con prefijo `home-`, sin `style=""`.
+- front/src/styles/landing.css (nuevo) — estilos y tokens `--home-*`; la lógica móvil/escritorio del prototipo (overlay del hero, nav) pasa a media queries.
+- front/src/hooks/use-reveal.ts, use-scrolled.ts (nuevos) — aparición al hacer scroll por clases y estado del header.
+- front/public/images/ — 16 imágenes del prototipo.
+- front/src/styles.css — se borran las reglas del home viejo (`.hero`, `.phone`, `.bento`, `.ai-*`, `.sec-*`, etc.); se conservan `.l-*`, `.btn*` y `.foot-*` porque las usan las páginas legales.
+- Decisiones: todos los CTA van a `/signup`; «Iniciar sesión» → `/login`; el formulario de teléfono del cierre se reemplazó por un botón «Empieza gratis». Redes sociales del pie omitidas (no hay URLs).
+- Pendiente: `public/images/patron-agenda-oscuro.png` (el cierre lo toma solo; mientras tanto queda borgoña liso). `npm run build` falla con «Could not resolve entry module index.html» en este entorno; no se verificó si ya fallaba antes.
+
+### [AGENTE: claude] [FECHA: 2026-11-17]
+**Quitado — código del grafo corporativo heredado de otros proyectos que no son de Zumit**
+- backend-lang/src/agents/hilo/ (todo) y backend-lang/langgraph.json — era un grafo LangGraph de otro producto (nodos de inventario, cobranza, tareas, tableros, usuarios y auth). Ninguna ruta, servicio ni test lo importaba: el agente de citas real es `services/appointment_agent.py`. Se recupera con git si hiciera falta.
+- Sin cambios: `src/agents/main.py` y `simple.py` (plantillas de LangGraph sin relación) y los textos de «cobro» de Finanzas/seguimientos, que son del producto.
+
+### [AGENTE: claude] [FECHA: 2026-11-17]
 **Agregado — guardar Zumit en la pantalla de inicio del celular (enlace directo, sin PWA)**
 - front/public/manifest.webmanifest (nuevo), src/routes/__root.tsx — nombre «Zumit», íconos 192/512 y `start_url=/dashboard` con `display: browser` (abre en el navegador, como un enlace). Etiqueta `apple-mobile-web-app-title` para iOS. Sin service worker ni modo standalone, a propósito.
 - Campana de Alertas: ahora abre un panel con alertas y pendientes (components/layout/AlertsBell.tsx).

@@ -97,64 +97,6 @@ El ORM a usar según el stack:
 
 ---
 
-## Variables de entorno de Atlas (obligatorias en todo proyecto)
-
-### Backend
-
-```env
-# Conexión service-to-service con Atlas (solo backend, nunca exponer al frontend)
-ATLAS_SERVICE_URL=https://atlas.enterprise.com/service/v1
-ATLAS_SERVICE_KEY=sk_b7290638581058b90d68f8147a9c8d1fdc2edc4f1696a8bf22c49b576734e74a
-```
-
-### Frontend (React)
-
-```env
-# URL base del API de Atlas
-VITE_API_BASE_URL=https://atlas.profesional.com/api
-
-# URL de login en Clarity (portal central de autenticación)
-VITE_CLARITY_LOGIN_URL=https://clarity.profesional.com/login
-
-# Key única de esta herramienta — obtener al registrar en Clarity
-VITE_TOOL_KEY=<tool-key-del-proyecto>
-
-# Dominio del ecosistema (para manejo de cookies)
-VITE_ECOSYSTEM_DOMAIN=profesional.com
-
-# Solo para apps internas que muestran directorio de usuarios (panel admin)
-# NUNCA en apps públicas o externas
-VITE_ATLAS_SERVICE_KEY=sk_b7290638581058b90d68f8147a9c8d1fdc2edc4f1696a8bf22c49b576734e74a
-```
-
-> `VITE_ATLAS_SERVICE_KEY` embebe la llave en el bundle JS. Usar **exclusivamente** en herramientas
-> internas donde todos los usuarios son empleados de  con acceso a Clarity.
-
----
-
-## Registrar la herramienta en Clarity
-
-Antes de hacer login con la herramienta nueva, deben existir estos objetos en Clarity:
-
-1. **Tool** — crear en Clarity → Tools:
-   - `key`: identificador único en kebab-case (ej. `project-flow`, `canal-institucional`)
-   - `name`: nombre legible
-   - `url`: URL de la herramienta en producción
-
-2. **Permisos** — crear al menos:
-   - `panel_access` → puede iniciar sesión y ver el panel
-   - `admin_access` → puede gestionar usuarios y configuración
-   - Agregar permisos adicionales según el negocio
-
-3. **Roles** — crear roles y asignar permisos:
-   - Ejemplo mínimo: `usuario` → `panel_access` · `admin` → `panel_access` + `admin_access`
-
-4. **Asignar usuarios** — en Clarity → Users → {usuario} → Tools → asignar rol
-
-> Sin estos 4 pasos el `validate` de sesión retorna `permissions: {}` y el usuario no puede entrar.
-
----
-
 ## Storage (archivos)
 
 Si el proyecto maneja cualquier tipo de archivo (fotos, PDFs, comprobantes, adjuntos):
@@ -175,12 +117,10 @@ Variables de entorno mínimas para SharePoint:
 ```
 [ ] 1. Stack definido: Express+React  o  Python+React
 [ ] 2. Base de datos: ¿ya existe? → connection string en .env | ¿no? → solicitar a Mosquera/BI o omitir por ahora
-[ ] 3. ATLAS_SERVICE_KEY y ATLAS_SERVICE_URL en el .env del backend
-[ ] 4. VITE_API_BASE_URL y VITE_TOOL_KEY en el .env del frontend
-[ ] 5. Tool registrada en Clarity (key, permisos, roles, usuarios)
-[ ] 6. Variables de SharePoint en .env (solo si el proyecto maneja archivos)
-[ ] 7. context/project.md completado con stack, estado y nivel del desarrollador
-[ ] 8. .gitignore incluye .env y .env.*
+[ ] 3. Variables de entorno del backend y del frontend definidas en sus .env
+[ ] 4. Variables de SharePoint en .env (solo si el proyecto maneja archivos)
+[ ] 5. context/project.md completado con stack, estado y nivel del desarrollador
+[ ] 6. .gitignore incluye .env y .env.*
 ```
 
 Solo cuando todos los ítems tienen ✅ el agente puede comenzar a generar código de negocio.

@@ -39,7 +39,7 @@
 - **Frontend**: [ej. React, Vue, Angular, HTML vanilla]
 - **Backend**: [ej. Node.js + Express, Python + FastAPI, Java + Spring]
 - **Base de datos**: [ej. PostgreSQL, MongoDB, SQLite]
-- **Autenticación**: [Atlas]
+- **Autenticación**: [ej. JWT propio, OAuth]
 - **Infraestructura / Hosting**: [local]
 - **Otros**: [ej. Redis, Stripe, SendGrid]
 

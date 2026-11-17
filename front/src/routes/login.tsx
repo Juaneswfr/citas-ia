@@ -78,14 +78,7 @@ function LoginPage() {
       <div className="auth-form-side">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Link className="auth-brand" to="/">
-            <span style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--wine)', display: 'grid', placeItems: 'center' }}>
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 3v6a4 4 0 0 0 8 0 4 4 0 0 1 4 4v8" />
-                <circle cx="6" cy="3" r="1.4" fill="#fff" stroke="none" />
-                <circle cx="18" cy="21" r="1.4" fill="#fff" stroke="none" />
-              </svg>
-            </span>
-            <span className="auth-brand-name">Zumit</span>
+            <img className="auth-brand__logo" src="/images/logo-borgona.png" alt="Zumit" />
           </Link>
           <Link className="auth-back" to="/">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>

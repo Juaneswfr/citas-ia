@@ -10,7 +10,7 @@
 .constitution/front.md                 # Frontend React
 .constitution/backend.md               # Backend Express o FastAPI
 .constitution/database.md              # Base de datos / ORM / queries
-.constitution/users.md                 # Usuarios internos (Clarity / Atlas)
+.constitution/users.md                 # Usuarios internos
 
 # ──────────────────────────────────────────
 # 2. INICIO DE SESIÓN — CHECKLIST OBLIGATORIO
