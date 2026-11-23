@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Se encuentra en: Meta Developer Portal → App → Settings → Basic → App ID
     meta_app_id: str = Field(default="", alias="META_APP_ID")
 
+    # ── Facebook Login (crear cuenta / entrar) ─────────────────────────────
+    # Usa la misma app de Meta (META_APP_ID + WHATSAPP_APP_SECRET) con el producto «Facebook Login».
+    # La URI debe estar en «URI de redireccionamiento de OAuth válidos» de esa app.
+    facebook_redirect_uri: str = Field(default="", alias="FACEBOOK_REDIRECT_URI")
+
     # ── Agente ─────────────────────────────────────────────────────────────
     graph_timeout: int = Field(default=90, alias="GRAPH_TIMEOUT")
 

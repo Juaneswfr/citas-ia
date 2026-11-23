@@ -318,6 +318,23 @@ body{
 .abs-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:16px; position:relative; z-index:1; }
 .abs-list li { display:flex; align-items:flex-start; gap:13px; font:400 15.5px/1.45 var(--font-sans); color:rgba(255,255,255,0.9); }
 .abs-list .ci { width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,0.16); display:grid; place-items:center; flex-shrink:0; }
+.abs-slide { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:right center; opacity:0; transition:opacity var(--dur-4, 0.6s) var(--ease-std, ease); }
+.abs-slide--active { opacity:1; }
+.abs-shade { position:absolute; inset:0; background:linear-gradient(90deg, rgb(24 5 14 / 0.92) 0%, rgb(24 5 14 / 0.7) 45%, rgb(24 5 14 / 0.15) 100%), linear-gradient(180deg, rgb(24 5 14 / 0.45) 0%, rgb(24 5 14 / 0) 30%, rgb(24 5 14 / 0.6) 100%); }
+.abs-eyebrow, .abs-testimonial, .abs-bottom { position:relative; z-index:1; }
+.abs-testimonial { margin:0; animation:abs-fade var(--dur-4, 0.5s) var(--ease-out, ease) backwards; }
+.abs-testimonial { max-width:80%; }
+.abs-testimonial .abs-quote { margin:0; }
+.abs-person { display:flex; align-items:center; gap:12px; margin-top:20px; }
+.abs-avatar { width:42px; height:42px; border-radius:50%; background:rgba(255,255,255,0.2); display:grid; place-items:center; font:600 15px/1 var(--font-sans); flex-shrink:0; }
+.abs-name { display:block; font:600 14.5px/1.2 var(--font-sans); }
+.abs-role { display:block; font:400 12.5px/1.3 var(--font-sans); color:rgba(255,255,255,0.7); margin-top:2px; }
+.abs-bottom { display:flex; flex-direction:column; gap:22px; }
+.abs-dots { display:flex; gap:8px; }
+.abs-dot { width:9px; height:9px; padding:0; border:0; border-radius:999px; background:rgba(255,255,255,0.4); cursor:pointer; transition:width var(--dur-3, 0.3s) var(--ease-out, ease), background var(--dur-3, 0.3s) var(--ease-std, ease); }
+.abs-dot--active { width:28px; background:#fff; }
+@keyframes abs-fade { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { .abs-slide { transition:none; } .abs-testimonial { animation:none; } }
 @media (max-width: 860px){
   .auth { grid-template-columns:1fr; }
   .auth-brand-side { display:none; }

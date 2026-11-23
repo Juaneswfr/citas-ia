@@ -1,0 +1,54 @@
+/* Facturación del panel de plataforma — BEM. Sin estilos inline salvo anchos dinámicos de las barras. */
+
+.bill__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bill__hint { margin: 0; font: 400 13px/1.45 var(--font-sans); color: var(--ink-3); }
+
+/* Filas simples: nombre a la izquierda, dato a la derecha */
+.rows { display: flex; flex-direction: column; }
+.rows__item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft); font: 400 13px/1.35 var(--font-sans); color: var(--ink-2); flex-wrap: wrap;
+}
+.rows__item:last-child { border-bottom: 0; }
+.rows__name { min-width: 0; overflow-wrap: anywhere; color: var(--ink-1); font-weight: 500; }
+.rows__name--link { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.rows__name--link:hover { color: var(--wine); text-decoration: underline; }
+.rows__sub { display: block; font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.rows__value { display: flex; align-items: center; gap: 8px; color: var(--ink-1); font-weight: 500; white-space: nowrap; }
+
+/* Embudo: barras con porcentaje */
+.funnel { display: flex; flex-direction: column; gap: 10px; }
+.funnel__step { display: grid; grid-template-columns: 170px 1fr 74px; gap: 10px; align-items: center; font: 400 13px/1.2 var(--font-sans); color: var(--ink-2); }
+.funnel__track { height: 12px; background: var(--line-soft); border-radius: 99px; overflow: hidden; }
+.funnel__fill { height: 100%; border-radius: 99px; background: var(--wine); transform-origin: left center; animation: bill-grow var(--dur-4) var(--ease-out) both; }
+.funnel__value { text-align: right; color: var(--ink-1); font-weight: 500; }
+@keyframes bill-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Tabla de margen */
+.table { width: 100%; border-collapse: collapse; font: 400 13px/1.3 var(--font-sans); }
+.table th { text-align: right; font-weight: 500; font-size: 12px; color: var(--ink-3); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.table th:first-child, .table td:first-child { text-align: left; }
+.table td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); color: var(--ink-2); white-space: nowrap; }
+.table td:first-child { color: var(--ink-1); font-weight: 500; white-space: normal; }
+.table__scroll { overflow-x: auto; }
+.table__bad { color: var(--danger); font-weight: 600; }
+
+/* Formularios pequeños (parámetros, tasa, tarifa) */
+.inline-form { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.inline-form__field { display: flex; flex-direction: column; gap: 4px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.inline-form__input { width: 110px; }
+.notice {
+  padding: 12px 14px; border-radius: var(--r-sm); border: 1px solid var(--line);
+  background: var(--warning-bg); color: var(--warning); font: 400 13px/1.45 var(--font-sans);
+}
+
+/* Acciones de cobro dentro de la ficha de un negocio */
+.ws { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
+.ws__title { margin: 0; font: 600 13px/1.2 var(--font-sans); color: var(--ink-1); }
+.ws__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ws__form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; padding: 12px; background: var(--surface-tint); border-radius: var(--r-sm); }
+.ws__events { max-height: 220px; overflow-y: auto; }
+
+@media (max-width: 640px) {
+  .funnel__step { grid-template-columns: 110px 1fr 62px; }
+}

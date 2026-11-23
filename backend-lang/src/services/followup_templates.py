@@ -1,4 +1,4 @@
-"""Plantillas de seguimiento por WhatsApp: texto fijo, igual para todas las barberías.
+"""Plantillas de seguimiento por WhatsApp: texto fijo, igual para todos los negocios.
 
 Cada plantilla se registra en la cuenta de WhatsApp de cada negocio (Meta las aprueba por cuenta).
 El mismo texto se usa en tres sitios: la definición que se envía a revisión, el mensaje que se guarda

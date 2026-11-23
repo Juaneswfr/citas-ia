@@ -1,0 +1,81 @@
+/* Zumit Manager — interfaz aparte del panel de los negocios. BEM, sin estilos inline.
+   Identidad: borgoña #2C0F20 de base y turquesa #00C9D1 solo como resaltador plano (sin brillos ni degradé con turquesa). */
+
+.zm {
+  --zm-bg: #2c0f20;
+  --zm-bg-hover: #4f2634;
+  --zm-line: #632e46;
+  --zm-text: #f5f2ee;
+  --zm-muted: #c9b8c0;
+  --zm-accent: #00c9d1;
+
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+/* ── Menú ── */
+.zm__side {
+  width: 236px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 18px 12px 12px;
+  overflow-y: auto;
+  background: var(--zm-bg);
+  color: var(--zm-text);
+}
+
+.zm__brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px; }
+.zm__name { font: 700 17px/1 var(--font-sans); letter-spacing: -0.02em; color: var(--zm-text); }
+.zm__badge {
+  padding: 3px 7px; border: 1px solid var(--zm-accent); border-radius: 99px;
+  font: 600 10px/1 var(--font-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--zm-accent);
+}
+
+.zm__nav { display: flex; flex-direction: column; gap: 18px; flex: 1; }
+.zm__group { display: flex; flex-direction: column; gap: 2px; }
+.zm__group-label { padding: 0 10px 6px; font: 600 11px/1 var(--font-sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--zm-muted); opacity: 0.75; }
+
+.zm__link {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--r-sm);
+  font: 500 14px/1.2 var(--font-sans); color: var(--zm-muted); text-decoration: none; white-space: nowrap;
+  transition: background var(--dur-2) var(--ease-std), color var(--dur-2) var(--ease-std);
+}
+.zm__link:hover { background: var(--zm-bg-hover); color: var(--zm-text); }
+.zm__link--active { background: var(--zm-bg-hover); color: #fff; box-shadow: inset 3px 0 0 var(--zm-accent); }
+
+.zm__foot { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--zm-line); }
+.zm__who { padding: 0 10px 6px; font: 400 12px/1.3 var(--font-sans); color: var(--zm-muted); overflow-wrap: anywhere; }
+.zm__action {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--r-sm);
+  background: transparent; cursor: pointer; text-align: left; text-decoration: none;
+  font: 500 13px/1.2 var(--font-sans); color: var(--zm-muted);
+  transition: background var(--dur-2) var(--ease-std), color var(--dur-2) var(--ease-std);
+}
+.zm__action:hover { background: var(--zm-bg-hover); color: var(--zm-text); }
+
+/* ── Contenido ── */
+.zm__main { flex: 1; min-width: 0; overflow-y: auto; }
+
+.zpage { display: flex; flex-direction: column; gap: 18px; padding: 24px; max-width: 1180px; margin: 0 auto; }
+.zpage__head { display: flex; flex-direction: column; gap: 4px; }
+.zpage__title { margin: 0; font: 600 22px/1.15 var(--font-sans); letter-spacing: -0.02em; color: var(--ink-1); }
+.zpage__sub { margin: 0; font: 400 13.5px/1.4 var(--font-sans); color: var(--ink-3); }
+
+/* ── Móvil: el menú pasa arriba, en una fila que se desplaza ── */
+@media (max-width: 879px) {
+  .zm { flex-direction: column; }
+  .zm__side { width: auto; flex-direction: row; align-items: center; gap: 8px; padding: 10px 12px; overflow-x: auto; overflow-y: hidden; }
+  .zm__brand { flex-shrink: 0; }
+  .zm__nav { flex-direction: row; gap: 4px; flex: 0 0 auto; }
+  .zm__group { flex-direction: row; }
+  .zm__group-label { display: none; }
+  .zm__foot { flex-direction: row; align-items: center; padding: 0 0 0 8px; border-top: 0; border-left: 1px solid var(--zm-line); }
+  .zm__who { display: none; }
+  .zm__action { width: auto; white-space: nowrap; }
+  .zpage { padding: 16px; }
+}

@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { AuthBanners } from "@/components/auth/AuthBanners";
 import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/login")({
@@ -7,42 +8,44 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-/** Motivos que devuelve el callback de Google (?google_error=…), en palabras del usuario. */
-const GOOGLE_ERRORS: Record<string, string> = {
-  oauth: 'No pudimos conectar con Google. Inténtalo de nuevo y acepta los permisos, incluido el del calendario.',
+/** Motivos que devuelve el callback de Google o Facebook (?auth_error=…), en palabras del usuario. */
+const AUTH_ERRORS: Record<string, string> = {
+  oauth: 'No pudimos completar el acceso. Inténtalo de nuevo y acepta los permisos que se piden.',
+  denied: 'Cancelaste el acceso. Puedes intentarlo de nuevo cuando quieras.',
   unverified: 'Tu correo de Google no está verificado, así que no podemos usarlo.',
+  no_email: 'Tu cuenta de Facebook no comparte un correo con nosotros. Usa otro método o crea la cuenta con tu correo.',
   exists: 'Ya existe una cuenta con ese correo. Entra con tu contraseña.',
   blocked: 'Esta cuenta está bloqueada. Escríbenos si crees que es un error.',
   suspended: 'Este negocio está suspendido. Escríbenos para reactivarlo.',
-  server: 'Algo salió mal al entrar con Google. Inténtalo de nuevo en un momento.',
+  server: 'Algo salió mal al entrar. Inténtalo de nuevo en un momento.',
 };
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { login, signInWithGoogle, completeGoogleSignIn } = useAuth();
+  const { login, signInWithGoogle, signInWithFacebook, completeOAuthSignIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const anyLoading = loading || googleLoading;
+  const anyLoading = loading || !!oauthLoading;
   const handledReturn = useRef(false);
 
-  // Al volver de Google el callback deja un ticket en el fragmento (#google_ticket=…) o un motivo en ?google_error=…
+  // Al volver de Google o Facebook el callback deja un ticket en el fragmento (#auth_ticket=…) o un motivo en ?auth_error=…
   useEffect(() => {
     if (handledReturn.current) return;
     handledReturn.current = true;
-    const ticket = new URLSearchParams(window.location.hash.slice(1)).get('google_ticket');
-    const reason = new URLSearchParams(window.location.search).get('google_error');
+    const ticket = new URLSearchParams(window.location.hash.slice(1)).get('auth_ticket');
+    const reason = new URLSearchParams(window.location.search).get('auth_error');
     if (!ticket && !reason) return;
     // Se limpia la URL ya: el ticket no debe quedar en el historial ni en un enlace copiado.
     window.history.replaceState(null, '', window.location.pathname);
-    if (reason) { setError(GOOGLE_ERRORS[reason] ?? GOOGLE_ERRORS.server); return; }
-    setGoogleLoading(true);
-    completeGoogleSignIn(ticket!)
+    if (reason) { setError(AUTH_ERRORS[reason] ?? AUTH_ERRORS.server); return; }
+    setOauthLoading('google');
+    completeOAuthSignIn(ticket!)
       .then(({ isNew }) => navigate({ to: isNew ? '/onboarding' : '/dashboard' }))
-      .catch((err) => { setError((err as Error).message ?? GOOGLE_ERRORS.server); setGoogleLoading(false); });
+      .catch((err) => { setError((err as Error).message ?? AUTH_ERRORS.server); setOauthLoading(null); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,17 +63,36 @@ function LoginPage() {
   };
 
   const handleGoogle = async () => {
-    setGoogleLoading(true);
+    setOauthLoading('google');
     setError(null);
     try {
       await signInWithGoogle();
-      // window.location.assign ejecutado — si llegamos aquí, reset por seguridad
-      setGoogleLoading(false);
+      // La función navega con window.location — si llegamos aquí, reset por seguridad
+      setOauthLoading(null);
     } catch (err) {
       setError((err as Error).message ?? 'Error al conectar con Google');
-      setGoogleLoading(false);
+      setOauthLoading(null);
     }
   };
+
+  const handleFacebook = async () => {
+    setOauthLoading('facebook');
+    setError(null);
+    try {
+      await signInWithFacebook();
+      setOauthLoading(null);
+    } catch (err) {
+      setError((err as Error).message ?? 'Error al conectar con Facebook');
+      setOauthLoading(null);
+    }
+  };
+
+  // El botón «atrás» puede restaurar la página desde bfcache con el spinner colgado.
+  useEffect(() => {
+    const reset = (e: PageTransitionEvent) => { if (e.persisted) setOauthLoading(null); };
+    window.addEventListener('pageshow', reset);
+    return () => window.removeEventListener('pageshow', reset);
+  }, []);
 
   return (
     <div className="auth">
@@ -96,9 +118,9 @@ function LoginPage() {
               className="auth-google"
               onClick={handleGoogle}
               disabled={anyLoading}
-              style={{ marginBottom: 16 }}
+              style={{ marginBottom: 10 }}
             >
-              {googleLoading ? (
+              {oauthLoading === 'google' ? (
                 <span style={{
                   width: 18, height: 18, borderRadius: '50%',
                   border: '2px solid rgba(0,0,0,0.12)', borderTopColor: '#4285F4',
@@ -113,6 +135,27 @@ function LoginPage() {
                 </svg>
               )}
               Continuar con Google
+            </button>
+
+            {/* Facebook */}
+            <button
+              className="auth-google"
+              onClick={handleFacebook}
+              disabled={anyLoading}
+              style={{ marginBottom: 16, color: '#1877F2' }}
+            >
+              {oauthLoading === 'facebook' ? (
+                <span style={{
+                  width: 18, height: 18, borderRadius: '50%',
+                  border: '2px solid rgba(24,119,242,0.2)', borderTopColor: '#1877F2',
+                  display: 'inline-block', animation: 'hilo-spin 0.7s linear infinite',
+                }} />
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                </svg>
+              )}
+              Continuar con Facebook
             </button>
 
             <div className="auth-or">o con tu correo</div>
@@ -170,26 +213,7 @@ function LoginPage() {
         <div />
       </div>
 
-      {/* brand side */}
-      <div className="auth-brand-side">
-        <div className="abs-glow" />
-        <div className="abs-eyebrow">Tu agenda vive en WhatsApp</div>
-        <div>
-          <p className="abs-quote">"Dejé de perder citas por no contestar a tiempo. Hilo responde por mí, hasta cuando estoy con cliente."</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 20, position: 'relative', zIndex: 1 }}>
-            <span style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', display: 'grid', placeItems: 'center', font: '600 15px/1 var(--font-sans)' }}>CR</span>
-            <div>
-              <div style={{ font: '600 14.5px/1.2 var(--font-sans)' }}>Camilo Restrepo</div>
-              <div style={{ font: '400 12.5px/1.2 var(--font-sans)', color: 'rgba(255,255,255,0.65)' }}>Navaja &amp; Tinta · Medellín</div>
-            </div>
-          </div>
-        </div>
-        <ul className="abs-list">
-          <li><span className="ci"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>Gratis 14 días · sin tarjeta</li>
-          <li><span className="ci"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>Conserva tu número de WhatsApp</li>
-          <li><span className="ci"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>Listo en minutos, sin instalar nada</li>
-        </ul>
-      </div>
+      <AuthBanners />
     </div>
   );
 }

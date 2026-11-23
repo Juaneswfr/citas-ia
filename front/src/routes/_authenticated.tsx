@@ -17,6 +17,8 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { BottomTabs } from '@/components/layout/BottomTabs';
 import { MobileMenu } from '@/components/layout/MobileMenu';
+import { PlanBanner } from '@/components/billing/PlanBanner';
+import { PlanUsage } from "@/components/billing/PlanUsage";
 import styles from '@/components/layout/PanelLayout.module.css';
 
 const JWT_KEY = 'hilo_jwt';
@@ -208,6 +210,8 @@ function PanelLayout() {
       </div>
       <div className={styles.panel__content}>
         <TopBar title={title} onCompose={() => nav('/agenda')} statusChips={statusChips} alertCount={alertCount} />
+        <PlanUsage />
+        <PlanBanner />
         <main className={styles.panel__main}>
           <Outlet />
         </main>

@@ -101,11 +101,11 @@ async def callback(db, state=None):
 def ticket_of(res) -> dict:
     assert res.status_code == 302
     location = res.headers["location"]
-    assert location.startswith("https://hilo.test/login#google_ticket="), location
-    return oauth_state.verify_state(SECRET, location.split("#google_ticket=")[1])
+    assert location.startswith("https://hilo.test/login#auth_ticket="), location
+    return oauth_state.verify_state(SECRET, location.split("#auth_ticket=")[1])
 
 
-EXISTING = {"id": "u-1", "role": "workspace_owner", "is_active": True, "google_sub": SUB,
+EXISTING = {"id": "u-1", "role": "workspace_owner", "is_active": True, "provider_sub": SUB,
             "member_id": "m-1", "workspace_id": "ws-1", "workspace_active": True}
 
 
@@ -156,7 +156,7 @@ async def test_si_algo_falla_a_mitad_no_queda_nada_a_medias(google):
     db = DB()
     db.fail_on = "INSERT INTO workspace_members"
     res = await callback(db)
-    assert res.status_code == 302 and res.headers["location"] == "https://hilo.test/login?google_error=server"
+    assert res.status_code == 302 and res.headers["location"] == "https://hilo.test/login?auth_error=server"
     assert db.committed == 0 and db.rolled_back == 1
 
 
@@ -175,15 +175,15 @@ async def test_quien_ya_entro_con_google_vuelve_a_entrar_y_se_renueva_su_calenda
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("user,reason", [
-    ({**EXISTING, "google_sub": None}, "exists"),            # cuenta con contraseña: no se enlaza sola
-    ({**EXISTING, "google_sub": "OTRA-CUENTA"}, "exists"),   # mismo correo, otra cuenta de Google
+    ({**EXISTING, "provider_sub": None}, "exists"),            # cuenta con contraseña: no se enlaza sola
+    ({**EXISTING, "provider_sub": "OTRA-CUENTA"}, "exists"),   # mismo correo, otra cuenta de Google
     ({**EXISTING, "is_active": False}, "blocked"),
     ({**EXISTING, "workspace_active": False}, "suspended"),
 ])
 async def test_cuentas_que_no_deben_entrar_por_google(google, user, reason):
     db = DB(user=user)
     res = await callback(db)
-    assert res.headers["location"] == f"https://hilo.test/login?google_error={reason}"
+    assert res.headers["location"] == f"https://hilo.test/login?auth_error={reason}"
     assert not db.ran("INSERT") and not db.ran("UPDATE") and db.committed == 0
 
 
@@ -204,7 +204,7 @@ async def test_correo_sin_verificar_no_crea_ni_entra(google, identity, reason):
     google["result"] = {"encrypted_refresh_token": "enc", "identity": identity}
     db = DB()
     res = await callback(db)
-    assert res.headers["location"] == f"https://hilo.test/login?google_error={reason}"
+    assert res.headers["location"] == f"https://hilo.test/login?auth_error={reason}"
     assert not db.sql
 
 
@@ -212,7 +212,7 @@ async def test_correo_sin_verificar_no_crea_ni_entra(google, identity, reason):
 async def test_si_google_no_entrega_identidad_o_token_falla_sin_tocar_la_bd(google):
     google["result"] = None
     db = DB()
-    assert (await callback(db)).headers["location"] == "https://hilo.test/login?google_error=oauth"
+    assert (await callback(db)).headers["location"] == "https://hilo.test/login?auth_error=oauth"
     assert not db.sql
 
 
@@ -222,7 +222,7 @@ async def test_un_state_de_calendario_no_sirve_para_iniciar_sesion(google):
     db = DB()
     state = oauth_state.sign_state(SECRET, {"workspace_id": "ws-1", "member_id": "m-1", "return_to": "settings"})
     res = await callback(db, state)
-    assert "google_ticket" not in res.headers["location"]
+    assert "auth_ticket" not in res.headers["location"]
     assert not db.ran("INSERT INTO users")
 
 

@@ -1,7 +1,7 @@
 """
 Panel de administración de la plataforma: consultas y acciones que cruzan todos los workspaces.
 
-Solo lo usa el router `/admin`, que exige `super_admin`. Aquí no hay filtro por workspace a
+Solo lo usa el router `/zmanager`, que exige `super_admin`. Aquí no hay filtro por workspace a
 propósito: es la única parte del backend que ve la plataforma completa.
 """
 from typing import Optional

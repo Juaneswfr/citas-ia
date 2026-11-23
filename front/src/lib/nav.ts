@@ -69,7 +69,7 @@ export const NAV: NavGroup[] = [
     { id: 'config',      path: '/settings', icon: 'gear', label: 'Configuración' },
   ]},
   { group: 'Hilo', items: [
-    { id: 'plataforma', path: '/admin', icon: 'shield', label: 'Plataforma', superAdminOnly: true },
+    { id: 'plataforma', path: '/zmanager', icon: 'shield', label: 'Manager', superAdminOnly: true },
   ]},
 ];
 
@@ -86,7 +86,6 @@ export const PATH_TO_ID: Record<string, string> = {
   '/whatsapp':  'whatsapp',
   '/equipo':    'equipo',
   '/settings':  'config',
-  '/admin':     'plataforma',
 };
 
 export const TITLES: Record<string, string> = {

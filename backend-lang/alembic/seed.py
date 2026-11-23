@@ -19,21 +19,22 @@ import asyncpg
 # ── Seeders ───────────────────────────────────────────────────────────────────
 
 async def seed_billing_plans(db: asyncpg.Connection) -> None:
-    """Planes de facturación por defecto."""
+    """Planes vigentes (Emprendedor y Equipo). La migración 022 ya los crea; esto es idempotente por `code`."""
     plans = [
-        ("Gratis", "Plan gratuito de prueba", 0, "monthly", 1, 1, 3, 100),
-        ("Básico", "Plan básico para pequeños negocios", 49900, "monthly", 1, 1, 10, 1000),
-        ("Pro", "Plan profesional", 99900, "monthly", 3, 3, 50, 5000),
+        # code, name, description, precio real, precio de lanzamiento, citas del asistente, barberos
+        ("emprendedor", "Emprendedor", "Independiente o barbería pequeña", 120_000, 50_000, 250, 3),
+        ("equipo", "Equipo", "Barbería con equipo", 285_000, 120_000, 550, 6),
     ]
-    for name, desc, price, interval, channels, calendars, services, messages in plans:
+    for code, name, desc, price, launch, appointments, professionals in plans:
         await db.execute(
             """
-            INSERT INTO billing_plans (name, description, price_cop, billing_interval,
+            INSERT INTO billing_plans (code, name, description, price_cop, launch_price_cop, billing_interval,
+                                       max_appointments, max_professionals, extra_professional_price_cop,
                                        max_channels, max_calendars, max_services, max_messages)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT DO NOTHING
+            VALUES ($1, $2, $3, $4, $5, 'monthly', $6, $7, 40000, 1, $7, 1000, 0)
+            ON CONFLICT (code) DO NOTHING
             """,
-            name, desc, price, interval, channels, calendars, services, messages,
+            code, name, desc, price, launch, appointments, professionals,
         )
     print("  billing_plans: ok")
 

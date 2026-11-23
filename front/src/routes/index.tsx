@@ -7,6 +7,7 @@ import { Intro } from "@/components/landing/Intro";
 import { Steps } from "@/components/landing/Steps";
 import { Benefits } from "@/components/landing/Benefits";
 import { Platform } from "@/components/landing/Platform";
+import { Pricing } from "@/components/landing/Pricing";
 import { Founders } from "@/components/landing/Founders";
 import { Faq } from "@/components/landing/Faq";
 import { Cta } from "@/components/landing/Cta";
@@ -42,6 +43,7 @@ function LandingPage() {
         <Steps />
         <Benefits />
         <Platform />
+        <Pricing />
         <Founders />
         <Faq />
         <Cta />

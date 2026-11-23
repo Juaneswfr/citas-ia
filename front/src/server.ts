@@ -2,6 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { ZMANAGER_HEADERS, isZManagerPath } from "./lib/zmanager";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -37,18 +38,27 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   });
 }
 
+// Zumit Manager (/zmanager) nunca debe indexarse ni guardarse en cachés. Se pone aquí además de en nginx para que
+// valga también en desarrollo y si nginx no se reinicia tras un despliegue. Cubre la página y sus archivos.
+function withManagerHeaders(request: Request, response: Response): Response {
+  if (!isZManagerPath(new URL(request.url).pathname)) return response;
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(ZMANAGER_HEADERS)) headers.set(name, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      return withManagerHeaders(request, await normalizeCatastrophicSsrResponse(response));
     } catch (error) {
       console.error(error);
-      return new Response(renderErrorPage(), {
+      return withManagerHeaders(request, new Response(renderErrorPage(), {
         status: 500,
         headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      }));
     }
   },
 };

@@ -49,8 +49,13 @@ class EmailService:
     """Métodos estáticos para enviar emails transaccionales via Resend."""
 
     @staticmethod
-    async def _send(to: str | list[str], subject: str, html: str) -> bool:
-        """Envía un email via Resend API. Retorna True si tuvo éxito."""
+    async def _send(to: str | list[str], subject: str, html: str,
+                    attachments: list[tuple[str, bytes]] | None = None) -> bool:
+        """Envía un email via Resend API. Retorna True si tuvo éxito.
+
+        `attachments`: lista de (nombre de archivo, contenido en bytes). Resend los recibe en base64.
+        """
+        import base64
         from core.config import get_settings
         settings = get_settings()
 
@@ -64,9 +69,14 @@ class EmailService:
             "subject": subject,
             "html": html,
         }
+        if attachments:
+            payload["attachments"] = [
+                {"filename": name, "content": base64.b64encode(content).decode("ascii")}
+                for name, content in attachments
+            ]
 
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=20 if attachments else 10) as client:
                 resp = await client.post(
                     _RESEND_URL,
                     json=payload,

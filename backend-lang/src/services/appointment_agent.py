@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from core.business_types import BusinessProfile, get_profile
 from core.database import AsyncSessionLocal
-from services import availability_blocks
+from services import availability_blocks, billing_service
 from sqlalchemy import text
 
 log = logging.getLogger(__name__)
@@ -257,6 +257,14 @@ def _parse(tz: ZoneInfo, fecha: str, hora: str) -> datetime:
     return start
 
 
+async def _warn_quota(session, workspace_id: str) -> None:
+    """Tras agendar, avisa si se llegó al 80 % o se agotó el cupo. Nunca hace fallar la cita."""
+    try:
+        await billing_service.notify_quota(session, await billing_service.safe_entitlements(session, workspace_id))
+    except Exception as exc:
+        log.warning("[agent] aviso de cupo fallo | err=%s", type(exc).__name__)
+
+
 def build_tools(ctx: dict, state: dict) -> list[StructuredTool]:
     """Herramientas atadas al contexto. `state["booked"]` solo se llena con la fila de la BD."""
     ws = ctx["workspace_id"]
@@ -337,6 +345,12 @@ def build_tools(ctx: dict, state: dict) -> list[StructuredTool]:
         try:
             start = _parse(tz, fecha, hora)
             async with AsyncSessionLocal() as session:
+                # Cupo del plan: pasado el margen el asistente deja de agendar y el backend escribe el aviso.
+                ent = await billing_service.safe_entitlements(session, ws)
+                if not ent.can_book:
+                    state["quota_blocked"] = True
+                    await billing_service.notify_quota(session, ent)
+                    return "ERROR: el negocio llegó al límite de citas de su plan. No agendes; no insistas."
                 svc = await _service(session, service_id)
                 cal = await _calendar(session, calendar_id) if svc else None
                 if not svc or not cal:
@@ -348,6 +362,7 @@ def build_tools(ctx: dict, state: dict) -> list[StructuredTool]:
                                       channel_id=str(ctx["channel_id"]), calendar_id=str(cal["id"]),
                                       start_at=start, price_cop=svc["price_cop"]),
                     {"sub": None}, session)
+                await _warn_quota(session, ws)
             state["booked"] = {"id": row["id"], "service": svc["name"], "start": start}
             return "OK: cita creada."
         except PastTime as e:
@@ -474,6 +489,7 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
             "thread_id": _thread,
             "workspace_id": str(ctx.get("workspace_id", "")),
             "customer_phone": _phone,
+            "agent_run_id": str(ctx.get("agent_run_id", "")),
         },
         configurable={"thread_id": _thread},
         tags=["citas"],
@@ -481,6 +497,11 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
     used = 0
     while True:
         ai = await bound.ainvoke(msgs, config=lc_config)
+        um = getattr(ai, "usage_metadata", None) or {}
+        u = state.setdefault("usage", {"calls": 0, "input": 0, "output": 0})
+        u["calls"] += 1
+        u["input"] += int(um.get("input_tokens", 0) or 0)
+        u["output"] += int(um.get("output_tokens", 0) or 0)
         calls = getattr(ai, "tool_calls", None) or []
         if not calls:
             return ai.content if isinstance(ai.content, str) else ""
@@ -494,7 +515,7 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
             # workspace_id/canal nunca son argumentos: los campos extra del modelo se descartan en el schema
             res = await tool.ainvoke(c["args"]) if tool else "ERROR: herramienta desconocida."
             msgs.append(ToolMessage(str(res), tool_call_id=c["id"]))
-            if state.get("booked") or state.get("rescheduled"):
+            if state.get("booked") or state.get("rescheduled") or state.get("quota_blocked"):
                 return ""
 
 
@@ -516,8 +537,17 @@ def _done(state: dict) -> dict | None:
 
 
 async def run_agent(ctx: dict, message: str, llm=None) -> dict:
-    """Devuelve {"reply_text", "booked": bool, "rescheduled": bool, "error": str|None}. No lanza por fallos del LLM."""
+    """Devuelve {"reply_text", "booked", "rescheduled", "error", "usage"}. No lanza por fallos del LLM.
+
+    `usage` trae las llamadas y los tokens gastados ({"calls", "input", "output"}) para medir el costo por negocio.
+    """
     state: dict = {}
+    res = await _run_agent(ctx, message, llm, state)
+    res["usage"] = state.get("usage", {"calls": 0, "input": 0, "output": 0})
+    return res
+
+
+async def _run_agent(ctx: dict, message: str, llm, state: dict) -> dict:
     try:
         text_reply = await asyncio.wait_for(_loop(llm or _get_llm(), ctx, message, state), TIMEOUT_S)
     except Exception as e:
@@ -528,6 +558,8 @@ async def run_agent(ctx: dict, message: str, llm=None) -> dict:
                                 "error": f"agent_{err}"}
     if done := _done(state):
         return done
+    if state.get("quota_blocked"):
+        return {"reply_text": billing_service.QUOTA_BLOCKED_REPLY, "booked": False, "rescheduled": False, "error": None}
     if state.get("limit"):
         return {"reply_text": NOT_BOOKED, "booked": False, "rescheduled": False, "error": "tool_limit"}
     if state.get("create_failed") or not text_reply.strip() or _CLAIMS_CONFIRMED.search(text_reply):

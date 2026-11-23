@@ -332,9 +332,15 @@ export interface WorkspaceStats {
 
 export interface BillingPlanOut {
   id: string;
+  /** Lo que usa el sistema para reconocer el plan (no se edita). El nombre sí puede cambiar. */
+  code?: string | null;
   name: string;
   description: string | null;
   price_cop: number;
+  launch_price_cop?: number | null;
+  max_appointments?: number | null;
+  max_professionals?: number | null;
+  extra_professional_price_cop?: number;
   billing_interval: string;
   max_channels: number;
   max_calendars: number;

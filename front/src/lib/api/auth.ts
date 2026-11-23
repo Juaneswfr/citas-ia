@@ -3,7 +3,7 @@
 import { apiFetch } from './client';
 import type { TokenResponse, MeResponse } from '../types/api';
 
-/** POST /auth/login — obtiene JWT del backend con credenciales Supabase */
+/** POST /auth/login — obtiene el JWT del backend con correo y contraseña. */
 export async function loginToBackend(email: string, password: string): Promise<TokenResponse> {
   return apiFetch<TokenResponse>('/auth/login', {
     method: 'POST',
@@ -13,13 +13,13 @@ export async function loginToBackend(email: string, password: string): Promise<T
 }
 
 /**
- * POST /auth/refresh — renueva el JWT del backend usando el refresh token de Supabase.
+ * POST /auth/refresh — renueva el JWT del backend con el JWT vigente.
  * Usado en la restauración de sesión al recargar la página.
  */
-export async function refreshBackendToken(supabaseRefreshToken: string): Promise<TokenResponse> {
+export async function refreshBackendToken(currentToken: string): Promise<TokenResponse> {
   return apiFetch<TokenResponse>('/auth/refresh', {
     method: 'POST',
-    body: JSON.stringify({ refresh_token: supabaseRefreshToken }),
+    body: JSON.stringify({ refresh_token: currentToken }),
     public: true,
   });
 }
@@ -29,7 +29,12 @@ export async function getGoogleLoginUrl(): Promise<{ url: string }> {
   return apiFetch<{ url: string }>('/auth/google/login/url', { public: true });
 }
 
-/** POST /auth/google/ticket — cambia el ticket que dejó el callback de Google por la sesión. */
+/** GET /auth/facebook/login/url — URL de Facebook para crear cuenta o entrar. */
+export async function getFacebookLoginUrl(): Promise<{ url: string }> {
+  return apiFetch<{ url: string }>('/auth/facebook/login/url', { public: true });
+}
+
+/** POST /auth/google/ticket — cambia el ticket que dejó el callback de Google o de Facebook por la sesión. */
 export async function exchangeGoogleTicket(ticket: string): Promise<TokenResponse> {
   return apiFetch<TokenResponse>('/auth/google/ticket', {
     method: 'POST',
@@ -64,7 +69,7 @@ export async function getGoogleCalendarUrl(
 
 /**
  * POST /auth/register — crea usuario + workspace en un solo paso.
- * Usa la admin API del backend para confirmar el email automáticamente.
+ * El registro es inmediato: no hay verificación de correo.
  */
 export async function registerToBackend(
   email: string,

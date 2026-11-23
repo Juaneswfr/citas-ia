@@ -1,0 +1,15 @@
+.block { padding: 28px 0; border-bottom: 1px solid #ead9de; }
+.block:first-child { padding-top: 0; }
+.h2 { margin: 0 0 14px; font-weight: 800; font-size: 22px; line-height: 1.2; letter-spacing: -0.02em; color: #2c0f20; }
+.block p, .block li { font-size: 16px; line-height: 1.65; color: #4f2634; }
+.block p { margin: 0 0 12px; }
+.block ul { margin: 8px 0 12px; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; }
+.block a { color: #007a80; }
+.block strong { color: #2c0f20; }
+.formula { background: #f5f2ee; border-radius: 12px; padding: 14px 18px; font-weight: 700; }
+.tableWrap { overflow-x: auto; margin: 8px 0 16px; }
+.table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.table th, .table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid #ead9de; color: #2c0f20; }
+.table th { background: #f5f2ee; font-weight: 800; }
+.qa { margin: 0 0 18px; }
+.q { margin: 0 0 4px; font-weight: 800; font-size: 17px; color: #2c0f20; }

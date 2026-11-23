@@ -4,6 +4,10 @@ import { format, formatDistanceToNowStrict, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const SUBSCRIPTION_LABEL: Record<string, string> = {
+  trial: 'En prueba',
+  past_due: 'En mora',
+  paused: 'Pausada',
+  none: 'Sin plan asignado',
   active: 'Activa',
   pending_payment: 'Pago pendiente',
   suspended: 'Suspendida',
@@ -15,8 +19,34 @@ const SUBSCRIPTION_LABEL: Record<string, string> = {
 type Tone = 'ok' | 'warn' | 'bad' | 'neutral';
 
 const SUBSCRIPTION_TONE: Record<string, Tone> = {
-  active: 'ok', pending_payment: 'warn', suspended: 'bad', cancelled: 'bad', expired: 'bad',
+  active: 'ok', trial: 'warn', past_due: 'warn', pending_payment: 'warn',
+  paused: 'bad', suspended: 'bad', cancelled: 'bad', expired: 'bad',
 };
+
+const INVOICE_LABEL: Record<string, string> = {
+  pending: 'Pendiente', paid: 'Pagada', overdue: 'Vencida', void: 'Anulada',
+};
+
+const INVOICE_TONE: Record<string, Tone> = { pending: 'warn', paid: 'ok', overdue: 'bad', void: 'neutral' };
+
+export const invoiceLabel = (status: string): string => INVOICE_LABEL[status] ?? status;
+export const invoiceTone = (status: string): Tone => INVOICE_TONE[status] ?? 'neutral';
+
+const EVENT_LABEL: Record<string, string> = {
+  trial_started: 'Empezó la prueba', trial_extended: 'Se extendió la prueba', activated: 'Activó su plan',
+  plan_changed: 'Cambió de plan', invoice_issued: 'Se generó un cobro', payment_registered: 'Pago registrado',
+  past_due: 'Entró en mora', paused: 'Asistente pausado', reactivated: 'Asistente reactivado',
+  cancel_requested: 'Pidió cancelar', cancel_reverted: 'Deshizo la cancelación', cancelled: 'Suscripción cancelada',
+  addon_added: 'Citas adicionales', addon_removed: 'Quitó un bloque de citas', founder_granted: 'Fundador',
+  founder_price_lost: 'Perdió el valor congelado', quota_80: 'Llegó al 80 % de sus citas',
+  quota_limit: 'Agotó las citas del plan', quota_blocked: 'El asistente dejó de agendar',
+  status_changed: 'Cambio manual de estado', purge_due: 'Datos vencidos por revisar',
+  notice_upcoming: 'Aviso de próximo cobro', notice_overdue: 'Aviso de pago vencido',
+  notice_pause_warning: 'Aviso: mañana se pausa', notice_paused: 'Aviso de pausa', notice_trial_ended: 'Aviso: terminó la prueba',
+};
+
+export const eventLabel = (type: string): string => EVENT_LABEL[type] ?? type;
+
 
 const SYNC_LABEL: Record<string, string> = {
   active: 'Activo', paused: 'Pausado', error: 'Con error', disconnected: 'Desconectado',

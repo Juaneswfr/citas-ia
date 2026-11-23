@@ -10,7 +10,7 @@ const now = () => sql`now()`
 export const users = pgTable('users', {
   id:           uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   email:        varchar('email', { length: 255 }).unique().notNull(),
-  passwordHash: text('password_hash'),           // null para usuarios migrados de Supabase
+  passwordHash: text('password_hash'),           // null para cuentas creadas con Google o Facebook
   name:         varchar('name', { length: 255 }),
   role:         varchar('role', { length: 50 }).default('workspace_owner'),
   isActive:     boolean('is_active').default(true),

@@ -153,7 +153,7 @@ def harness(monkeypatch):
     state = SimpleNamespace(
         channel={"id": "ch", "phone_number_id": "PID", "provider": "kapso", "external_account_id": "W"},
         approved=True, claim="send-1", result=SendResult(ok=True, message_id="wamid.9"),
-        sent=[], finished=[], saved=[], opt_outs=[],
+        sent=[], finished=[], saved=[], opt_outs=[], serving=True,
     )
 
     async def channel(_db, _w):
@@ -180,6 +180,10 @@ def harness(monkeypatch):
         state.sent.append(("text", k))
         return state.result
 
+    async def serving(_db, _w):
+        return state.serving
+
+    monkeypatch.setattr(followup_service.billing_service, "safe_is_serving", serving)
     monkeypatch.setattr(followup_service, "AsyncSessionLocal", lambda: _Session(state.approved))
     monkeypatch.setattr(followup_service, "_kapso_channel", channel)
     monkeypatch.setattr(followup_service, "_claim", claim)
@@ -371,3 +375,37 @@ async def test_list_templates_reports_connection(monkeypatch, channel, connected
     out = await followup_service.list_templates(_Db(), "ws-1")
     assert (out["connected"], out["can_activate"]) == (connected, can_activate)
     assert len(out["templates"]) == len(ft.KINDS)
+
+
+# ── El plan frena los seguimientos automáticos ──────────────────────────────
+
+@pytest.mark.parametrize("kind", ["reminder", "post_visit", "payment_due", "reactivation"])
+async def test_plan_sin_servicio_no_envia_seguimientos_automaticos(harness, kind):
+    harness.serving = False
+    assert await _send(kind) == "skipped"
+    assert harness.sent == [] and harness.finished == []
+
+
+async def test_plan_sin_servicio_no_reserva_el_envio_para_reintentarlo(harness, monkeypatch):
+    """Sin reservar (`_claim`), cuando el negocio vuelva a tener plan lo que siga vigente sale en la pasada siguiente."""
+    harness.serving = False
+    claimed = []
+
+    async def claim(*a):
+        claimed.append(a)
+        return "send-1"
+
+    monkeypatch.setattr(followup_service, "_claim", claim)
+    assert await _send("reminder") == "skipped"
+    assert claimed == []
+
+
+async def test_el_aviso_de_cita_cancelada_sale_aunque_el_plan_este_pausado(harness):
+    """Lo dispara una persona del equipo desde el panel: el plan no lo frena."""
+    harness.serving = False
+    assert await _send("cancellation") == "sent"
+
+
+async def test_con_plan_activo_todo_sigue_igual(harness):
+    harness.serving = True
+    assert await _send("reminder") == "sent"

@@ -30,6 +30,7 @@ from api.routes.accounting_files import router as accounting_files_router
 from api.routes.receipts import router as receipts_router
 from api.routes.followups import router as followups_router
 from api.routes.admin import router as admin_router
+from api.routes.admin_billing import router as admin_billing_router
 from api.routes.search import router as search_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.appointment_history import router as appointment_history_router
@@ -58,14 +59,19 @@ async def lifespan(app: FastAPI):
     from workers.followup_worker import start_followup_scheduler
     reminder_task = start_followup_scheduler()
 
+    # Ciclo de vida de las suscripciones: pruebas vencidas, cobros, mora y pausas
+    from workers.billing_worker import start_billing_scheduler
+    billing_task = start_billing_scheduler()
+
     yield
 
     # Shutdown limpio
-    reminder_task.cancel()
-    try:
-        await reminder_task
-    except BaseException:
-        pass
+    for task in (reminder_task, billing_task):
+        task.cancel()
+        try:
+            await task
+        except BaseException:
+            pass
     await close_db()
     log.info("[shutdown] Zumit API detenida")
 
@@ -105,6 +111,7 @@ app.include_router(accounting_files_router)
 app.include_router(receipts_router)
 app.include_router(followups_router)
 app.include_router(admin_router)
+app.include_router(admin_billing_router)
 app.include_router(search_router)
 app.include_router(dashboard_router)
 app.include_router(appointment_history_router)

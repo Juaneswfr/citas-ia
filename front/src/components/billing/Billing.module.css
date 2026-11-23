@@ -1,0 +1,65 @@
+/* Plan y facturación del dueño — BEM. Sin estilos inline salvo anchos dinámicos de las barras de uso. */
+
+.plan { display: flex; flex-direction: column; gap: 16px; }
+.plan__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.plan__name { font: 600 18px/1.2 var(--font-sans); color: var(--ink-1); letter-spacing: -0.01em; }
+.plan__price { font: 400 13px/1.45 var(--font-sans); color: var(--ink-2); margin: 2px 0 0; }
+.plan__tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.plan__tag { display: inline-block; padding: 3px 9px; border-radius: 99px; font: 500 11px/1.2 var(--font-sans); background: var(--line-soft); color: var(--ink-2); white-space: nowrap; }
+.plan__tag--ok { background: var(--wa-bg); color: var(--wa-ink); }
+.plan__tag--warn { background: var(--warning-bg); color: var(--warning); }
+.plan__tag--bad { background: var(--danger-bg); color: var(--danger); }
+.plan__tag--brand { background: var(--wine-100); color: var(--wine); }
+
+.plan__note { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); font: 400 13px/1.5 var(--font-sans); background: var(--surface-tint); color: var(--ink-2); }
+.plan__note--warn { background: var(--warning-bg); color: var(--warning); }
+.plan__note--bad { background: var(--danger-bg); color: var(--danger); }
+
+.plan__title { margin: 0 0 8px; font: 600 13px/1.2 var(--font-sans); color: var(--ink-1); }
+
+/* Medidores de uso */
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px; }
+.meter { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
+.meter__label { display: flex; justify-content: space-between; gap: 8px; font: 500 12px/1.2 var(--font-sans); color: var(--ink-3); margin-bottom: 8px; }
+.meter__value { font: 600 20px/1.1 var(--font-sans); color: var(--ink-1); letter-spacing: -0.02em; }
+.meter__of { font: 400 13px/1 var(--font-sans); color: var(--ink-3); }
+.meter__track { height: 8px; margin-top: 10px; border-radius: 99px; background: var(--line-soft); overflow: hidden; }
+.meter__fill { height: 100%; border-radius: 99px; background: var(--wine); transition: width var(--dur-3) var(--ease-out); }
+.meter__fill--warn { background: var(--warning); }
+.meter__fill--bad { background: var(--danger); }
+.meter__hint { margin: 8px 0 0; font: 400 12px/1.4 var(--font-sans); color: var(--ink-3); }
+
+/* Facturas */
+.invoices { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.invoice { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line-soft); font: 400 13px/1.35 var(--font-sans); color: var(--ink-2); flex-wrap: wrap; }
+.invoice:last-child { border-bottom: 0; }
+.invoice__main { color: var(--ink-1); font-weight: 500; }
+.invoice__sub { display: block; font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.invoice__side { display: flex; align-items: center; gap: 8px; color: var(--ink-1); font-weight: 500; }
+
+/* Datos de cobro */
+.profile { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; align-items: end; }
+.profile__field { display: flex; flex-direction: column; gap: 6px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.profile__input {
+  padding: 9px 11px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--surface-2);
+  font: 400 14px/1.3 var(--font-sans); color: var(--ink-1); outline: none;
+  transition: border-color var(--dur-2) var(--ease-std), box-shadow var(--dur-2) var(--ease-std);
+}
+.profile__input:focus { border-color: var(--wine); box-shadow: var(--ring); }
+.profile__actions { display: flex; align-items: center; gap: 10px; grid-column: 1 / -1; }
+
+.plan__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Aviso de arriba del panel */
+.banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 20px; border-bottom: 1px solid var(--line); font: 400 13px/1.4 var(--font-sans);
+  background: var(--wine-50); color: var(--ink-1);
+}
+.banner--warn { background: var(--warning-bg); color: var(--warning); }
+.banner--bad { background: var(--danger-bg); color: var(--danger); }
+.banner__link { font-weight: 600; color: inherit; text-decoration: underline; white-space: nowrap; }
+
+@media (max-width: 879px) {
+  .banner { padding: 10px 16px; }
+}

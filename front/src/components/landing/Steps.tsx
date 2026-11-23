@@ -8,7 +8,7 @@ type Step = { n: number; src: string; alt: string; pos?: PhotoPos; title: ReactN
 const STEPS: Step[] = [
   { n: 1, src: "/images/paso-1.png", alt: "Vinculando WhatsApp Business con un código QR", title: "Conectas tu mismo número.", sub: "Solo necesitas WhatsApp Business." },
   { n: 2, src: "/images/paso-2.jpg", alt: "Chat de WhatsApp con Zumit", pos: "50-20", title: <>Tu cliente escribe, <Logo /> agenda.</>, sub: "Tu cliente no descarga nada." },
-  { n: 3, src: "/images/paso-3.jpg", alt: "Barbero dormido mientras su agenda se llena", pos: "50-65", title: "Tu agenda se llena sola.", sub: "Tú solo trabajas." },
+  { n: 3, src: "/images/paso-3.jpg", alt: "Profesional dormido mientras su agenda se llena", pos: "50-65", title: "Tu agenda se llena sola.", sub: "Tú solo trabajas." },
 ];
 
 export function Steps() {

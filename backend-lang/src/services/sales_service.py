@@ -1,6 +1,6 @@
 """Órdenes de venta: creación manual o desde una cita completada, cobros y anulación.
 
-La comisión del barbero se congela en cada línea al momento de la venta
+La comisión del profesional se congela en cada línea al momento de la venta
 (commission_bps / commission_cop) para que cambiar la regla no reescriba el pasado.
 """
 import logging
@@ -159,7 +159,7 @@ async def create_order(
     await require_in_workspace(db, "third_parties", workspace_id, body.third_party_id, "Tercero")
     for ln in body.lines:
         await require_in_workspace(db, "services", workspace_id, ln.service_id, "Servicio")
-        await require_in_workspace(db, "workspace_members", workspace_id, ln.member_id, "Barbero")
+        await require_in_workspace(db, "workspace_members", workspace_id, ln.member_id, "Profesional")
     order_id = await _insert_order(
         db, workspace_id, body.third_party_id, None, None, body.notes, created_by,
         [ln.model_dump() for ln in body.lines],
@@ -172,7 +172,7 @@ async def create_sale_from_appointment(db: AsyncSession, workspace_id: str, appo
     """Crea (una sola vez) la orden de venta de una cita completada.
 
     Idempotente por `appointment_id`. Devuelve None si la cita no existe o no está completada.
-    El barbero sale de calendars.member_id; sin miembro la línea queda sin comisión.
+    El profesional sale de calendars.member_id; sin miembro la línea queda sin comisión.
     """
     existing = (await db.execute(
         text("SELECT id FROM sales_orders WHERE appointment_id = :a AND workspace_id = :w"),

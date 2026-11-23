@@ -1,0 +1,31 @@
+.usage {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px 28px; flex-wrap: wrap;
+  padding: 8px 20px; border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.usage__meters { display: grid; grid-template-columns: repeat(2, minmax(0, 240px)); gap: 12px 28px; align-items: center; flex: 1 1 360px; }
+.usage__actions { display: flex; align-items: center; gap: 14px; }
+.usage__request {
+  padding: 6px 12px; border: 1px solid var(--wine); border-radius: 99px; background: transparent; color: var(--wine);
+  font: 600 12.5px/1 var(--font-sans); cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-2) var(--ease-std), color var(--dur-2) var(--ease-std);
+}
+.usage__request:hover { background: var(--wine); color: #fff; }
+.usage__plan { font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); text-decoration: underline; white-space: nowrap; }
+.usage__plan:hover { color: var(--ink-1); }
+.meter { min-width: 0; }
+.meter__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.meter__label { font: 500 12px/1.2 var(--font-sans); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meter__value { font: 600 13px/1.2 var(--font-sans); color: var(--ink-1); white-space: nowrap; }
+.meter__value--warn { color: var(--warning); }
+.meter__value--bad { color: var(--danger); }
+.meter__of { font-weight: 400; color: var(--ink-3); }
+.meter__track { height: 5px; margin-top: 5px; border-radius: 99px; background: var(--line-soft); overflow: hidden; }
+.meter__fill { height: 100%; border-radius: 99px; background: var(--wine); transition: width var(--dur-3) var(--ease-out); }
+.meter__fill--warn { background: var(--warning); }
+.meter__fill--bad { background: var(--danger); }
+
+@media (max-width: 879px) {
+  .usage { padding: 8px 16px; }
+  .usage__meters { grid-template-columns: repeat(2, minmax(0, 1fr)); flex-basis: 100%; }
+  .usage__actions { width: 100%; justify-content: space-between; }
+}

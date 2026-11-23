@@ -47,6 +47,10 @@ class FakeSession:
     async def execute(self, statement, params=None):
         return FakeResult(self.handle(str(statement), params or {}))
 
+    def begin_nested(self):
+        """SAVEPOINT: en los tests no hace nada (la sesión real sí lo crea)."""
+        return self
+
     async def commit(self):
         pass
 

@@ -96,7 +96,7 @@ def _build_stats(rows: list[dict], now: datetime) -> dict:
         (r for r in rows if r["status"] in ("pending", "confirmed") and r["start_at"] >= now),
         key=lambda r: r["start_at"],
     )
-    # Servicio/barbero favoritos se calculan sobre citas que realmente ocurrieron o están vigentes.
+    # Servicio/profesional favoritos se calculan sobre citas que realmente ocurrieron o están vigentes.
     counted = [r for r in rows if r["status"] not in ("cancelled", "noshow", "rescheduled")]
     total_value = sum(r["price_cop"] + r["home_service_price_cop"] for r in completed)
     return {

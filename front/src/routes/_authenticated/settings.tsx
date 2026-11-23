@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/hilo/icons";
 import { Button } from "@/components/hilo/primitives";
+import { BillingSection } from "@/components/billing/BillingSection";
 import { listChannels, updateChannelStatus, listCalendars, disconnectCalendar, createKapsoOnboardingLink, createSandboxSession, getSandboxSession, listSandboxSessions, type SandboxSession } from "@/lib/api/channels";
 import { getGoogleCalendarUrl } from "@/lib/api/auth";
 import { apiFetch } from "@/lib/api/client";
@@ -719,6 +720,13 @@ function SettingsPage() {
           : <span style={{ font: '400 13px/1 var(--font-sans)', color: 'var(--ink-3)' }}>No hay workspace activo.</span>
         }
       </SettingsCard>
+
+      {/* Plan y facturación: solo el dueño (el backend responde 403 al resto) */}
+      {(me?.role === 'workspace_owner' || me?.role === 'super_admin') && me?.workspace_id && (
+        <SettingsCard icon="money" title="Plan y facturación" description="Tu plan, el uso del ciclo, el próximo cobro y tus facturas.">
+          <BillingSection workspaceId={me.workspace_id} />
+        </SettingsCard>
+      )}
 
       {/* Sandbox */}
       {(me?.role === 'workspace_owner' || me?.role === 'super_admin') && (

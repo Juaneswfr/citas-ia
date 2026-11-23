@@ -1,4 +1,4 @@
-// Auth context — JWT propio del FastAPI, sin Supabase.
+// Auth context — JWT propio del FastAPI (correo y contraseña, Google y Facebook).
 
 import {
   createContext,
@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import {
-  loginToBackend, refreshBackendToken, getMe, registerToBackend, getGoogleLoginUrl, exchangeGoogleTicket,
+  loginToBackend, refreshBackendToken, getMe, registerToBackend, getGoogleLoginUrl, getFacebookLoginUrl, exchangeGoogleTicket,
 } from "./api/auth";
 import { setApiToken, registerUnauthorizedHandler } from "./api/client";
 import type { MeResponse } from "./types/api";
@@ -33,9 +33,10 @@ interface AuthContextType {
   register: (email: string, password: string, workspaceName: string) => Promise<void>;
   /** Va a Google: crea la cuenta o entra, y sincroniza el calendario en el mismo consentimiento. */
   signInWithGoogle: () => Promise<void>;
-  /** Cambia el ticket que trae el regreso de Google por la sesión. `isNew`: la cuenta se acaba de crear. */
-  completeGoogleSignIn: (ticket: string) => Promise<{ isNew: boolean }>;
+  /** Va a Facebook: crea la cuenta o entra (el calendario se conecta después, en el onboarding). */
   signInWithFacebook: () => Promise<void>;
+  /** Cambia el ticket que trae el regreso de Google o Facebook por la sesión. `isNew`: la cuenta se acaba de crear. */
+  completeOAuthSignIn: (ticket: string) => Promise<{ isNew: boolean }>;
   logout: () => Promise<void>;
 }
 
@@ -145,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /** signup: en el nuevo sistema redirige al register completo */
   const signup = useCallback(async (email: string, password: string): Promise<'verify-email' | 'authenticated'> => {
-    // Sin Supabase no hay verify-email — el registro es inmediato via /auth/register
+    // No hay verify-email — el registro es inmediato via /auth/register
     // Esta función queda como stub; el flujo real usa register()
     return 'verify-email';
   }, []);
@@ -171,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshMe = useCallback(async () => { setMe(await getMe()); }, []);
 
-  const completeGoogleSignIn = useCallback(async (ticket: string) => {
+  const completeOAuthSignIn = useCallback(async (ticket: string) => {
     const tokenResp = await exchangeGoogleTicket(ticket);
     applyToken(tokenResp.access_token);
     setMe(await getMe());
@@ -179,7 +180,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [applyToken]);
 
   const signInWithFacebook = useCallback(async () => {
-    throw new Error("El login con Facebook no está disponible. Usa email y contraseña.");
+    const { url } = await getFacebookLoginUrl();
+    window.location.href = url;
   }, []);
 
   const value = useMemo<AuthContextType>(() => ({
@@ -193,11 +195,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signup,
     register,
     signInWithGoogle,
-    completeGoogleSignIn,
-    refreshMe,
     signInWithFacebook,
+    completeOAuthSignIn,
+    refreshMe,
     logout,
-  }), [backendJwt, me, initializing, login, signup, register, signInWithGoogle, completeGoogleSignIn, refreshMe, signInWithFacebook, logout]);
+  }), [backendJwt, me, initializing, login, signup, register, signInWithGoogle, signInWithFacebook, completeOAuthSignIn, refreshMe, logout]);
 
   if (initializing) {
     return (

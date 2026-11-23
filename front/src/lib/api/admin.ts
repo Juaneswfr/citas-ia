@@ -6,22 +6,22 @@ import type {
   AdminWorkspaceList, AdminWorkspaceUpdate,
 } from '../types/admin';
 
-const BASE_URL = '/admin';
+const BASE_URL = '/zmanager';
 
 export const ADMIN_PAGE_SIZE = 50;
 
 export const adminService = {
-  /** GET /admin/overview — totales y repartos de la plataforma */
+  /** GET /zmanager/overview — totales y repartos de la plataforma */
   getOverview(): Promise<AdminOverview> {
     return apiFetch<AdminOverview>(`${BASE_URL}/overview`);
   },
 
-  /** GET /admin/health — prueba las claves de Anthropic y Kapso y resume los envíos de 24 h */
+  /** GET /zmanager/health — prueba las claves de Anthropic y Kapso y resume los envíos de 24 h */
   getHealth(): Promise<AdminHealth> {
     return apiFetch<AdminHealth>(`${BASE_URL}/health`);
   },
 
-  /** GET /admin/workspaces — negocios, con búsqueda y filtros */
+  /** GET /zmanager/workspaces — negocios, con búsqueda y filtros */
   listWorkspaces(filters: AdminWorkspaceFilters, page: number): Promise<AdminWorkspaceList> {
     const query = new URLSearchParams({
       limit: String(ADMIN_PAGE_SIZE),
@@ -33,12 +33,12 @@ export const adminService = {
     return apiFetch<AdminWorkspaceList>(`${BASE_URL}/workspaces?${query}`);
   },
 
-  /** GET /admin/workspaces/{id} — ficha con equipo, canales y calendarios */
+  /** GET /zmanager/workspaces/{id} — ficha con equipo, canales y calendarios */
   getWorkspace(workspaceId: string): Promise<AdminWorkspaceDetail> {
     return apiFetch<AdminWorkspaceDetail>(`${BASE_URL}/workspaces/${workspaceId}`);
   },
 
-  /** PATCH /admin/workspaces/{id} — suspender, reactivar o corregir el tipo de negocio */
+  /** PATCH /zmanager/workspaces/{id} — suspender, reactivar o corregir el tipo de negocio */
   updateWorkspace(workspaceId: string, body: AdminWorkspaceUpdate): Promise<AdminWorkspaceDetail> {
     return apiFetch<AdminWorkspaceDetail>(`${BASE_URL}/workspaces/${workspaceId}`, {
       method: 'PATCH',
@@ -46,7 +46,7 @@ export const adminService = {
     });
   },
 
-  /** GET /admin/users — usuarios de la plataforma */
+  /** GET /zmanager/users — usuarios de la plataforma */
   listUsers(search: string, page: number): Promise<AdminUserList> {
     const query = new URLSearchParams({
       limit: String(ADMIN_PAGE_SIZE),
@@ -56,7 +56,7 @@ export const adminService = {
     return apiFetch<AdminUserList>(`${BASE_URL}/users?${query}`);
   },
 
-  /** PATCH /admin/users/{id} — bloquear o desbloquear el acceso */
+  /** PATCH /zmanager/users/{id} — bloquear o desbloquear el acceso */
   async setUserActive(userId: string, isActive: boolean): Promise<void> {
     await apiFetch(`${BASE_URL}/users/${userId}`, {
       method: 'PATCH',

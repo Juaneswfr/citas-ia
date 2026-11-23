@@ -1,7 +1,8 @@
 """
-Router /admin — panel de administración de toda la plataforma.
+Router /zmanager — panel de administración de toda la plataforma.
 
-Todas las rutas exigen `super_admin` (dependencia a nivel de router). Es el único router que
+Todas las rutas exigen `super_admin` (dependencia a nivel de router). Para cualquier otra persona responden
+404 y no 403: el prefijo no debe revelar que existe (ver `require_platform_admin`). Es el único router que
 lee datos de todos los workspaces; el aislamiento por negocio no aplica aquí.
 Las acciones que cambian estado quedan en `audit_logs`.
 """
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.business_types import BUSINESS_PROFILES
 from core.database import get_db
-from core.security import require_role
+from core.security import require_platform_admin
 from schemas.admin import (
     AdminHealthOut, AdminOverviewOut, AdminUserList, AdminUserUpdate,
     AdminWorkspaceDetail, AdminWorkspaceList, AdminWorkspaceUpdate,
@@ -24,9 +25,9 @@ from services.audit_service import AuditService
 
 log = logging.getLogger(__name__)
 router = APIRouter(
-    prefix="/admin",
+    prefix="/zmanager",
     tags=["admin"],
-    dependencies=[Depends(require_role("super_admin"))],
+    dependencies=[Depends(require_platform_admin)],
 )
 
 
@@ -79,7 +80,7 @@ async def get_workspace(workspace_id: str, db: AsyncSession = Depends(get_db)):
 async def update_workspace(
     workspace_id: str,
     body: AdminWorkspaceUpdate,
-    current_user: dict = Depends(require_role("super_admin")),
+    current_user: dict = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     if body.is_active is None and body.business_type is None:
@@ -113,7 +114,7 @@ async def list_users(
 async def update_user(
     user_id: str,
     body: AdminUserUpdate,
-    current_user: dict = Depends(require_role("super_admin")),
+    current_user: dict = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
     try:

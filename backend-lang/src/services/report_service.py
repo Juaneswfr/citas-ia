@@ -1,4 +1,4 @@
-"""Reportes del dueño: resumen mensual, cuentas por cobrar/pagar y comisiones por barbero."""
+"""Reportes del dueño: resumen mensual, cuentas por cobrar/pagar y comisiones por profesional."""
 from datetime import date
 from typing import Optional
 
@@ -49,7 +49,7 @@ async def monthly_summary(db: AsyncSession, workspace_id: str, month: str) -> di
 async def commissions_report(
     db: AsyncSession, workspace_id: str, start: Optional[date] = None, end: Optional[date] = None
 ) -> list[dict]:
-    """Ventas, comisión y propinas por barbero en un rango (órdenes cobradas), con lo pendiente de liquidar."""
+    """Ventas, comisión y propinas por profesional en un rango (órdenes cobradas), con lo pendiente de liquidar."""
     rows = (await db.execute(
         text(f"""
             SELECT wm.id AS member_id, u.name AS member_name,

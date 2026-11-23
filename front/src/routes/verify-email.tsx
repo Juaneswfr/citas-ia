@@ -16,7 +16,7 @@ function VerifyEmailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const resend = async () => {
-    // shortcut: reenvío sin Supabase — muestra mensaje estático
+    // No hay envío real de correo de verificación: se muestra el mensaje estático
     setResent(true);
   };
 

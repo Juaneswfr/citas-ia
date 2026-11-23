@@ -8,6 +8,7 @@ import { roleLabel } from '@/lib/roles';
 import type { AdminWorkspaceDetail } from '@/lib/types/admin';
 import { shortDate, subscriptionLabel, subscriptionTone, syncLabel, syncTone, timeAgo } from './labels';
 import { ToneTag } from './ui';
+import { WorkspaceBilling } from './WorkspaceBilling';
 import styles from './Admin.module.css';
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -101,6 +102,11 @@ function DetailBody({ detail }: { detail: AdminWorkspaceDetail }) {
         ))}
       </Section>
 
+      <section>
+        <h3 className={styles['detail__section-title']}>Plan y facturación</h3>
+        <WorkspaceBilling workspaceId={workspace.id} />
+      </section>
+
       <div className={styles.detail__danger}>
         <span className={styles['detail__danger-text']}>
           {workspace.is_active
@@ -126,7 +132,7 @@ interface WorkspaceDialogProps {
 export function WorkspaceDialog({ workspaceId, name, onClose }: WorkspaceDialogProps) {
   const detail = useAdminWorkspace(workspaceId);
   return (
-    <Modal title={name} onClose={onClose} maxWidth={620}>
+    <Modal title={name} onClose={onClose} maxWidth={720}>
       <AsyncState isLoading={detail.isLoading} isError={detail.isError} isEmpty={false} emptyText=""
                   onRetry={detail.refetch}>
         {detail.data && <DetailBody detail={detail.data} />}

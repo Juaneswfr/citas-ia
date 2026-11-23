@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from api.routes import admin
 from core.database import get_db
-from core.security import get_current_user
+from core.security import get_current_user, get_optional_user
 from services import admin_service
 
 pytestmark = pytest.mark.asyncio
@@ -66,7 +66,9 @@ def _app(session, role="super_admin", sub="admin-1"):
     app = FastAPI()
     app.include_router(admin.router)
     app.dependency_overrides[get_db] = lambda: session
-    app.dependency_overrides[get_current_user] = lambda: {"role": role, "workspace_id": "ws-1", "sub": sub}
+    user = {"role": role, "workspace_id": "ws-1", "sub": sub}
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_optional_user] = lambda: user
     return app
 
 
@@ -77,13 +79,13 @@ async def _call(app, method, path, body=None):
 
 
 ROUTES = [
-    ("GET", "/admin/overview", None),
-    ("GET", "/admin/business-types", None),
-    ("GET", "/admin/workspaces", None),
-    ("GET", "/admin/workspaces/ws-1", None),
-    ("PATCH", "/admin/workspaces/ws-1", {"is_active": False}),
-    ("GET", "/admin/users", None),
-    ("PATCH", "/admin/users/u-2", {"is_active": False}),
+    ("GET", "/zmanager/overview", None),
+    ("GET", "/zmanager/business-types", None),
+    ("GET", "/zmanager/workspaces", None),
+    ("GET", "/zmanager/workspaces/ws-1", None),
+    ("PATCH", "/zmanager/workspaces/ws-1", {"is_active": False}),
+    ("GET", "/zmanager/users", None),
+    ("PATCH", "/zmanager/users/u-2", {"is_active": False}),
 ]
 
 
@@ -91,7 +93,7 @@ ROUTES = [
 @pytest.mark.parametrize("method,path,body", ROUTES)
 async def test_solo_super_admin(session, role, method, path, body):
     response = await _call(_app(session, role=role), method, path, body)
-    assert response.status_code == 403, (role, method, path)
+    assert response.status_code == 404, (role, method, path)  # 404 y no 403: no revela que la ruta existe
     assert session.calls == [], "una ruta denegada no debe tocar la base de datos"
 
 
@@ -102,7 +104,7 @@ async def test_super_admin_entra(session, method, path, body):
 
 
 async def test_suspender_negocio_actualiza_y_confirma(session):
-    response = await _call(_app(session), "PATCH", "/admin/workspaces/ws-1", {"is_active": False})
+    response = await _call(_app(session), "PATCH", "/zmanager/workspaces/ws-1", {"is_active": False})
     assert response.status_code == 200
     update = next(params for sql, params in session.calls if "UPDATE workspaces" in sql)
     assert update == {"is_active": False, "business_type": "spa", "workspace_id": "ws-1"}
@@ -110,17 +112,17 @@ async def test_suspender_negocio_actualiza_y_confirma(session):
 
 
 async def test_tipo_de_negocio_invalido_es_422(session):
-    response = await _call(_app(session), "PATCH", "/admin/workspaces/ws-1", {"business_type": "carniceria"})
+    response = await _call(_app(session), "PATCH", "/zmanager/workspaces/ws-1", {"business_type": "carniceria"})
     assert response.status_code == 422
     assert not any("UPDATE" in sql for sql, _ in session.calls)
 
 
 async def test_patch_vacio_es_422(session):
-    assert (await _call(_app(session), "PATCH", "/admin/workspaces/ws-1", {})).status_code == 422
+    assert (await _call(_app(session), "PATCH", "/zmanager/workspaces/ws-1", {})).status_code == 422
 
 
 async def test_super_admin_no_puede_desactivarse(session):
-    response = await _call(_app(session, sub="admin-1"), "PATCH", "/admin/users/admin-1", {"is_active": False})
+    response = await _call(_app(session, sub="admin-1"), "PATCH", "/zmanager/users/admin-1", {"is_active": False})
     assert response.status_code == 409
     assert not any("UPDATE" in sql for sql, _ in session.calls)
 
@@ -137,10 +139,10 @@ async def test_busqueda_va_como_parametro_no_en_el_sql(session):
 async def test_negocio_inexistente_es_404(session, monkeypatch):
     async def empty(statement, params=None): return _Result([])
     monkeypatch.setattr(session, "execute", empty)
-    assert (await _call(_app(session), "GET", "/admin/workspaces/nope")).status_code == 404
+    assert (await _call(_app(session), "GET", "/zmanager/workspaces/nope")).status_code == 404
 
 
-# ── Estado de la plataforma (/admin/health) ──────────────────────────────────
+# ── Estado de la plataforma (/zmanager/health) ──────────────────────────────────
 
 from services import platform_health as ph  # noqa: E402
 
@@ -210,4 +212,51 @@ async def test_check_kapso(kapso_on, client, expected_check, expected_number):
 async def test_health_solo_super_admin(session):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=_app(session, role="workspace_owner")),
                                  base_url="http://t") as client:
-        assert (await client.get("/admin/health")).status_code == 403
+        assert (await client.get("/zmanager/health")).status_code == 404
+
+
+# ── El prefijo no debe delatarse ─────────────────────────────────────────────
+
+async def _bare_app(session):
+    """La app sin ningún override: la autenticación es la real."""
+    app = FastAPI()
+    app.include_router(admin.router)
+    app.dependency_overrides[get_db] = lambda: session
+    return app
+
+
+async def test_sin_token_la_ruta_no_existe(session):
+    transport = httpx.ASGITransport(app=await _bare_app(session))
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        for path in ("/zmanager/overview", "/zmanager/workspaces", "/zmanager/users"):
+            assert (await client.get(path)).status_code == 404, path
+    assert session.calls == []
+
+
+async def test_token_invalido_o_vencido_tampoco_la_delata(session):
+    import time
+    import jwt
+    from core.config import get_settings
+    settings = get_settings()
+    expired = jwt.encode({"role": "super_admin", "exp": int(time.time()) - 60}, settings.jwt_secret,
+                         algorithm=settings.jwt_algorithm)
+    transport = httpx.ASGITransport(app=await _bare_app(session))
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        for token in ("basura", expired):
+            res = await client.get("/zmanager/overview", headers={"Authorization": f"Bearer {token}"})
+            assert res.status_code == 404 and res.json() == {"detail": "Not Found"}, token
+
+
+async def test_un_token_real_de_super_admin_si_entra(session):
+    from core.security import create_access_token
+    token = create_access_token({"sub": "admin-1", "role": "super_admin", "workspace_id": "ws-1"})
+    transport = httpx.ASGITransport(app=await _bare_app(session), raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        res = await client.get("/zmanager/business-types", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+
+
+async def test_el_prefijo_viejo_ya_no_existe(session):
+    transport = httpx.ASGITransport(app=_app(session), raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        assert (await client.get("/admin/overview")).status_code == 404

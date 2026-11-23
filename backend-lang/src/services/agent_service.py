@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from core.database import AsyncSessionLocal
-from services import agent_guard
+from services import agent_guard, billing_service
 from sqlalchemy import text
 
 log = logging.getLogger(__name__)
@@ -65,6 +65,13 @@ class AgentService:
             if ws and ws["is_active"] is False:
                 # Negocio suspendido desde el panel de plataforma: el agente no responde.
                 log.info("[agent] skip: negocio suspendido (workspace=%s)", workspace_id)
+                return None
+
+            # 3b. Plan: prueba vencida, mora de más de los días de gracia o suscripción cancelada.
+            # Un negocio sin plan asignado no tiene límites (ver billing_service).
+            ent = await billing_service.safe_entitlements(db, workspace_id)
+            if not ent.serving:
+                log.info("[agent] skip: plan %s (workspace=%s)", ent.status, workspace_id)
                 return None
             if ws:
                 from zoneinfo import ZoneInfo
@@ -148,10 +155,17 @@ class AgentService:
         try:
             # Preparar contexto estructurado para el agente
             context = await AgentService._build_context(workspace_id, conversation)
+            context["agent_run_id"] = str(run_id) if run_id else ""  # LangSmith lo guarda: así se sabe cuánto costó esta ejecución
 
             from services.appointment_agent import run_agent
             res = await run_agent(context, message)
             agent_error = res["error"]
+            usage = res.get("usage") or {}
+            if usage.get("calls"):
+                async with AsyncSessionLocal() as db:
+                    await billing_service.record_usage(
+                        db, workspace_id, usage.get("input", 0), usage.get("output", 0), usage["calls"])
+                await AgentService._save_run_usage(run_id, usage)
             output = {
                 "reply_text": res["reply_text"],
                 "action_type": "create_appointment" if res["booked"] else "noop",
@@ -242,6 +256,22 @@ class AgentService:
                     await db.commit()
 
             return None
+
+    @staticmethod
+    async def _save_run_usage(run_id, usage: dict) -> None:
+        """Lo que gastó esta ejecución (tokens y costo estimado). Nunca lanza: si falta la migración 024 solo se pierde la medida."""
+        if not run_id:
+            return
+        try:
+            i, o = int(usage.get("input", 0) or 0), int(usage.get("output", 0) or 0)
+            async with AsyncSessionLocal() as db:
+                await db.execute(
+                    text("UPDATE agent_runs SET input_tokens = :i, output_tokens = :o, llm_calls = :n, cost_usd = :c WHERE id = :id"),
+                    {"i": i, "o": o, "n": int(usage.get("calls", 0)), "c": billing_service.ai_cost_usd(i, o), "id": run_id},
+                )
+                await db.commit()
+        except Exception as exc:
+            log.warning("[agent] no se pudo guardar el costo de la ejecución | run=%s | err=%s", run_id, type(exc).__name__)
 
     @staticmethod
     async def _hand_off(conversation: dict) -> None:

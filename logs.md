@@ -1,5 +1,238 @@
 # Cambios por agente
 
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado — «Pedir más citas»: se acreditan ya y queda un saldo pendiente de pago**
+- services/subscription_service.py — `request_extra_appointments`: valida el bloque (50/100/200/300), acredita una recarga (`appointments_topup`, $500 por cita, hasta el cierre del ciclo) y crea la factura pendiente (`proration` + línea `appointments`) que vence en 7 días o al cierre del ciclo si llega antes. Topes: solo plan `active`, **una solicitud sin pagar a la vez** (limita la deuda a un bloque, máx. $150.000). Evento `extra_appointments_requested`.
+- api/routes/billing.py — `POST /billing/workspaces/{id}/request-appointments?confirmed=true` (solo `workspace_owner`, queda en `audit_logs`; 409 con el motivo si no procede). Sin migración: reutiliza `subscription_addons` y `billing_invoices`.
+- front: `RequestAppointmentsDialog` (4 bloques con precio, resumen del saldo, confirmación), botón «Pedir más citas» en la franja de saldo (`PlanUsage`, ahora con «Ver mi plan») y en Ajustes › Plan y facturación; `useRequestAppointments` refresca el saldo y avisa con un toast.
+- Pruebas: 11 nuevas (`tests/test_extra_appointments.py`): acredita y factura, vencimiento, bloques inválidos, prueba, mora, solicitud abierta, sin plan. 1080 pasan.
+- **Decisión de producto a confirmar**: las citas se acreditan antes del pago. Si prefieres que esperen la confirmación del super_admin, es cambiar `add_addon` a que empiece cuando se registre el pago.
+- Pendiente: avisar a Zumit (correo/alerta) cuando entra una solicitud; hoy se ve como cobro pendiente en Zumit Manager. No se vio en el navegador ni se probó contra Postgres real.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado — saldo del plan siempre visible en el panel: citas del asistente y profesionales**
+- api/routes/billing.py — `GET /billing/workspaces/{id}/usage` (rol `viewer` o superior: todo el equipo). Devuelve solo el saldo (citas usadas/total/restantes/nivel y profesionales activos/límite/extra) **sin precios, facturas ni datos de cobro**, que siguen siendo solo del dueño en `/summary`. Falla «abierto»: si la facturación no está lista responde «sin plan» y el panel no muestra nada.
+- services/subscription_service.py — `workspace_usage_view`. Pruebas nuevas en `tests/test_billing_usage.py` (no filtra precios ni facturas; sin plan no hay saldo). 1069 pruebas pasan.
+- front: `components/billing/PlanUsage.tsx` (+ `.module.css`) — franja bajo la barra superior en **todas** las pantallas del panel (escritorio y móvil): «Citas del asistente 120 / 300» y «{Profesionales} 2 / 3» con barra de progreso (naranja al 80 %, rojo al agotarse o con profesionales de más). Tooltip con la fecha en que se reinicia el ciclo. Para el dueño es un enlace a Ajustes › Plan; para el resto, solo lectura. Se actualiza solo cada minuto. Sin plan asignado no aparece. Hook `useBillingUsage`, tipo `BillingUsage`, `billingService.getUsage`. Montada en `routes/_authenticated.tsx` encima del `PlanBanner`.
+- La etiqueta de quien atiende usa el vocabulario del negocio (`useBusinessTerms`).
+- Verificado con `tsc` y pruebas; **no se vio en el navegador** y el endpoint no se probó contra Postgres real.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Corregido — «barbero» → «profesional» y «barbería» → «negocio» donde hablaba de toda la plataforma**
+- front: Zumit Manager (Planes: «Profesionales incluidos», «Profesional adicional»; Facturación; Costos y Análisis: «cada negocio», columna «Negocio»), Ajustes › Plan y facturación («Profesionales con calendario»), alt de la imagen del paso 3 y de «Intro».
+- backend: textos que llegan al cliente (líneas de cobro «profesional(es) adicional(es)», aviso «Agregaste un profesional por encima de tu plan», bloqueo al bajar de plan, error «Profesional» de ventas), resumen del endpoint de comisiones y docstrings de contabilidad y facturación. Tres asserts de pruebas ajustados a los textos nuevos.
+- Documentación: `documentation/zumit-plan-de-pagos-y-sus.md` y `CLAUDE.md` (planes, profesional adicional, costo por negocio).
+- **No se tocó a propósito**: la industria «Barbería» y su vocabulario («barbero») en `business_types.py` / `business-types.ts` / Hero / FAQ / textos legales (es un tipo de negocio más), datos de muestra (`hilo-data.ts`, `mock-data.ts`), el testimonio de muestra, y los identificadores de API `barber_name` / `favorite_barber` (cambiarlos rompe el contrato front-back; la etiqueta que ve el usuario ya usa el vocabulario del negocio).
+- Pruebas: 1067 pasan, 5 omitidas. `tsc` solo marca `lib/api/example.functions.ts` (ya fallaba antes, no es de este cambio).
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Cambiado — el plan «Arranque» pasa a «Emprendedor» (código y nombre)**
+- Código interno `arranque` -> `emprendedor` en: migrations/022_billing.sql (semilla), alembic/seed.py, admin_billing.py (`Literal`), subscription_service.py (`PLAN_FOR_TRIAL`), billing_plans.py, front (`palette.ts`, `pricing-data.ts`, `WorkspaceBilling`, `use-billing`, `api/billing`, `types/billing`, condiciones de pago), pruebas y documentos vigentes. El nombre visible tambien es «Emprendedor».
+- migrations/025_rename_plan_emprendedor.sql — renombra el plan en la BD (codigo y, si nadie lo edito, el nombre) y el codigo guardado en `billing_events.payload`. Idempotente. **La 022 ya estaba aplicada con `arranque`, asi que la 025 es obligatoria**: aplicarla justo antes de desplegar el codigo (entre una y otra, la prueba gratis fallaria en silencio).
+- Las entradas anteriores de este log conservan el nombre viejo: son historia.
+- Pruebas: 1067 pasan.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado / Cambiado — Dashboard de Zumit Manager y costo de IA por cita**
+- front: el menú «Resumen» se llama **Dashboard** y absorbe Análisis (sección «Semana a semana»); se quitó la ruta `/zmanager/analisis` y su entrada de menú. El panel «Las citas de mayor precio» se queda.
+- migrations/024_agent_run_cost.sql — `agent_runs.input_tokens/output_tokens/llm_calls/cost_usd/ls_cost_usd/ls_tokens` (NULL = sin medir) + índice (conversación, inicio). **Pendiente de aplicar.**
+- services/agent_service.py — `_save_run_usage`: guarda tokens y costo estimado de cada ejecución (no lanza); manda `agent_run_id` al contexto.
+- services/appointment_agent.py — `agent_run_id` en los metadatos de LangSmith.
+- integrations/langsmith_costs.py — `aggregate_by_run` y `fetch_all` (una sola lectura da el costo por negocio/día y por ejecución).
+- services/billing_costs.py — la sincronización horaria guarda también el costo real por ejecución (`_save_run_costs`, en SAVEPOINT: si falta la 024, el resto de la sincronización se conserva).
+- services/billing_insights.py — `ai_per_appointment`: las 10 citas que más costaron de IA, promedio y mediana, con la fuente (LangSmith / estimado / mezcla). Falla abierto sin la 024.
+- front: gráfico «Las citas que más costaron de IA» (US$, tokens, ejecuciones, fuente) y tarjeta «IA por cita (mediana)».
+- Pruebas: 1065 pasan (+16). **Sin comprobar**: el SQL contra una base real, y que LangSmith devuelva `agent_run_id` en los metadatos con el `select` actual (se confirma con la primera sincronización tras aplicar la 024).
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado / Corregido — landing en móvil: menú, carruseles, espacios y alineación de lados**
+- components/landing/Header.tsx — menú móvil: botón hamburguesa (44 px, se vuelve X), hoja a pantalla completa con los enlaces, «Iniciar sesión» y «Empezar prueba gratis». Se cierra con Escape, al tocar un enlace o al pasar a escritorio; bloquea el scroll de fondo.
+- styles/landing.css — carruseles deslizables (scroll-snap, tarjetas al 82 % para que asome la siguiente) **solo bajo 760 px** en Pasos, «Dile hola a la tranquilidad» (la tarjeta grande + las 3 pequeñas en una sola fila) y Preguntas; bloque «Ajustes móviles» (hero, botones, plan, FAQ, pie con toques de 44 px).
+- components/landing/Faq.tsx — en móvil las preguntas son tarjetas con la respuesta visible (sin acordeón); en escritorio sigue el acordeón.
+- Lados: variable `--home-edge` (margen de 1280 px centrado); el encabezado, el contenido del hero y Fundadores se alinean con el resto en pantallas anchas; Precios pasa de 1180 a 1280 px.
+- Banner del hero en escritorio: se probó con 80 % de la altura y se revirtió: vuelve a ocupar toda la pantalla (`min-height: max(640px, min(100svh, 940px))`).
+- «Todo tu negocio, un solo agente» (`home-platform__rows`): las 4 filas pasan a carrusel en móvil, cada tarjeta con texto y maqueta en columna (86 % de ancho).
+- Altura de las tarjetas de «Todo tu negocio…» en móvil: todas igual de altas, texto arriba y maqueta pegada abajo. Sección «Los primeros negocios en Zumit» centrada en móvil (titular, texto, lista y botón; la foto del kit también al centro).
+- Corregido: la hamburguesa seguía visible en escritorio porque su `display:flex` base (declarado después) le ganaba al `display:none` de `@media (min-width:760px)`; la regla de escritorio pasa después de las reglas base.
+- Verificado con `tsc`; la landing responde 200. **No se vio en el navegador** (la extensión de Chrome no está conectada).
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Corregido — login y registro: 3 banners con testimonios de muestra y prueba de 7 días**
+- components/auth/AuthBanners.tsx (nuevo) — lado de marca compartido por `/login` y `/signup`: 3 banners (fotos hero-2, hero-3 y hero-1) con degradado, testimonio de muestra, puntos para cambiar y rotación cada 6 s (se detiene al pasar el mouse y con `prefers-reduced-motion`). Sin estilos inline.
+- routes/login.tsx, routes/signup.tsx — usan `<AuthBanners />` en lugar de su bloque duplicado. Se corrige lo que decía «Gratis 14 días» (ahora 7), «Hilo responde por mí» (ahora Zumit) y el subtítulo del registro («Empieza gratis 7 días»).
+- styles.css — clases `abs-slide`, `abs-shade`, `abs-testimonial`, `abs-dots`, etc.
+- **Los testimonios son inventados** (Valentina Ríos, Camilo Restrepo, Laura Gómez): hay un comentario en el código para reemplazarlos por clientes reales, con su permiso, antes de publicar.
+- Verificado con `tsc`; ambas rutas responden 200.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Corregido — la insignia de Precios pasa a «Zumit · Member» y «fundador» pasa a «miembro» en lo público**
+- components/landing/Pricing.tsx, styles/landing.css — la insignia queda solo con el logo, un punto y «Member», centrada, más pequeña (ancho ajustado al contenido) y con degradado plateado; sigue siendo un enlace, ahora a `#miembros`. Se quita todo su texto.
+- components/landing/Founders.tsx — `id="miembros"`; «Insignia Zumit Member», «Kit de miembro», «Quiero ser miembro».
+- routes/condiciones-de-pago.tsx — cláusula 17 «Miembros Zumit Member» (mismo contenido, nuevo nombre); Pricing: «Kit y membresía Member».
+- **No se renombró lo interno**: `founder_cap`, tabla/campos de fundadores en backend y en Zumit Manager, clases CSS `home-founders*` / `home-pricing__founder*` y los archivos. Si quieres que el panel también diga «miembros», es un cambio aparte.
+- Verificado con `tsc`; la landing responde 200. No se vio en el navegador.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado / Corregido — preguntas frecuentes, insignia de fundador y mockup de Precios**
+- components/landing/Faq.tsx — de 2 a 8 preguntas de uso y beneficios (tipo de negocio, qué hace el asistente, si inventa datos, hablar con una persona, errores, escribir desde el celular). Respuestas tomadas de CLAUDE.md y del plan de pagos.
+- routes/condiciones-de-pago.tsx (+ `.module.css`) — cláusula 18 «Preguntas frecuentes sobre pagos» (11 preguntas); Contacto pasa a la 19.
+- components/landing/Pricing.tsx, styles/landing.css — la insignia de fundadores es ahora un enlace a `#fundadores` con el logo de Zumit y «Member» dentro («Conoce el kit ↓»); el mockup del celular crece (hasta 680 px) y en escritorio su columna es más ancha (0.9fr / 1.1fr).
+- Verificado con `tsc`; las rutas responden 200. No se vio en el navegador.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado — Zumit Manager › Análisis (5 gráficos nuevos)**
+- services/billing_insights.py, api/routes/admin_billing.py — `GET /zmanager/billing/insights?weeks=4..26`: por semana ingreso, costo (IA + WhatsApp + fijos), citas agendadas (todas / del asistente) y plantillas cobrables / gratis; precipicio de precio por mes; 5 citas de mayor valor; total histórico de citas.
+- services/billing_costs.py — `load_usd_cop` y `load_rates` (la misma consulta, ahora compartida con Análisis).
+- front: ruta `/zmanager/analisis` + entrada de menú, `components/zmanager/analisis/` (`analysis-data.ts` puro, `AnalysisCharts.tsx`, `AnalysisTab.tsx`), `useInsights`, tipos `Insights*`. Gráficos: ingreso vs costo, citas por semana (asistente / equipo), costo por cita de cada barbería con línea en $500, plantillas cobrables y gratis, cuándo termina el descuento. Exportar CSV semanal.
+- Pruebas: +19 (`test_billing_insights.py`); la lógica del front se comprobó fuera del repo.
+- **Sin comprobar contra una base real**: el SQL de `insights` (agrupa con `date_trunc('week', …)`) solo corrió contra BD falsa; ni los gráficos se han visto en un navegador.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Corregido — las tres páginas legales comparten encabezado, pie y estructura de la landing**
+- components/legal/LegalLayout.tsx (nuevo) — `Header` y `Footer` de la landing + banda oscura con título y fecha + cuerpo + enlaces a los otros documentos. Exporta `LEGAL_HEAD_LINKS` (CSS de la landing y fuente) para el `head` de cada ruta.
+- routes/condiciones-del-servicio.tsx, politicas-de-privacidad.tsx, condiciones-de-pago.tsx — usan `LegalLayout`; se borran sus `NavBar`/`Footer`/banda propios (≈65 líneas duplicadas por archivo). El cuerpo de privacidad y condiciones conserva sus estilos inline previos (deuda anterior, no se tocó).
+- components/landing/Header.tsx, Footer.tsx — los anclas pasan de `#como` a `/#como` para que funcionen desde las páginas legales.
+- styles/landing.css — clases `home-legal__*`; condiciones-de-pago.module.css queda solo con el estilo del contenido.
+- Verificado: `tsc` limpio y las tres rutas responden 200. No se vio en el navegador.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado / Corregido — textos legales con el dominio zumit.app y Condiciones de Pago**
+- routes/condiciones-de-pago.tsx (+ `.module.css`) — página nueva `/condiciones-de-pago` con las reglas de `documentation/zumit-plan-de-pagos-y-sus.md`: planes, qué cuenta como cita, prueba de 7 días, descuento, ciclo y cuenta de cobro, citas y profesionales adicionales, mensajes de Meta, cambios de plan, mora, cancelación, errores de cobro y fundadores. Sin estilos inline.
+- routes/condiciones-del-servicio.tsx — dominio y correo pasan a `zumit.app` / `contacto@zumit.app`; §5 reemplaza «prueba de 14 días» y facturación «mensual o anual / USD» (ya no son ciertos) por un resumen y el enlace a las Condiciones de Pago; §1 deja de decir solo barberías; «agente de Hilo» → «agente de Zumit»; enlace a pagos en el pie.
+- routes/politicas-de-privacidad.tsx — mismo cambio de dominio, correo y fecha.
+- components/landing/Footer.tsx — enlace «Pagos».
+- **No se tocó la infraestructura**: `hilo.esjuanez.com` sigue en `nginx.conf`, `FRONTEND_URL`, `VITE_API_URL`, `FACEBOOK_REDIRECT_URI`, el remitente de Resend y el webhook de Kapso. Pasar a zumit.app es una migración aparte (DNS, SSL, Meta, Google OAuth, Kapso).
+- Pendiente: el correo `contacto@zumit.app` debe existir; los textos de pago deben revisarlos la contadora (IVA) y un abogado; medio de pago y cobro de mensajes de Meta siguen sin definir en el plan.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado / Corregido — la landing sigue los planes de Zumit Manager**
+- api/routes/billing.py, services/billing_plans.py — `GET /billing/pricing` (público, `Cache-Control: public, max-age=60`): planes activos con código, precios, límites, días de prueba, ciclos de descuento, cupo de fundadores y citas adicionales. Si falla, `{"plans": []}` y `no-store`: la landing nunca recibe un error.
+- services/subscription_service.py — `ADDON_BLOCKS` (50/100/200/300), antes escrito en el front.
+- front: `lib/api/billing.ts` (`getPricing`), `hooks/use-pricing.ts`, `components/landing/pricing-data.ts` (con `FALLBACK_PRICING` idéntico a lo que estaba escrito a mano), `Pricing.tsx` y `Cta.tsx` reescritos sobre esos datos: nombre, precio, descuento (se oculta si el plan no tiene lanzamiento), ahorro, citas, profesionales, «desde $X al mes», fundadores, días de prueba y bloques de citas.
+- Siguen a mano: lema por plan, plan destacado y extras del plan de equipo (marketing).
+- Pruebas: +5 del endpoint y de `public_pricing`; la lógica del front se comprobó fuera del repo (valores de fábrica = landing anterior, precios y nombres editados, plan sin lanzamiento, plan nuevo, respuesta vacía, límites nulos).
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Corregido — qué pasa al cambiar el nombre de un plan**
+- services/billing_plans.py — el margen por plan se asignaba por NOMBRE; ahora por `plan_id` (`billing_costs.costs` devuelve `plan_id` en cada fila). Un nombre no puede repetirse entre planes (sin distinguir mayúsculas): la vista previa y la edición lo rechazan con el motivo.
+- services/subscription_service.py, billing_cartera.py — `pending_plan_name` junto a `pending_plan`: los textos mostraban el código («Baja a arranque»).
+- api/routes/billing.py — la lista pública de planes trae también `code`, precio de lanzamiento, citas y barberos.
+- front: «Bajará a», «Baja a», «Tu cambio a» y «¿Cambiar a…?» muestran el nombre; el formulario de activar un plan lee los planes de la base (antes tenía «Arranque» y «Equipo» escritos a mano). `usePlans` (se refresca al editar un plan).
+- **Sin arreglar, a propósito**: `components/landing/Pricing.tsx` tiene nombres, precios y límites escritos a mano y no sigue a Zumit Manager; las cuentas de cobro ya emitidas conservan el nombre con el que se generaron.
+- Pruebas: 1025 pasan (+7 de nombres: id en vez de nombre, duplicados, renombrar no toca el código ni las estadísticas).
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado — Zumit Manager › Planes: gestión de planes, estadísticas por plan y un tablero con gráficos de barras animados (recharts, como el de Ovilo, con los colores de Zumit)**
+- services/billing_plans.py (nuevo) — tablero (estadísticas por plan, activaciones por semana), vista previa del impacto de editar un plan y edición. Un precio nuevo rige en el próximo cobro; un límite menor rige ya; el fundador congelado no se afecta; no se desactiva `arranque` ni un plan con negocios; el código no se edita.
+- api/routes/admin_billing.py — `GET /plans`, `POST /plans/{id}/preview`, `PUT /plans/{id}?confirmed=true` (audita antes y después). Errores de validación = 422 con el motivo.
+- front: `/zmanager/planes` con una cifra principal que se cuenta hacia arriba, tarjetas de métrica con mini gráfico, cuatro gráficos (negocios por plan y estado, comparativa con chips de métrica, uso del cupo, activaciones por semana), tarjeta por plan y edición con vista previa. Exportar a CSV a salvo de fórmulas de Excel. Sin instalar nada: `recharts` ya estaba.
+- **Qué traje de `ovilo-chat-insights/src/pages/Metrics.tsx`**: tarjetas con sparkline, barras con degradé y el valor encima, barras horizontales con el valor al final, chips para elegir la métrica, clic en una barra abre el detalle (aquí, la edición del plan), y exportar. **Qué NO copié**: los dos ejes Y del gráfico combinado y la cuadrícula punteada (la guía de visualización los desaconseja).
+- **Paleta validada con `validate_palette`** (ver CLAUDE.md): el borgoña de marca y los colores de estado de la app no pasaban el piso de luminosidad y cromaticidad. Planes = ciruela + turquesa profundo; estados con versiones más saturadas.
+- Pruebas: 1018 pasan en el backend (+53 de planes). Del front: typecheck sin errores nuevos, eslint limpio, y tres módulos puros comprobados con scripts fuera del repo (`scale.ts`, `plans-data.ts`, `plan-form.ts`). **Lo que NO se pudo verificar**: ningún gráfico se vio en un navegador (animaciones, degradés y posición de las etiquetas están sin ver), y el SQL nuevo (agrupar eventos por semana y los planes con sus suscripciones) no se ejecutó contra Postgres real.
+- Fuera de alcance: crear planes nuevos, historial de ingreso en el tiempo (no se guarda: el tablero muestra el ingreso de hoy, no su evolución).
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado — sección de Precios en la landing (desde `Downloads/Pricing.jsx`)**
+- components/landing/Pricing.tsx — el JSX se pasó a TSX: tarjetas Arranque y Equipo (−58 %), carrusel «Todo lo que trae Zumit» (autoplay que respeta `prefers-reduced-motion`), profesional y citas adicionales, y el mockup `/images/zummit-mockup-pricing.png`. Los CTA llevan a `/signup`.
+- styles/landing.css — los estilos inline del JSX pasan a clases `home-pricing__*` (regla del proyecto: sin `style=""`). La revelación usa `.home-reveal` en vez de `data-reveal`.
+- routes/index.tsx — `<Pricing />` entre Platform y Founders. Header.tsx — enlace «Precios» (`#precios`).
+- Se verificó solo con `tsc` (sin errores en landing). No se vio en el navegador: falta revisar a 360px y 1280px.
+- Ojo: la tarjeta de fundadores dentro de Precios repite el mensaje de la sección Fundadores; si sobra, se quita una.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Corregido — sección Fundadores de la landing con `banner_kit.jpg` de fondo**
+- components/landing/Founders.tsx — se quita la foto cuadrada `fundadores.jpg`; el texto va a la izquierda con la lista de beneficios del fundador (precio real congelado, insignia, canal directo, kit), tomada del plan de pagos.
+- styles/landing.css — `.home-founders` usa `banner_kit.jpg` como fondo con degradado desde la izquierda (`--home-osc`) para dar contraste al texto; en móvil (<880px) el degradado es vertical y la imagen queda abajo. Sin estilos inline. `.home-founders__photo` ya no se usa.
+- No se probó en el navegador: falta revisar a 360px y 1280px.
+
+### [AGENTE: claude] [FECHA: 2026-11-21]
+**Agregado — cuánto cuesta cada barbería y cuánto se gana con ella: IA + WhatsApp + costos fijos contra lo cobrado**
+- services/billing_costs.py — `costs()` reescrito: costo total (IA, WhatsApp estimado, fijos asignados), ingreso (lo cobrado repartido por los días de cada ciclo, `accrue`), margen y costo por cita. Aparecen también los negocios que pagan y no usan nada, y los que usan sin pagar (pruebas), con `trial_cost_cop` aparte. Las fechas se calculan en Python y viajan al SQL ya hechas (nada de `fecha - :entero`).
+- **WhatsApp**: plantillas enviadas × tarifa de Meta; marketing siempre cobra, utilidad no si el cliente escribió en las 24 h previas. **Las tarifas de utilidad y de marketing son independientes** (cada una se carga y se guarda aparte; si falta una, solo ese costo queda sin calcular). Es una estimación: no existe dato real de lo que Meta cobra.
+- services/billing_service.py — parámetro nuevo `fixed_costs_cop_month` (sin migración).
+- services/billing_metrics.py — se elimina `_margins`, `margin()` y `KIND_CATEGORY`: había dos márgenes distintos (y el viejo ignoraba la ventana de 24 h y la plantilla de cita cancelada). Ahora hay una sola fuente.
+- front: Costos con ingreso, IA, WhatsApp, fijos, costo total, margen y costo por cita por barbería; cuatro entradas independientes (dólar, tarifa de utilidad, tarifa de marketing, costos fijos), cada una con su valor y su botón. Facturación conserva fundadores y parámetros (`BillingParams`) y apunta a Costos.
+- Pruebas: 965 pasan. **El SQL nuevo (agrupar `followup_sends` con la comprobación de la ventana de 24 h contra `messages`, e ingreso repartido) no se ejecutó contra Postgres real**: no se levantó una base local sin tu permiso. La primera carga de Costos es la prueba.
+- Fuera de alcance / se desconoce: la tarifa por mensaje de Kapso, el saldo real de Kapso, y cualquier cobro de Meta que no sea de plantillas.
+
+### [AGENTE: claude] [FECHA: 2026-11-20]
+**Corregido — Costos fallaba con `operator does not exist: date > integer`; ahora las migraciones y el SQL de facturación se probaron contra un Postgres real**
+- services/billing_costs.py — `{TODAY} - :d` pasa a `{TODAY} - CAST(:d AS INTEGER)` (3 consultas). Postgres infería el parámetro como fecha. Era el único sitio con ese patrón.
+- services/billing_service.py — `record_usage` y `notify_quota` hacen `rollback()` al fallar: sin él dejaban la transacción abortada y reventaba lo siguiente que hiciera quien llamó.
+- tests/test_sql_params.py (nuevo) — falla si en el código de facturación se resta o suma un parámetro sin `CAST`. Se comprobó que habría atrapado la línea original.
+- **Verificación nueva, fuera del repo**: Postgres 16 embebido y desechable (`pgserver`, sin Docker, sin tocar ninguna base del proyecto). Resultado: las 23 migraciones se aplican con el runner real (018–023 incluidas); 022 y 023 se pueden repetir sin error; 20 escenarios de servicios (registro, prueba, activación con descuento, cupo, factura, cuenta de cobro con PDF, pago, costos con LangSmith simulado, tablero, worker) y 46 comprobaciones por HTTP con JWT reales pasan; los permisos devuelven 404 a quien no es super_admin.
+- Lo que esa verificación NO cubre: LangSmith real, Resend real, el PDF visto en pantalla y el front en un navegador.
+- Limitación del runner (ya conocida, no es de estas migraciones): 006 y 007 traen bloques `DO $$ … $$` que `core/migrations.py` parte por `;` y rompe. Están aplicadas en el servidor; solo afectaría a una base nueva desde cero. 018–023 no los tienen.
+- Un servidor con suscripciones anteriores a la 022: el plan viejo queda inactivo (no se borra) y esas suscripciones siguen funcionando sin límites. Si hubiera dos suscripciones vivas del mismo negocio, `CREATE UNIQUE INDEX subscriptions_one_live_per_workspace` fallaría: revisar antes con `SELECT workspace_id, count(*) FROM subscriptions WHERE status IN ('trial','active','past_due','paused','pending_payment') GROUP BY 1 HAVING count(*) > 1;`.
+- Pruebas: 938 pasan.
+
+### [AGENTE: claude] [FECHA: 2026-11-20]
+**Agregado — Zumit Manager gestiona los cobros: cartera, cuenta de cobro (generar, descargar, enviar), saldo y costo por barbería (LangSmith)**
+- backend-lang/migrations/023_billing_documents.sql — `platform_issuer`, secuencia `billing_document_seq`, `billing_invoices.document_issued_at/last_sent_at/last_sent_to/send_count`, `agent_usage.ls_*` y `langsmith_sync_log`. Pendiente de aplicar.
+- services/cuenta_cobro.py (nuevo) — valor en letras («CIENTO VEINTE MIL PESOS M/CTE», con «de» en millones exactos) y PDF con `fpdf2`. **Dependencia nueva: `fpdf2`** (trae `pillow` y `fonttools`); `uv add` tocó `pyproject.toml` y `uv.lock`.
+- services/billing_documents.py (nuevo) — datos de quien cobra, emisión con consecutivo (idempotente), PDF al vuelo y envío por correo con el PDF adjunto. El número se confirma antes de enviar para no dejar huecos en el consecutivo. Se quita la ruta que anotaba el número a mano.
+- services/billing_cartera.py (nuevo) — facturas con su cuenta de cobro y totales, saldo por negocio y próximos cobros (real si ya se facturó, estimado si no).
+- integrations/langsmith_costs.py + services/billing_costs.py (nuevos) — costo real por negocio y día desde LangSmith, costo por cita, sincronización idempotente que el worker corre cada hora (`sync_langsmith`) y estado de la última sincronización.
+- api/routes/admin_billing.py — `/invoices`, `/balances`, `/upcoming`, `/invoices/{id}/document` (+ `.pdf`), `/invoices/{id}/send`, `/issuer`, `/workspaces/{id}/profile`, `/costs`, `/costs/sync`, `/langsmith/ping`. Generar y enviar piden `confirmed=true`.
+- services/email_service.py — `_send` acepta adjuntos (base64, como pide Resend).
+- front: pantallas **Cobros**, **Costos** y **Configuración** en Zumit Manager; acciones de factura compartidas (`InvoiceActions`: generar, descargar, enviar, marcar pagada con diálogo, anular) que también usa la ficha de cada negocio, donde además se pueden completar sus datos de cobro.
+- tests/conftest.py (nuevo) — quita las claves de LangSmith del entorno en todos los tests.
+- Pruebas: 931 pasan (+131). Typecheck del front sin errores nuevos. **No se ejecutó nada contra Postgres, ni contra LangSmith ni contra Resend, y no se abrió en un navegador.** La forma de `list_runs(select, filter)` está escrita contra el SDK instalado pero sin confirmar con el servicio real.
+- Pasos manuales: aplicar 018–023; guardar los datos de quien cobra (Configuración) antes de generar la primera cuenta de cobro; cargar la tasa del dólar; pulsar «Sincronizar ahora» en Costos para confirmar LangSmith.
+- Fuera de alcance: abonos parciales, factura electrónica, WhatsApp de Zumit hacia sus clientes, y que el dueño reporte pagos desde Ajustes.
+
+### [AGENTE: claude] [FECHA: 2026-11-20]
+**Agregado / Corregido — el panel de plataforma pasa de `/admin` a `/zmanager` (interfaz aparte, no indexable, 404 para quien no es super_admin)**
+- backend-lang/src/core/security.py — `get_optional_user` y `require_platform_admin`: solo `super_admin`; para cualquier otra persona (sin token, token inválido o vencido, otro rol) la ruta responde **404**, no 403.
+- backend-lang/src/api/routes/admin.py, admin_billing.py — prefijos `/zmanager` y `/zmanager/billing`, con esa dependencia. **El prefijo `/admin` dejó de existir**: front y backend se despliegan juntos.
+- front/src/routes/zmanager.tsx + zmanager/{index,facturacion,negocios,usuarios,estado}.tsx (nuevos) — layout propio fuera de `_authenticated`, `ssr: false`, `notFound()` sin sesión de super_admin, `<meta robots noindex>`. Se borra `_authenticated/admin.tsx`; `routeTree.gen.ts` regenerado con `@tanstack/router-generator`.
+- front/src/components/zmanager/ (nuevo) — menú lateral propio (Resumen, Facturación, Negocios, Usuarios, Estado), «Volver al panel» y cerrar sesión; en móvil el menú pasa arriba en una fila que se desplaza. Borgoña #2C0F20 con turquesa solo como resaltador plano.
+- front/src/lib/zmanager.ts (nuevo) — prefijo, menú, guarda de sesión y cabeceras. `lib/api/admin.ts` y `billing.ts` apuntan a `/zmanager`; `lib/nav.ts`: el ítem del panel normal ahora se llama «Manager» y lleva a `/zmanager`.
+- front/src/server.ts — agrega `X-Robots-Tag: noindex…`, `Cache-Control: no-store` y `Referrer-Policy: no-referrer` a todo lo que cuelga de `/zmanager`.
+- nginx/nginx.conf — `location /zmanager` y `/api/zmanager/` con esas cabeceras. **Sin validar con `nginx -t` (no hay Docker aquí) y pide `docker compose restart nginx`.**
+- Decisión: NO hay `robots.txt` ni sitemap con la ruta (publicaría justo lo que se quiere ocultar). El prefijo no es un secreto: la barrera real es el JWT de super_admin que valida el backend.
+- Pruebas: 800 pasan (+4 nuevas: sin token, token inválido o vencido, super_admin con token real, prefijo viejo inexistente). Typecheck sin errores nuevos. **No se abrió en un navegador.**
+
+### [AGENTE: claude] [FECHA: 2026-11-20]
+**Corregido — los seguimientos respetan el plan y el barbero adicional se cobra prorrateado**
+- services/followup_service.py — `send_followup` no envía recordatorios, post-visita, cobro pendiente ni reactivación si el plan está pausado, vencido o cancelado (`billing_service.safe_is_serving`). Devuelve `skipped` sin reservar el envío: si el negocio vuelve a tener plan, lo que siga vigente sale en la pasada siguiente. El aviso de cita cancelada queda fuera (lo dispara una persona del equipo desde el panel). Falla «abierto» si no se puede leer el plan. Antes un negocio pausado seguía escribiéndole a sus clientes.
+- services/subscription_service.py `charge_extra_professionals` + workers/billing_worker.py `bill_extra_professionals` — un barbero agregado a mitad de ciclo por encima del plan se cobra por los días que quedan (factura `proration`, línea `professional`, vence al cierre del ciclo). Antes no se cobraba hasta la siguiente factura. Idempotente (compara lo extra con lo ya facturado en el ciclo); quitar un barbero no devuelve dinero.
+- Pruebas: 796 pasan (+24).
+
+### [AGENTE: claude] [FECHA: 2026-11-20]
+**Agregado / Corregido — planes, suscripciones, límites y métricas de facturación (cobro manual, sin pasarela)**
+- backend-lang/migrations/022_billing.sql — planes Arranque y Equipo (los Gratis/Básico/Pro se ocultan, no se borran), columnas de suscripción (prueba, ciclo, descuento, fundador, mora), `billing_profiles`, `subscription_addons`, `billing_invoices` + líneas, `billing_events`, `agent_usage`, `offer_claims`, `meta_template_rates`, `fx_rates` y `platform_settings`. Pendiente de aplicar (`uv run python migrate.py`). Los negocios que ya existen NO reciben suscripción: sin plan asignado siguen sin límites.
+- services/billing_service.py (nuevo) — `get_entitlements` (plan, estado real, ciclo, cupo de citas, barberos), cuentas puras (ciclo, prorrateo, descuento, nivel de cupo), `record_usage`, `notify_quota`.
+- services/subscription_service.py (nuevo) — prueba de 7 días, activación con descuento una vez por número, facturas de ciclo (idempotentes), pagos, cambio de plan (sube: ya con prorrateo; baja: siguiente ciclo y solo si cumple), citas adicionales, fundadores, cancelación al final del ciclo pagado.
+- services/billing_metrics.py + api/routes/admin_billing.py (nuevos) — tablero y acciones del super_admin; todo lo que cambia estado pide `confirmed=true` y queda en `audit_logs` y `billing_events`. CSV de facturas para la contadora.
+- workers/billing_worker.py (nuevo, arranca en el `lifespan`) — pausa pruebas vencidas, genera el cobro 3 días antes, marca vencidas, pausa tras 5 días de gracia, avisa por correo y en Alertas. No envía WhatsApp (Zumit no tiene número propio) y no borra datos: solo marca los vencidos.
+- services/agent_service.py, appointment_agent.py — el agente no responde con plan pausado, vencido o cancelado; deja de agendar pasadas las 20 citas de margen (el aviso lo escribe el backend, no el modelo); registra tokens por día en `agent_usage`.
+- La cita del asistente es `created_by IS NULL` (como ya hacía el historial): cuenta contra el cupo, cancelar no la devuelve y mover no cuenta. No se agregó columna a `appointments`, así que el INSERT de citas no depende de la 022.
+- api/routes/auth.py — el registro (contraseña, Google y Facebook) crea la prueba en un SAVEPOINT: si falla, el alta sigue.
+- api/routes/billing.py — rutas del dueño (`summary`, `profile`, `plan-change-preview`, `cancel`); `GET /subscription` ya no da 404 a la prueba ni a los pausados; el `PATCH` de estado ahora audita, actualiza `updated_at` y deja evento.
+- alembic/seed.py — sembraba los planes viejos (los habría reactivado); ahora siembra Arranque y Equipo.
+- front: pestaña «Facturación» en `/admin` (ingresos, embudo, cobranza, riesgo, margen real, fundadores, parámetros), acciones de cobro en la ficha de cada negocio, tarjeta «Plan y facturación» en Ajustes (solo dueño) y aviso en la barra superior.
+- Decisiones del dueño (2026-11-20): todo se cobra con cuenta de cobro (no factura electrónica); aún no hay medio de pago; 30 cupos de fundadores (`platform_settings.founder_cap` = 30); ciclo por facturación; se quita el plan de 7–10 barberos; el umbral de gasto de Meta se fija tras medir.
+- documentation/zumit-plan-de-pagos-y-sus.md — sección 16 con las reglas adicionales (marcadas [Propuesta]) y qué ya hace el software.
+- Corregido en el camino: una cancelación pedida nunca se habría cerrado (el fin del ciclo en curso siempre es futuro); ahora se compara con el fin del último ciclo facturado.
+- Falla «abierto»: `billing_service.safe_entitlements` (SAVEPOINT) hace que el agente atienda sin límites si la facturación no se puede leer, p. ej. con la 022 sin aplicar. Sin esto, desplegar el código antes que la migración habría tumbado al agente de todos los negocios.
+- Pruebas: 772 pasan (+95 de facturación; antes 677). **Las consultas SQL de billing_metrics.py y la migración 022 no se ejecutaron contra Postgres** (no hay BD local): primero aplicar 022 y abrir la pestaña Facturación.
+- Pasos manuales: aplicar 022 (después de 018–021 que siguen pendientes), cargar la tasa del dólar y la tarifa de Meta en Facturación para ver el margen en pesos, definir el cupo de fundadores, y activar a mano los negocios que ya existen.
+- Fuera de alcance por ahora: pasarela de pago, WhatsApp de Zumit hacia sus clientes, cobro de mensajes de Meta (línea manual), atar la prueba al número de WhatsApp, pantalla de pricing en la landing.
+
+### [AGENTE: claude] [FECHA: 2026-11-17]
+**Agregado / Quitado / Corregido — entrar con Facebook y limpieza de Supabase**
+- backend-lang/migrations/021_facebook_signin.sql — `users.facebook_sub` (único). Pendiente de aplicar (`uv run python migrate.py`).
+- backend-lang/src/integrations/facebook_login.py (nuevo) — flujo manual de Facebook Login (código → token → `/me`), `public_profile,email`, Graph `v25.0` (v21.0 caduca el 21-ene-2027).
+- backend-lang/src/api/routes/auth.py — rutas `/auth/facebook/login/url` y `/auth/facebook/callback`; `_google_signin` se parte en un helper común `_oauth_signin` (Google y Facebook). Los motivos de error pasan a `?auth_error=` y el ticket a `#auth_ticket=` (antes `google_error` / `google_ticket`).
+- backend-lang/src/core/config.py — `FACEBOOK_REDIRECT_URI`. `.env.example` con la variable.
+- backend-lang/tests/test_facebook_signin.py (nuevo), test_google_signin.py ajustado a los nombres nuevos — 677 tests pasan.
+- nginx/nginx.conf — `location /auth/facebook/callback` (aplicar con `docker compose restart nginx`).
+- front: `getFacebookLoginUrl`, `signInWithFacebook` real y `completeGoogleSignIn` → `completeOAuthSignIn` (lib/auth-context.tsx, lib/api/auth.ts); botón de Facebook y errores nuevos en routes/login.tsx.
+- Quitado Supabase: dependencia `supabase` (pyproject.toml, uv.lock), `VITE_SUPABASE_*` de front/.env.example, carpeta muerta front/src/integrations/supabase/, comentarios viejos, y la mención a Supabase en las políticas de privacidad y condiciones.
+- front/src/routes/politicas-de-privacidad.tsx — Facebook como proveedor de acceso y sección «Cómo solicitar la eliminación de tus datos» (Meta la exige).
+- Pasos manuales: producto Facebook Login en la app de Meta, URI de redirección, modo Live, `FACEBOOK_REDIRECT_URI` en el servidor, migración 021.
+
 ### [AGENTE: claude] [FECHA: 2026-11-17]
 **Agregado / Quitado — nuevo home (landing de ventas) portado desde `Zumit/zumit-react`**
 - front/src/routes/index.tsx — reescrita: solo `head` (título, Nunito, `landing.css`) y ensamblado de secciones. Se quita la landing vieja.

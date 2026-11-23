@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { AuthBanners } from "@/components/auth/AuthBanners";
 import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/signup")({
@@ -36,8 +37,7 @@ function SignupPage() {
     setError(null);
     try {
       await signInWithGoogle();
-      // signInWithOAuth llama window.location.assign — si llegamos aquí es que aún no navegó
-      // (caso raro: redirect URL no whitelistada devuelve sin error). Reseteamos.
+      // La función navega con window.location — si llegamos aquí es que aún no navegó. Reseteamos.
       setOauthLoading(null);
     } catch (err) {
       setError((err as Error).message ?? 'Error al conectar con Google');
@@ -90,7 +90,7 @@ function SignupPage() {
         <div className="auth-form-wrap">
           <div className="auth-card">
             <h1 className="auth-h">Crea tu cuenta</h1>
-            <p className="auth-sub">Empieza gratis 14 días. Sin tarjeta de crédito.</p>
+            <p className="auth-sub">Empieza gratis 7 días. Sin tarjeta de crédito.</p>
 
             {/* Google */}
             <button
@@ -201,26 +201,7 @@ function SignupPage() {
         <div />
       </div>
 
-      {/* brand side */}
-      <div className="auth-brand-side">
-        <div className="abs-glow" />
-        <div className="abs-eyebrow">Tu agenda vive en WhatsApp</div>
-        <div>
-          <p className="abs-quote">"Dejé de perder citas por no contestar a tiempo. Hilo responde por mí, hasta cuando estoy con cliente."</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 20, position: 'relative', zIndex: 1 }}>
-            <span style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', display: 'grid', placeItems: 'center', font: '600 15px/1 var(--font-sans)' }}>CR</span>
-            <div>
-              <div style={{ font: '600 14.5px/1.2 var(--font-sans)' }}>Camilo Restrepo</div>
-              <div style={{ font: '400 12.5px/1.2 var(--font-sans)', color: 'rgba(255,255,255,0.65)' }}>Navaja &amp; Tinta · Medellín</div>
-            </div>
-          </div>
-        </div>
-        <ul className="abs-list">
-          <li><span className="ci"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>Gratis 14 días · sin tarjeta</li>
-          <li><span className="ci"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>Conserva tu número de WhatsApp</li>
-          <li><span className="ci"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span>Listo en minutos, sin instalar nada</li>
-        </ul>
-      </div>
+      <AuthBanners />
     </div>
   );
 }

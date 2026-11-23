@@ -1,5 +1,5 @@
 """
-Estado de los servicios externos de los que depende la plataforma (solo panel /admin).
+Estado de los servicios externos de los que depende la plataforma (solo panel /zmanager).
 
 Responde tres preguntas: ¿la clave de Anthropic funciona y tiene saldo?, ¿la clave de Kapso funciona
 y los números siguen conectados?, ¿los mensajes que entran están recibiendo respuesta?

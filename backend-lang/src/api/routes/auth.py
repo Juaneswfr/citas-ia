@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from core.database import get_db
 from core.oauth_state import sign_state, verify_state
 from core.security import create_access_token, decode_token, get_current_user, require_workspace_access
+from services import subscription_service
 from schemas.auth import (
     GoogleTicketRequest, GoogleTicketResponse, LoginRequest, ProfileUpdate, RefreshRequest, RegisterRequest, TokenResponse,
 )
@@ -90,6 +91,9 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
             """),
             {"workspace_id": workspace_id, "user_id": user_id},
         )
+
+        # 4. Prueba de 7 días sin tarjeta (en un SAVEPOINT: si falla, el registro sigue)
+        await subscription_service.create_trial(db, workspace_id)
 
     token = create_access_token({
         "sub": user_id,
@@ -420,30 +424,46 @@ def _slugify(value: str) -> str:
 async def _google_signin(code: str, db: AsyncSession, settings):
     """Crear cuenta o iniciar sesión con Google; si la cuenta es nueva, el calendario queda sincronizado.
 
-    Un solo consentimiento da identidad y calendario. Una cuenta que ya existe con contraseña NO se
-    enlaza sola: sin verificación de correo, alguien pudo registrar el correo de otra persona con una
-    contraseña propia, y enlazarla dejaría a la víctima dentro de la cuenta del atacante.
+    Un solo consentimiento da identidad y calendario.
     """
-    import secrets
     from fastapi.responses import RedirectResponse
     from integrations.google_calendar import exchange_oauth_code_with_identity
 
-    frontend = settings.frontend_url
-
-    def fail(reason: str):
-        return RedirectResponse(url=f"{frontend}/login?google_error={reason}", status_code=302)
-
     result = await exchange_oauth_code_with_identity(code)
     if not result:
-        return fail("oauth")
-    identity, token = result["identity"], result["encrypted_refresh_token"]
+        return RedirectResponse(url=f"{settings.frontend_url}/login?auth_error=oauth", status_code=302)
+    identity = result["identity"]
     if not identity["email"] or not identity["email_verified"]:
-        return fail("unverified")
+        return RedirectResponse(url=f"{settings.frontend_url}/login?auth_error=unverified", status_code=302)
+    return await _oauth_signin(db, settings, "google", identity, calendar_token=result["encrypted_refresh_token"])
+
+
+# Columna de `users` que guarda el id del proveedor. Va a la lista blanca porque se interpola en el SQL.
+PROVIDER_COLUMNS = {"google": "google_sub", "facebook": "facebook_sub"}
+
+
+async def _oauth_signin(db: AsyncSession, settings, provider: str, identity: dict, calendar_token: str | None = None):
+    """Crea la cuenta o abre sesión con una identidad ya validada (`sub`, `email`, `name`) de Google o Facebook.
+
+    Una cuenta que ya existe con contraseña (o con otro proveedor) NO se enlaza sola: sin verificación
+    de correo, alguien pudo registrar el correo de otra persona con una contraseña propia, y enlazarla
+    dejaría a la víctima dentro de la cuenta del atacante. Con `calendar_token` (solo Google) la cuenta
+    nueva queda con su calendario sincronizado; Facebook no da calendario y se conecta en el onboarding.
+    """
+    import secrets
+    from fastapi.responses import RedirectResponse
+
+    col = PROVIDER_COLUMNS[provider]
+    frontend = settings.frontend_url
+    token = calendar_token
+
+    def fail(reason: str):
+        return RedirectResponse(url=f"{frontend}/login?auth_error={reason}", status_code=302)
 
     try:
         row = (await db.execute(
-            text("""
-                SELECT u.id, u.role, u.is_active, u.google_sub,
+            text(f"""
+                SELECT u.id, u.role, u.is_active, u.{col} AS provider_sub,
                        wm.id AS member_id, wm.workspace_id, w.is_active AS workspace_active
                 FROM users u
                 LEFT JOIN workspace_members wm ON wm.user_id = u.id AND wm.status = 'active'
@@ -457,12 +477,12 @@ async def _google_signin(code: str, db: AsyncSession, settings):
         if row:
             if not row["is_active"]:
                 return fail("blocked")
-            if row["google_sub"] != identity["sub"]:
-                return fail("exists")  # cuenta con contraseña (o de otra cuenta de Google): no se enlaza sola
+            if row["provider_sub"] != identity["sub"]:
+                return fail("exists")  # cuenta con contraseña (o de otro proveedor / otra cuenta): no se enlaza sola
             if row["workspace_active"] is False and row["role"] != "super_admin":
                 return fail("suspended")
             user_id, workspace_id, role, is_new = str(row["id"]), str(row["workspace_id"] or ""), row["role"], False
-            if row["member_id"]:
+            if row["member_id"] and token:
                 # Entrar de nuevo renueva el token del calendario si sigue conectado; no lo recrea si lo eliminó.
                 await db.execute(
                     text("""
@@ -476,8 +496,8 @@ async def _google_signin(code: str, db: AsyncSession, settings):
             name = identity["name"] or identity["email"].split("@")[0]
             first = name.split()[0]
             user_id = str((await db.execute(
-                text("""
-                    INSERT INTO users (email, password_hash, name, role, is_active, google_sub)
+                text(f"""
+                    INSERT INTO users (email, password_hash, name, role, is_active, {col})
                     VALUES (:email, NULL, :name, 'workspace_owner', TRUE, :sub)
                     RETURNING id
                 """),
@@ -499,17 +519,70 @@ async def _google_signin(code: str, db: AsyncSession, settings):
                 """),
                 {"w": workspace_id, "u": user_id},
             )).scalar_one())
-            await _upsert_member_calendar(db, workspace_id, member_id, name, token)
+            if token:
+                await _upsert_member_calendar(db, workspace_id, member_id, name, token)
+            await subscription_service.create_trial(db, workspace_id)  # prueba de 7 días; nunca rompe el alta
             role, is_new = "workspace_owner", True
         await db.commit()
     except Exception as e:
         await db.rollback()
-        log.error("[auth] google signin falló | err=%s: %s", type(e).__name__, e)
+        log.error("[auth] %s signin falló | err=%s: %s", provider, type(e).__name__, e)
         return fail("server")
 
     ticket = sign_state(settings.jwt_secret, {
         "kind": "ticket", "uid": user_id, "ws": workspace_id, "role": role, "new": is_new,
     }, ttl=TICKET_TTL_SECONDS)
-    log.info("[auth] google signin | user=%s | nuevo=%s", user_id, is_new)
+    log.info("[auth] %s signin | user=%s | nuevo=%s", provider, user_id, is_new)
     # En el fragmento (#): no viaja al servidor ni queda en logs ni en el Referer.
-    return RedirectResponse(url=f"{frontend}/login#google_ticket={ticket}", status_code=302)
+    return RedirectResponse(url=f"{frontend}/login#auth_ticket={ticket}", status_code=302)
+
+
+# ── Facebook Login ────────────────────────────────────────────────────────────
+
+@router.get(
+    "/facebook/login/url",
+    summary="URL para crear cuenta o iniciar sesión con Facebook",
+)
+async def facebook_login_url():
+    from core.config import get_settings
+    from integrations.facebook_login import authorize_url
+    settings = get_settings()
+    if not settings.meta_app_id or not settings.whatsapp_app_secret or not settings.facebook_redirect_uri:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Facebook no está configurado en este servidor.",
+        )
+    return {"url": authorize_url(settings, sign_state(settings.jwt_secret, {"kind": "signin_fb"}))}
+
+
+@router.get(
+    "/facebook/callback",
+    summary="Callback OAuth de Facebook Login",
+)
+async def facebook_oauth_callback(
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import RedirectResponse
+    from core.config import get_settings
+    from integrations.facebook_login import exchange_code_for_identity
+    settings = get_settings()
+
+    def fail(reason: str):
+        return RedirectResponse(url=f"{settings.frontend_url}/login?auth_error={reason}", status_code=302)
+
+    parsed = verify_state(settings.jwt_secret, state)
+    if not parsed or parsed.get("kind") != "signin_fb":
+        log.warning("[auth] callback de Facebook con state inválido o vencido")
+        return fail("oauth")
+    if error or not code:  # la persona canceló o rechazó los permisos
+        return fail("denied")
+
+    identity = await exchange_code_for_identity(code)
+    if not identity:
+        return fail("oauth")
+    if not identity["email"]:
+        return fail("no_email")  # cuentas de Facebook sin correo: no hay con qué crear la cuenta
+    return await _oauth_signin(db, settings, "facebook", identity)

@@ -1,9 +1,9 @@
 """Regla de pago por miembro y liquidaciones (comisión, sueldo base, alquiler de silla).
 
-Una liquidación toma las líneas de venta COBRADAS (orden 'paid') de un barbero en un periodo
+Una liquidación toma las líneas de venta COBRADAS (orden 'paid') de un profesional en un periodo
 que aún no fueron liquidadas. Al crearla en borrador se marcan las líneas (payout_id) para no
 pagarlas dos veces; al pagarla se registran los movimientos de caja.
-Las propinas se pagan al barbero pero no son ingreso ni gasto del negocio.
+Las propinas se pagan al profesional pero no son ingreso ni gasto del negocio.
 """
 import logging
 from datetime import date
@@ -102,7 +102,7 @@ async def _calculate(db: AsyncSession, workspace_id: str, member_id: str, start:
 
 
 async def preview(db: AsyncSession, workspace_id: str, member_id: str, start: date, end: date) -> dict:
-    """Vista previa de lo que se le debe a un barbero en el periodo (no guarda nada)."""
+    """Vista previa de lo que se le debe a un profesional en el periodo (no guarda nada)."""
     result = await _calculate(db, workspace_id, member_id, start, end)
     name = (await db.execute(
         text("""SELECT u.name FROM workspace_members wm LEFT JOIN users u ON u.id = wm.user_id

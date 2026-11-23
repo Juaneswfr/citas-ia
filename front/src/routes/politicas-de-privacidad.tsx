@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { LegalLayout, LEGAL_HEAD_LINKS } from "@/components/legal/LegalLayout";
 
 export const Route = createFileRoute("/politicas-de-privacidad")({
   head: () => ({
+    links: LEGAL_HEAD_LINKS,
     meta: [
       { title: "Política de Privacidad · Zumit" },
       { name: "description", content: "Conoce cómo Zumit recopila, usa y protege tu información personal." },
@@ -11,12 +12,12 @@ export const Route = createFileRoute("/politicas-de-privacidad")({
   component: PrivacyPage,
 });
 
-const LAST_UPDATED = "10 de junio de 2026";
+const LAST_UPDATED = "21 de noviembre de 2026";
 const COMPANY = "Juan Esteban Ramírez Ávila";
 const COMPANY_ID = "C.C. 1007298045";
 const COMPANY_ADDRESS = "Calle 39 # 43a-109, Colombia";
-const EMAIL_PRIVACY = "contacto@hilo.esjuanez.com";
-const DOMAIN = "hilo.esjuanez.com";
+const EMAIL_PRIVACY = "contacto@zumit.app";
+const DOMAIN = "zumit.app";
 
 const sectionStyle: React.CSSProperties = {
   marginBottom: 48,
@@ -54,93 +55,9 @@ const dividerStyle: React.CSSProperties = {
   margin: '40px 0',
 };
 
-function NavBar() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  return (
-    <nav className="l-nav">
-      <div className="l-container l-nav-inner">
-        <Link className="l-brand" to="/">
-          <img className="l-brand__logo" src="/images/logo-borgona.png" alt="Zumit" />
-        </Link>
-        <div className="l-nav-cta">
-          <Link className="btn btn-ghost btn-sm" to="/login">Iniciar sesión</Link>
-          <Link className="btn btn-dark btn-sm" to="/signup">Empieza gratis</Link>
-          <button className="l-burger" onClick={() => setMenuOpen(v => !v)} aria-label="Menú">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
-          </button>
-        </div>
-      </div>
-      {menuOpen && (
-        <div style={{ position: 'absolute', top: 68, left: 0, right: 0, background: '#fff', display: 'flex', flexDirection: 'column', padding: '12px 18px', borderBottom: '1px solid var(--line)', gap: 8, boxShadow: 'var(--shadow-md)' }}>
-          <Link className="btn btn-ghost btn-sm" to="/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
-          <Link className="btn btn-dark btn-sm" to="/signup" onClick={() => setMenuOpen(false)}>Empieza gratis</Link>
-        </div>
-      )}
-    </nav>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="l-footer">
-      <div className="l-container">
-        <div className="foot-grid">
-          <div className="foot-brand">
-            <img className="l-brand__logo" src="/images/logo.png" alt="Zumit" />
-            <p className="foot-tag">Tu agenda vive en WhatsApp. El agente que agenda, reagenda y confirma por ti.</p>
-          </div>
-          <div className="foot-col">
-            <h4>Producto</h4>
-            <Link to="/" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Inicio</Link>
-            <Link to="/login" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Iniciar sesión</Link>
-            <Link to="/signup" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Registrarse</Link>
-          </div>
-          <div className="foot-col">
-            <h4>Legal</h4>
-            <Link to="/politicas-de-privacidad" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Política de Privacidad</Link>
-            <Link to="/condiciones-del-servicio" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Condiciones del Servicio</Link>
-          </div>
-          <div className="foot-col">
-            <h4>Contacto</h4>
-            <a href={`mailto:${EMAIL_PRIVACY}`} style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>{EMAIL_PRIVACY}</a>
-          </div>
-        </div>
-        <div className="foot-bottom">
-          <span>© {new Date().getFullYear()} {COMPANY}. Todos los derechos reservados.</span>
-          <span style={{ display: 'flex', gap: 20 }}>
-            <Link to="/politicas-de-privacidad" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}>Privacidad</Link>
-            <Link to="/condiciones-del-servicio" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}>Términos</Link>
-          </span>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
 function PrivacyPage() {
   return (
-    <div className="l-wrap">
-      <NavBar />
-
-      {/* Header */}
-      <div style={{ background: 'var(--wine)', padding: '64px 0 56px' }}>
-        <div className="l-container">
-          <div style={{ font: '600 13px/1 var(--font-sans)', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)', marginBottom: 16 }}>
-            Legal
-          </div>
-          <h1 style={{ font: '800 clamp(34px,5vw,52px)/1.05 var(--font-serif)', letterSpacing: '-0.03em', color: '#fff', margin: '0 0 16px' }}>
-            Política de Privacidad
-          </h1>
-          <p style={{ font: '400 17px/1.5 var(--font-sans)', color: 'rgba(255,255,255,0.72)', margin: 0, maxWidth: 560 }}>
-            Última actualización: <strong style={{ color: '#fff' }}>{LAST_UPDATED}</strong>
-          </p>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="l-container" style={{ maxWidth: 780, padding: '64px 28px 96px' }}>
+    <LegalLayout title="Política de Privacidad" updated={LAST_UPDATED} current="/politicas-de-privacidad">
 
         <p style={{ ...pStyle, font: '400 17px/1.65 var(--font-sans)', color: 'var(--ink-1)', marginBottom: 40, padding: '20px 24px', background: 'var(--wine-50)', border: '1px solid var(--wine-100)', borderRadius: 'var(--r-lg)' }}>
           En <strong>{COMPANY}</strong> operamos la plataforma <strong>Zumit</strong> disponible en <strong>{DOMAIN}</strong>. Esta Política de Privacidad explica cómo recopilamos, usamos, almacenamos y protegemos tu información cuando usas nuestro servicio.
@@ -173,14 +90,14 @@ function PrivacyPage() {
             <li style={liStyle}><strong>Datos de clientes:</strong> números de teléfono, nombres y conversaciones de los clientes de tu negocio que interactúan con el agente de WhatsApp.</li>
             <li style={liStyle}><strong>Citas y servicios:</strong> registros de citas agendadas, reagendadas y canceladas.</li>
             <li style={liStyle}><strong>Registros de uso:</strong> logs de acceso, direcciones IP, tipo de navegador y páginas visitadas.</li>
-            <li style={liStyle}><strong>Datos de conversación:</strong> mensajes intercambiados entre el agente de Hilo y los clientes finales a través de WhatsApp.</li>
+            <li style={liStyle}><strong>Datos de conversación:</strong> mensajes intercambiados entre el agente de Zumit y los clientes finales a través de WhatsApp.</li>
           </ul>
 
           <h3 style={h3Style}>2.3 Información de terceros</h3>
           <ul style={ulStyle}>
             <li style={liStyle}><strong>Meta (WhatsApp):</strong> datos de la cuenta de WhatsApp Business y métricas de mensajería entregados por la API de Meta.</li>
-            <li style={liStyle}><strong>Google:</strong> información básica de perfil y datos de calendario si conectas Google Calendar.</li>
-            <li style={liStyle}><strong>Supabase:</strong> proveedor de autenticación y base de datos. Consulta la política de privacidad de Supabase en supabase.com/privacy.</li>
+            <li style={liStyle}><strong>Google:</strong> información básica de perfil (nombre y correo) si creas tu cuenta o inicias sesión con Google, y datos de calendario si conectas Google Calendar.</li>
+            <li style={liStyle}><strong>Facebook (Meta):</strong> nombre, identificador y correo electrónico si creas tu cuenta o inicias sesión con Facebook. No accedemos a tus publicaciones, contactos ni amistades.</li>
           </ul>
         </div>
 
@@ -226,7 +143,6 @@ function PrivacyPage() {
           <ul style={ulStyle}>
             <li style={liStyle}><strong>Meta Platforms:</strong> para enviar y recibir mensajes a través de la API de WhatsApp Business. Meta actúa como subencargado del tratamiento.</li>
             <li style={liStyle}><strong>Google LLC:</strong> para la sincronización de citas si conectas Google Calendar.</li>
-            <li style={liStyle}><strong>Supabase Inc.:</strong> para almacenamiento de datos y autenticación.</li>
             <li style={liStyle}><strong>Anthropic PBC:</strong> el modelo de lenguaje (Claude) puede procesar texto de conversaciones para generar respuestas del agente. Los datos no se usan para entrenar modelos.</li>
             <li style={liStyle}><strong>Proveedores de infraestructura:</strong> servidores de alojamiento ubicados dentro del Espacio Económico Europeo o en países con nivel adecuado de protección.</li>
             <li style={liStyle}><strong>Autoridades competentes:</strong> cuando sea requerido por ley, orden judicial o para proteger derechos legítimos.</li>
@@ -239,7 +155,7 @@ function PrivacyPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>6. Transferencias internacionales</h2>
           <p style={pStyle}>
-            Algunos de nuestros proveedores están ubicados fuera de Colombia (Meta, Google, Supabase, Anthropic). Estas transferencias se realizan bajo las garantías adecuadas previstas en la Ley 1581 de 2012 y el GDPR cuando aplica, incluyendo cláusulas contractuales estándar o escudos de privacidad reconocidos.
+            Algunos de nuestros proveedores están ubicados fuera de Colombia (Meta, Google, Anthropic). Estas transferencias se realizan bajo las garantías adecuadas previstas en la Ley 1581 de 2012 y el GDPR cuando aplica, incluyendo cláusulas contractuales estándar o escudos de privacidad reconocidos.
           </p>
         </div>
 
@@ -273,6 +189,10 @@ function PrivacyPage() {
           </ul>
           <p style={pStyle}>
             Para ejercer cualquiera de estos derechos escríbenos a <a href={`mailto:${EMAIL_PRIVACY}`} style={{ color: 'var(--wine)' }}>{EMAIL_PRIVACY}</a>. Responderemos en un plazo máximo de 15 días hábiles.
+          </p>
+          <h3 style={h3Style}>Cómo solicitar la eliminación de tus datos</h3>
+          <p style={pStyle}>
+            Si creaste tu cuenta con Facebook o con Google, o quieres que borremos tu cuenta y los datos asociados, escríbenos a <a href={`mailto:${EMAIL_PRIVACY}`} style={{ color: 'var(--wine)' }}>{EMAIL_PRIVACY}</a> desde el correo de tu cuenta con el asunto «Eliminar mis datos». Verificamos que la solicitud es tuya, eliminamos tu cuenta y la información asociada en un plazo máximo de 15 días hábiles y te lo confirmamos por correo. Además, puedes quitar el acceso de Zumit desde la configuración de Facebook (Configuración › Aplicaciones y sitios web) o de tu cuenta de Google.
           </p>
         </div>
 
@@ -372,13 +292,6 @@ function PrivacyPage() {
           </div>
         </div>
 
-        <div style={{ marginTop: 48, padding: '16px 0', borderTop: '1px solid var(--line)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <Link to="/" style={{ color: 'var(--wine)', font: '500 14px/1 var(--font-sans)', textDecoration: 'none' }}>← Volver al inicio</Link>
-          <Link to="/condiciones-del-servicio" style={{ color: 'var(--ink-3)', font: '500 14px/1 var(--font-sans)', textDecoration: 'none' }}>Condiciones del Servicio →</Link>
-        </div>
-      </div>
-
-      <Footer />
-    </div>
+    </LegalLayout>
   );
 }

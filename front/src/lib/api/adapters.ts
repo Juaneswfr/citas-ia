@@ -70,7 +70,7 @@ export function toHiloAppointment(
     end: format(parseISO(apt.end_at), 'HH:mm'),
     client: customer?.name ?? customer?.phone ?? apt.customer_id,
     svc: service?.name ?? apt.service_id,
-    pro: '',           // sin asignación de barbero en v1
+    pro: '',           // sin asignación de profesional en v1
     status: mapAppointmentStatus(apt),
     via: 'wa',         // origen WhatsApp por defecto
     phone: customer?.phone ?? '',

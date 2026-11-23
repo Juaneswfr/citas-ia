@@ -45,7 +45,7 @@ class WorkspaceUpdate(BaseModel):
     primary_email: Optional[EmailStr] = None
     brand_color: Optional[str] = None
     logo_url: Optional[str] = None
-    # `is_active` no se edita aquí: suspender o reactivar un negocio es del panel de plataforma (/admin).
+    # `is_active` no se edita aquí: suspender o reactivar un negocio es del panel de plataforma (/zmanager).
 
     @field_validator("business_type")
     @classmethod

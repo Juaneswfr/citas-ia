@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import get_settings
 from core.database import AsyncSessionLocal
 from schemas.followups import FollowupSettings
-from services import followup_templates as ft
+from services import billing_service, followup_templates as ft
 from services.whatsapp_provider import KapsoProvider, ProviderError
 
 log = logging.getLogger(__name__)
@@ -260,6 +260,10 @@ async def _finish(send_id: str, *, state: Optional[str], via: Optional[str] = No
         await db.commit()
 
 
+# Seguimientos que dispara una persona del equipo (no el worker): no los frena el plan.
+_MANUAL_KINDS = {"cancellation"}
+
+
 async def send_followup(
     kind: str, workspace_id: str, customer_id: str, phone: str, values: dict, *,
     appointment_id: Optional[str] = None, sales_order_id: Optional[str] = None,
@@ -272,6 +276,12 @@ async def send_followup(
     """
     tpl = ft.TEMPLATES[kind]
     async with AsyncSessionLocal() as db:
+        # Plan pausado, vencido o cancelado: no se escribe a los clientes del negocio. El aviso de cita cancelada
+        # queda fuera porque lo dispara una persona del equipo desde el panel, no el worker. No se reserva el
+        # envío ('skipped'), así que si el negocio vuelve a tener plan, lo que siga vigente sale en la pasada siguiente.
+        if kind not in _MANUAL_KINDS and not await billing_service.safe_is_serving(db, workspace_id):
+            log.info("[followups] omitido: plan sin servicio | kind=%s | workspace=%s", kind, workspace_id)
+            return "skipped"
         channel = await _kapso_channel(db, workspace_id)
         approved = (await db.execute(
             text("SELECT 1 FROM followup_templates WHERE workspace_id = :w AND kind = :k AND status = 'approved'"),

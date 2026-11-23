@@ -16,6 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from core.config import get_settings
 
 _bearer = HTTPBearer()
+_bearer_optional = HTTPBearer(auto_error=False)
 
 ROLE_HIERARCHY = {
     "super_admin": 5,
@@ -68,6 +69,29 @@ def get_current_user(
 ) -> dict:
     """Dependencia FastAPI: extrae y valida el JWT del header Authorization."""
     return decode_token(credentials.credentials)
+
+
+def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(_bearer_optional),
+) -> Optional[dict]:
+    """El usuario del JWT, o None si no hay token o no sirve (nunca lanza)."""
+    if credentials is None:
+        return None
+    try:
+        return decode_token(credentials.credentials)
+    except HTTPException:
+        return None
+
+
+def require_platform_admin(user: Optional[dict] = Depends(get_optional_user)) -> dict:
+    """Solo `super_admin`. Para cualquier otra persona la ruta «no existe»: responde 404.
+
+    Es para el panel de plataforma (`/zmanager`). Con `require_role` un 403 confirmaría que la ruta existe;
+    aquí «sin token», «token inválido o vencido» y «rol insuficiente» son indistinguibles desde fuera.
+    """
+    if user is None or user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    return user
 
 
 def require_role(minimum_role: str):

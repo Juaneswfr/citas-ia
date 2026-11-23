@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { LegalLayout, LEGAL_HEAD_LINKS } from "@/components/legal/LegalLayout";
 
 export const Route = createFileRoute("/condiciones-del-servicio")({
   head: () => ({
+    links: LEGAL_HEAD_LINKS,
     meta: [
       { title: "Condiciones del Servicio · Zumit" },
       { name: "description", content: "Lee los términos y condiciones que rigen el uso de la plataforma Zumit." },
@@ -11,12 +12,12 @@ export const Route = createFileRoute("/condiciones-del-servicio")({
   component: TermsPage,
 });
 
-const LAST_UPDATED = "10 de junio de 2026";
+const LAST_UPDATED = "21 de noviembre de 2026";
 const COMPANY = "Juan Esteban Ramírez Ávila";
 const COMPANY_ID = "C.C. 1007298045";
 const COMPANY_ADDRESS = "Calle 39 # 43a-109, Colombia";
-const EMAIL_LEGAL = "contacto@hilo.esjuanez.com";
-const DOMAIN = "hilo.esjuanez.com";
+const EMAIL_LEGAL = "contacto@zumit.app";
+const DOMAIN = "zumit.app";
 
 const sectionStyle: React.CSSProperties = {
   marginBottom: 48,
@@ -54,93 +55,9 @@ const dividerStyle: React.CSSProperties = {
   margin: '40px 0',
 };
 
-function NavBar() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  return (
-    <nav className="l-nav">
-      <div className="l-container l-nav-inner">
-        <Link className="l-brand" to="/">
-          <img className="l-brand__logo" src="/images/logo-borgona.png" alt="Zumit" />
-        </Link>
-        <div className="l-nav-cta">
-          <Link className="btn btn-ghost btn-sm" to="/login">Iniciar sesión</Link>
-          <Link className="btn btn-dark btn-sm" to="/signup">Empieza gratis</Link>
-          <button className="l-burger" onClick={() => setMenuOpen(v => !v)} aria-label="Menú">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M4 7h16M4 12h16M4 17h16" />
-            </svg>
-          </button>
-        </div>
-      </div>
-      {menuOpen && (
-        <div style={{ position: 'absolute', top: 68, left: 0, right: 0, background: '#fff', display: 'flex', flexDirection: 'column', padding: '12px 18px', borderBottom: '1px solid var(--line)', gap: 8, boxShadow: 'var(--shadow-md)' }}>
-          <Link className="btn btn-ghost btn-sm" to="/login" onClick={() => setMenuOpen(false)}>Iniciar sesión</Link>
-          <Link className="btn btn-dark btn-sm" to="/signup" onClick={() => setMenuOpen(false)}>Empieza gratis</Link>
-        </div>
-      )}
-    </nav>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="l-footer">
-      <div className="l-container">
-        <div className="foot-grid">
-          <div className="foot-brand">
-            <img className="l-brand__logo" src="/images/logo.png" alt="Zumit" />
-            <p className="foot-tag">Tu agenda vive en WhatsApp. El agente que agenda, reagenda y confirma por ti.</p>
-          </div>
-          <div className="foot-col">
-            <h4>Producto</h4>
-            <Link to="/" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Inicio</Link>
-            <Link to="/login" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Iniciar sesión</Link>
-            <Link to="/signup" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Registrarse</Link>
-          </div>
-          <div className="foot-col">
-            <h4>Legal</h4>
-            <Link to="/politicas-de-privacidad" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Política de Privacidad</Link>
-            <Link to="/condiciones-del-servicio" style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>Condiciones del Servicio</Link>
-          </div>
-          <div className="foot-col">
-            <h4>Contacto</h4>
-            <a href={`mailto:${EMAIL_LEGAL}`} style={{ display: 'block', font: '400 14.5px/1 var(--font-sans)', color: 'rgba(255,255,255,0.78)', textDecoration: 'none', padding: '7px 0' }}>{EMAIL_LEGAL}</a>
-          </div>
-        </div>
-        <div className="foot-bottom">
-          <span>© {new Date().getFullYear()} {COMPANY}. Todos los derechos reservados.</span>
-          <span style={{ display: 'flex', gap: 20 }}>
-            <Link to="/politicas-de-privacidad" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}>Privacidad</Link>
-            <Link to="/condiciones-del-servicio" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}>Términos</Link>
-          </span>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
 function TermsPage() {
   return (
-    <div className="l-wrap">
-      <NavBar />
-
-      {/* Header */}
-      <div style={{ background: 'var(--ink-1)', padding: '64px 0 56px' }}>
-        <div className="l-container">
-          <div style={{ font: '600 13px/1 var(--font-sans)', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 16 }}>
-            Legal
-          </div>
-          <h1 style={{ font: '800 clamp(34px,5vw,52px)/1.05 var(--font-serif)', letterSpacing: '-0.03em', color: '#fff', margin: '0 0 16px' }}>
-            Condiciones del Servicio
-          </h1>
-          <p style={{ font: '400 17px/1.5 var(--font-sans)', color: 'rgba(255,255,255,0.6)', margin: 0, maxWidth: 560 }}>
-            Última actualización: <strong style={{ color: '#fff' }}>{LAST_UPDATED}</strong>
-          </p>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="l-container" style={{ maxWidth: 780, padding: '64px 28px 96px' }}>
+    <LegalLayout title="Condiciones del Servicio" updated={LAST_UPDATED} current="/condiciones-del-servicio">
 
         <p style={{ ...pStyle, font: '400 17px/1.65 var(--font-sans)', color: 'var(--ink-1)', marginBottom: 40, padding: '20px 24px', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)' }}>
           Bienvenido a <strong>Zumit</strong>, operado por <strong>{COMPANY}</strong>. Al registrarte o usar cualquier parte de nuestro servicio disponible en <strong>{DOMAIN}</strong>, aceptas quedar vinculado por estas Condiciones del Servicio. Lee este documento detenidamente antes de usar la plataforma.
@@ -150,7 +67,7 @@ function TermsPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>1. Descripción del servicio</h2>
           <p style={pStyle}>
-            Zumit es una plataforma SaaS (Software como Servicio) que permite a negocios de servicios —especialmente barberías, salones de belleza y similares— automatizar el agendamiento de citas a través de WhatsApp mediante un agente de inteligencia artificial.
+            Zumit es una plataforma SaaS (Software como Servicio) que permite a negocios de servicios —como barberías, salones, spas, consultorios, veterinarias y similares que atienden con cita— automatizar el agendamiento de citas a través de WhatsApp mediante un agente de inteligencia artificial.
           </p>
           <p style={pStyle}>El servicio incluye, entre otros:</p>
           <ul style={ulStyle}>
@@ -226,21 +143,11 @@ function TermsPage() {
         {/* 5 */}
         <div style={sectionStyle}>
           <h2 style={h2Style}>5. Planes, precios y pagos</h2>
-          <h3 style={h3Style}>5.1 Período de prueba</h3>
           <p style={pStyle}>
-            Zumit ofrece un período de prueba gratuito de 14 días sin necesidad de tarjeta de crédito. Al finalizar el período de prueba, deberás suscribirte a un plan de pago para continuar usando el servicio.
+            Los planes, precios, ciclos de facturación, citas y profesionales adicionales, mensajes de WhatsApp, mora, cancelación y reembolsos se rigen por las <Link to="/condiciones-de-pago" style={{ color: 'var(--wine)' }}>Condiciones de Pago</Link>, que forman parte de estas Condiciones. Si hay diferencia entre ambos documentos sobre pagos, prevalecen las Condiciones de Pago.
           </p>
-          <h3 style={h3Style}>5.2 Facturación</h3>
           <p style={pStyle}>
-            Los planes de pago se facturan mensualmente o anualmente según la opción elegida. Los precios están expresados en pesos colombianos (COP) o en dólares estadounidenses (USD) según se indique. Los precios pueden variar y serán comunicados con 30 días de antelación.
-          </p>
-          <h3 style={h3Style}>5.3 Reembolsos</h3>
-          <p style={pStyle}>
-            Los pagos realizados no son reembolsables salvo que la ley aplicable lo exija o que Zumit haya incumplido materialmente el servicio. En caso de cancelación antes del fin del período facturado, el acceso continuará hasta el final de dicho período.
-          </p>
-          <h3 style={h3Style}>5.4 Impuestos</h3>
-          <p style={pStyle}>
-            Los precios pueden no incluir impuestos aplicables (IVA, etc.). El usuario es responsable del pago de los impuestos correspondientes según la legislación de su país.
+            En resumen: la prueba es de 7 días, gratis y sin tarjeta; los precios están en pesos colombianos (COP); el cobro es mensual por adelantado mediante cuenta de cobro; y la cancelación tiene efecto al final del ciclo pagado.
           </p>
         </div>
 
@@ -345,7 +252,7 @@ function TermsPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>12. Inteligencia artificial y limitaciones del agente</h2>
           <p style={pStyle}>
-            El agente de Hilo está impulsado por modelos de inteligencia artificial. Debes entender que:
+            El agente de Zumit está impulsado por modelos de inteligencia artificial. Debes entender que:
           </p>
           <ul style={ulStyle}>
             <li style={liStyle}>El agente puede cometer errores, malinterpretar solicitudes o generar respuestas imprecisas.</li>
@@ -371,7 +278,7 @@ function TermsPage() {
         <div style={sectionStyle}>
           <h2 style={h2Style}>14. Servicios de terceros</h2>
           <p style={pStyle}>
-            Zumit se integra con servicios de terceros (Meta/WhatsApp, Google Calendar, Supabase, Anthropic). Estas integraciones están sujetas a los términos y condiciones de dichos terceros. {COMPANY} no es responsable del funcionamiento, disponibilidad o cambios en los servicios de terceros.
+            Zumit se integra con servicios de terceros (Meta/WhatsApp, Google Calendar, Anthropic). Estas integraciones están sujetas a los términos y condiciones de dichos terceros. {COMPANY} no es responsable del funcionamiento, disponibilidad o cambios en los servicios de terceros.
           </p>
         </div>
 
@@ -430,13 +337,6 @@ function TermsPage() {
           </div>
         </div>
 
-        <div style={{ marginTop: 48, padding: '16px 0', borderTop: '1px solid var(--line)', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <Link to="/" style={{ color: 'var(--wine)', font: '500 14px/1 var(--font-sans)', textDecoration: 'none' }}>← Volver al inicio</Link>
-          <Link to="/politicas-de-privacidad" style={{ color: 'var(--ink-3)', font: '500 14px/1 var(--font-sans)', textDecoration: 'none' }}>Política de Privacidad →</Link>
-        </div>
-      </div>
-
-      <Footer />
-    </div>
+    </LegalLayout>
   );
 }

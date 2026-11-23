@@ -11,12 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as CondicionesDePagoRouteImport } from './routes/condiciones-de-pago'
 import { Route as CondicionesDelServicioRouteImport } from './routes/condiciones-del-servicio'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PoliticasDePrivacidadRouteImport } from './routes/politicas-de-privacidad'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
-import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as ZmanagerRouteImport } from './routes/zmanager'
 import { Route as AuthenticatedAgendaRouteImport } from './routes/_authenticated/agenda'
 import { Route as AuthenticatedAlertasRouteImport } from './routes/_authenticated/alertas'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
@@ -30,6 +31,15 @@ import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedWhatsappRouteImport } from './routes/_authenticated/whatsapp'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
+import { Route as ZmanagerIndexRouteImport } from './routes/zmanager/index'
+import { Route as ZmanagerCobrosRouteImport } from './routes/zmanager/cobros'
+import { Route as ZmanagerConfiguracionRouteImport } from './routes/zmanager/configuracion'
+import { Route as ZmanagerCostosRouteImport } from './routes/zmanager/costos'
+import { Route as ZmanagerEstadoRouteImport } from './routes/zmanager/estado'
+import { Route as ZmanagerFacturacionRouteImport } from './routes/zmanager/facturacion'
+import { Route as ZmanagerNegociosRouteImport } from './routes/zmanager/negocios'
+import { Route as ZmanagerPlanesRouteImport } from './routes/zmanager/planes'
+import { Route as ZmanagerUsuariosRouteImport } from './routes/zmanager/usuarios'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -38,6 +48,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CondicionesDePagoRoute = CondicionesDePagoRouteImport.update({
+  id: '/condiciones-de-pago',
+  path: '/condiciones-de-pago',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CondicionesDelServicioRoute = CondicionesDelServicioRouteImport.update({
@@ -65,10 +80,10 @@ const VerifyEmailRoute = VerifyEmailRouteImport.update({
   path: '/verify-email',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => AuthenticatedRoute,
+const ZmanagerRoute = ZmanagerRouteImport.update({
+  id: '/zmanager',
+  path: '/zmanager',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAgendaRoute = AuthenticatedAgendaRouteImport.update({
   id: '/agenda',
@@ -135,15 +150,61 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ZmanagerIndexRoute = ZmanagerIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
+const ZmanagerCobrosRoute = ZmanagerCobrosRouteImport.update({
+  id: '/cobros',
+  path: '/cobros',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
+const ZmanagerConfiguracionRoute = ZmanagerConfiguracionRouteImport.update({
+  id: '/configuracion',
+  path: '/configuracion',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
+const ZmanagerCostosRoute = ZmanagerCostosRouteImport.update({
+  id: '/costos',
+  path: '/costos',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
+const ZmanagerEstadoRoute = ZmanagerEstadoRouteImport.update({
+  id: '/estado',
+  path: '/estado',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
+const ZmanagerFacturacionRoute = ZmanagerFacturacionRouteImport.update({
+  id: '/facturacion',
+  path: '/facturacion',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
+const ZmanagerNegociosRoute = ZmanagerNegociosRouteImport.update({
+  id: '/negocios',
+  path: '/negocios',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
+const ZmanagerPlanesRoute = ZmanagerPlanesRouteImport.update({
+  id: '/planes',
+  path: '/planes',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
+const ZmanagerUsuariosRoute = ZmanagerUsuariosRouteImport.update({
+  id: '/usuarios',
+  path: '/usuarios',
+  getParentRoute: () => ZmanagerRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/condiciones-de-pago': typeof CondicionesDePagoRoute
   '/condiciones-del-servicio': typeof CondicionesDelServicioRoute
   '/login': typeof LoginRoute
   '/politicas-de-privacidad': typeof PoliticasDePrivacidadRoute
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
-  '/admin': typeof AuthenticatedAdminRoute
+  '/zmanager': typeof ZmanagerRouteWithChildren
   '/agenda': typeof AuthenticatedAgendaRoute
   '/alertas': typeof AuthenticatedAlertasRoute
   '/clients': typeof AuthenticatedClientsRoute
@@ -157,15 +218,24 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/zmanager/cobros': typeof ZmanagerCobrosRoute
+  '/zmanager/configuracion': typeof ZmanagerConfiguracionRoute
+  '/zmanager/costos': typeof ZmanagerCostosRoute
+  '/zmanager/estado': typeof ZmanagerEstadoRoute
+  '/zmanager/facturacion': typeof ZmanagerFacturacionRoute
+  '/zmanager/negocios': typeof ZmanagerNegociosRoute
+  '/zmanager/planes': typeof ZmanagerPlanesRoute
+  '/zmanager/usuarios': typeof ZmanagerUsuariosRoute
+  '/zmanager/': typeof ZmanagerIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/condiciones-de-pago': typeof CondicionesDePagoRoute
   '/condiciones-del-servicio': typeof CondicionesDelServicioRoute
   '/login': typeof LoginRoute
   '/politicas-de-privacidad': typeof PoliticasDePrivacidadRoute
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
-  '/admin': typeof AuthenticatedAdminRoute
   '/agenda': typeof AuthenticatedAgendaRoute
   '/alertas': typeof AuthenticatedAlertasRoute
   '/clients': typeof AuthenticatedClientsRoute
@@ -179,17 +249,27 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/zmanager/cobros': typeof ZmanagerCobrosRoute
+  '/zmanager/configuracion': typeof ZmanagerConfiguracionRoute
+  '/zmanager/costos': typeof ZmanagerCostosRoute
+  '/zmanager/estado': typeof ZmanagerEstadoRoute
+  '/zmanager/facturacion': typeof ZmanagerFacturacionRoute
+  '/zmanager/negocios': typeof ZmanagerNegociosRoute
+  '/zmanager/planes': typeof ZmanagerPlanesRoute
+  '/zmanager/usuarios': typeof ZmanagerUsuariosRoute
+  '/zmanager': typeof ZmanagerIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/condiciones-de-pago': typeof CondicionesDePagoRoute
   '/condiciones-del-servicio': typeof CondicionesDelServicioRoute
   '/login': typeof LoginRoute
   '/politicas-de-privacidad': typeof PoliticasDePrivacidadRoute
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
-  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/zmanager': typeof ZmanagerRouteWithChildren
   '/_authenticated/agenda': typeof AuthenticatedAgendaRoute
   '/_authenticated/alertas': typeof AuthenticatedAlertasRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRoute
@@ -203,17 +283,27 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/whatsapp': typeof AuthenticatedWhatsappRoute
   '/auth/callback': typeof AuthCallbackRoute
+  '/zmanager/cobros': typeof ZmanagerCobrosRoute
+  '/zmanager/configuracion': typeof ZmanagerConfiguracionRoute
+  '/zmanager/costos': typeof ZmanagerCostosRoute
+  '/zmanager/estado': typeof ZmanagerEstadoRoute
+  '/zmanager/facturacion': typeof ZmanagerFacturacionRoute
+  '/zmanager/negocios': typeof ZmanagerNegociosRoute
+  '/zmanager/planes': typeof ZmanagerPlanesRoute
+  '/zmanager/usuarios': typeof ZmanagerUsuariosRoute
+  '/zmanager/': typeof ZmanagerIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/condiciones-de-pago'
     | '/condiciones-del-servicio'
     | '/login'
     | '/politicas-de-privacidad'
     | '/signup'
     | '/verify-email'
-    | '/admin'
+    | '/zmanager'
     | '/agenda'
     | '/alertas'
     | '/clients'
@@ -227,15 +317,24 @@ export interface FileRouteTypes {
     | '/settings'
     | '/whatsapp'
     | '/auth/callback'
+    | '/zmanager/cobros'
+    | '/zmanager/configuracion'
+    | '/zmanager/costos'
+    | '/zmanager/estado'
+    | '/zmanager/facturacion'
+    | '/zmanager/negocios'
+    | '/zmanager/planes'
+    | '/zmanager/usuarios'
+    | '/zmanager/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/condiciones-de-pago'
     | '/condiciones-del-servicio'
     | '/login'
     | '/politicas-de-privacidad'
     | '/signup'
     | '/verify-email'
-    | '/admin'
     | '/agenda'
     | '/alertas'
     | '/clients'
@@ -249,16 +348,26 @@ export interface FileRouteTypes {
     | '/settings'
     | '/whatsapp'
     | '/auth/callback'
+    | '/zmanager/cobros'
+    | '/zmanager/configuracion'
+    | '/zmanager/costos'
+    | '/zmanager/estado'
+    | '/zmanager/facturacion'
+    | '/zmanager/negocios'
+    | '/zmanager/planes'
+    | '/zmanager/usuarios'
+    | '/zmanager'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/condiciones-de-pago'
     | '/condiciones-del-servicio'
     | '/login'
     | '/politicas-de-privacidad'
     | '/signup'
     | '/verify-email'
-    | '/_authenticated/admin'
+    | '/zmanager'
     | '/_authenticated/agenda'
     | '/_authenticated/alertas'
     | '/_authenticated/clients'
@@ -272,16 +381,27 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/whatsapp'
     | '/auth/callback'
+    | '/zmanager/cobros'
+    | '/zmanager/configuracion'
+    | '/zmanager/costos'
+    | '/zmanager/estado'
+    | '/zmanager/facturacion'
+    | '/zmanager/negocios'
+    | '/zmanager/planes'
+    | '/zmanager/usuarios'
+    | '/zmanager/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  CondicionesDePagoRoute: typeof CondicionesDePagoRoute
   CondicionesDelServicioRoute: typeof CondicionesDelServicioRoute
   LoginRoute: typeof LoginRoute
   PoliticasDePrivacidadRoute: typeof PoliticasDePrivacidadRoute
   SignupRoute: typeof SignupRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
+  ZmanagerRoute: typeof ZmanagerRouteWithChildren
   AuthCallbackRoute: typeof AuthCallbackRoute
 }
 
@@ -299,6 +419,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/condiciones-de-pago': {
+      id: '/condiciones-de-pago'
+      path: '/condiciones-de-pago'
+      fullPath: '/condiciones-de-pago'
+      preLoaderRoute: typeof CondicionesDePagoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/condiciones-del-servicio': {
@@ -336,12 +463,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/admin': {
-      id: '/_authenticated/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AuthenticatedAdminRouteImport
-      parentRoute: typeof AuthenticatedRoute
+    '/zmanager': {
+      id: '/zmanager'
+      path: '/zmanager'
+      fullPath: '/zmanager'
+      preLoaderRoute: typeof ZmanagerRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/agenda': {
       id: '/_authenticated/agenda'
@@ -434,11 +561,73 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/zmanager/': {
+      id: '/zmanager/'
+      path: '/'
+      fullPath: '/zmanager/'
+      preLoaderRoute: typeof ZmanagerIndexRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
+    '/zmanager/cobros': {
+      id: '/zmanager/cobros'
+      path: '/cobros'
+      fullPath: '/zmanager/cobros'
+      preLoaderRoute: typeof ZmanagerCobrosRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
+    '/zmanager/configuracion': {
+      id: '/zmanager/configuracion'
+      path: '/configuracion'
+      fullPath: '/zmanager/configuracion'
+      preLoaderRoute: typeof ZmanagerConfiguracionRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
+    '/zmanager/costos': {
+      id: '/zmanager/costos'
+      path: '/costos'
+      fullPath: '/zmanager/costos'
+      preLoaderRoute: typeof ZmanagerCostosRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
+    '/zmanager/estado': {
+      id: '/zmanager/estado'
+      path: '/estado'
+      fullPath: '/zmanager/estado'
+      preLoaderRoute: typeof ZmanagerEstadoRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
+    '/zmanager/facturacion': {
+      id: '/zmanager/facturacion'
+      path: '/facturacion'
+      fullPath: '/zmanager/facturacion'
+      preLoaderRoute: typeof ZmanagerFacturacionRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
+    '/zmanager/negocios': {
+      id: '/zmanager/negocios'
+      path: '/negocios'
+      fullPath: '/zmanager/negocios'
+      preLoaderRoute: typeof ZmanagerNegociosRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
+    '/zmanager/planes': {
+      id: '/zmanager/planes'
+      path: '/planes'
+      fullPath: '/zmanager/planes'
+      preLoaderRoute: typeof ZmanagerPlanesRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
+    '/zmanager/usuarios': {
+      id: '/zmanager/usuarios'
+      path: '/usuarios'
+      fullPath: '/zmanager/usuarios'
+      preLoaderRoute: typeof ZmanagerUsuariosRouteImport
+      parentRoute: typeof ZmanagerRoute
+    }
   }
 }
 
 interface AuthenticatedRouteChildren {
-  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedAgendaRoute: typeof AuthenticatedAgendaRoute
   AuthenticatedAlertasRoute: typeof AuthenticatedAlertasRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRoute
@@ -454,7 +643,6 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedAgendaRoute: AuthenticatedAgendaRoute,
   AuthenticatedAlertasRoute: AuthenticatedAlertasRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRoute,
@@ -473,14 +661,44 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
   AuthenticatedRouteChildren,
 )
 
+interface ZmanagerRouteChildren {
+  ZmanagerCobrosRoute: typeof ZmanagerCobrosRoute
+  ZmanagerConfiguracionRoute: typeof ZmanagerConfiguracionRoute
+  ZmanagerCostosRoute: typeof ZmanagerCostosRoute
+  ZmanagerEstadoRoute: typeof ZmanagerEstadoRoute
+  ZmanagerFacturacionRoute: typeof ZmanagerFacturacionRoute
+  ZmanagerNegociosRoute: typeof ZmanagerNegociosRoute
+  ZmanagerPlanesRoute: typeof ZmanagerPlanesRoute
+  ZmanagerUsuariosRoute: typeof ZmanagerUsuariosRoute
+  ZmanagerIndexRoute: typeof ZmanagerIndexRoute
+}
+
+const ZmanagerRouteChildren: ZmanagerRouteChildren = {
+  ZmanagerCobrosRoute: ZmanagerCobrosRoute,
+  ZmanagerConfiguracionRoute: ZmanagerConfiguracionRoute,
+  ZmanagerCostosRoute: ZmanagerCostosRoute,
+  ZmanagerEstadoRoute: ZmanagerEstadoRoute,
+  ZmanagerFacturacionRoute: ZmanagerFacturacionRoute,
+  ZmanagerNegociosRoute: ZmanagerNegociosRoute,
+  ZmanagerPlanesRoute: ZmanagerPlanesRoute,
+  ZmanagerUsuariosRoute: ZmanagerUsuariosRoute,
+  ZmanagerIndexRoute: ZmanagerIndexRoute,
+}
+
+const ZmanagerRouteWithChildren = ZmanagerRoute._addFileChildren(
+  ZmanagerRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  CondicionesDePagoRoute: CondicionesDePagoRoute,
   CondicionesDelServicioRoute: CondicionesDelServicioRoute,
   LoginRoute: LoginRoute,
   PoliticasDePrivacidadRoute: PoliticasDePrivacidadRoute,
   SignupRoute: SignupRoute,
   VerifyEmailRoute: VerifyEmailRoute,
+  ZmanagerRoute: ZmanagerRouteWithChildren,
   AuthCallbackRoute: AuthCallbackRoute,
 }
 export const routeTree = rootRouteImport

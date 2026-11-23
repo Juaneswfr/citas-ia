@@ -2,7 +2,7 @@
 Router /workspaces/{workspace_id}/accounting — Finanzas simples del negocio.
 
 Terceros, órdenes de venta/compra, movimientos de caja, regla de pago y liquidaciones de
-barberos, y reportes. Solo owner/manager (staff y viewer no ven finanzas).
+profesionales, y reportes. Solo owner/manager (staff y viewer no ven finanzas).
 Las rutas solo validan entrada y delegan en `services/`; la lógica vive allí.
 Anular algo requiere confirmación explícita (Principio IX).
 """
@@ -305,7 +305,7 @@ async def payables(workspace_id: str, _user: dict = Depends(_manager), db: Async
     return [o for o in await purchase_service.list_orders(db, workspace_id, "open", limit=500) if o["balance_cop"] > 0]
 
 
-@router.get(f"{_BASE}/reports/commissions", response_model=list[CommissionRow], summary="Comisiones por barbero")
+@router.get(f"{_BASE}/reports/commissions", response_model=list[CommissionRow], summary="Comisiones por profesional")
 async def commissions(
     workspace_id: str, from_date: Optional[date] = Query(None), to_date: Optional[date] = Query(None),
     _user: dict = Depends(_manager), db: AsyncSession = Depends(get_db),

@@ -33,7 +33,7 @@ export function Intro() {
         </ul>
       </div>
       <div className="home-intro__frame home-reveal">
-        <Photo className="home-intro__photo" src="/images/problema.jpg" alt="Barbería llena de clientes esperando" />
+        <Photo className="home-intro__photo" src="/images/problema.jpg" alt="Local lleno de clientes esperando" />
       </div>
     </section>
   );

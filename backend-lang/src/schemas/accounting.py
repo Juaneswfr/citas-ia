@@ -122,7 +122,7 @@ class SalesLineCreate(BaseModel):
     description: str = Field(..., min_length=1, max_length=200)
     qty: int = Field(1, gt=0)
     unit_price_cop: int = Field(..., ge=0)
-    member_id: Optional[str] = Field(None, description="Barbero que realizó el servicio")
+    member_id: Optional[str] = Field(None, description="Profesional que realizó el servicio")
     tip_cop: int = Field(0, ge=0)
 
 
