@@ -33,6 +33,10 @@ DEFAULTS = {
     "low_usage_pct": 40,
     "founder_cap": 30,
     "fixed_costs_cop_month": 0,
+    # Plan de Kapso (tarjeta «Uso de Kapso» de Estado). Editables en Zumit Manager › Costos al cambiar de membresía.
+    "kapso_messages_included": 2000,
+    "kapso_numbers_included": 1,
+    "kapso_cycle_day": 27,
 }
 
 # Estados en los que el asistente atiende. `past_due` sigue atendiendo durante los días de gracia.
@@ -120,8 +124,25 @@ def normalize_phone(raw: Optional[str]) -> str:
     return "".join(ch for ch in (raw or "") if ch.isdigit())
 
 
-def ai_cost_usd(input_tokens: int, output_tokens: int) -> float:
-    return (input_tokens * AI_USD_PER_MTOK_IN + output_tokens * AI_USD_PER_MTOK_OUT) / 1_000_000
+# Tarifas estimadas por familia de modelo (USD por millón de tokens: entrada, salida). Se busca por prefijo del
+# nombre; un modelo que no esté aquí se estima con la tarifa de Haiku. Los tokens de «pensar» cuentan como salida.
+AI_RATES = {
+    "gemini-3.5-flash-lite": (0.30, 2.50),
+    "claude-haiku": (AI_USD_PER_MTOK_IN, AI_USD_PER_MTOK_OUT),
+}
+
+
+def ai_rates(model: Optional[str] = None) -> tuple[float, float]:
+    name = (model or "").split(":", 1)[-1]
+    for prefix, rate in AI_RATES.items():
+        if name.startswith(prefix):
+            return rate
+    return AI_USD_PER_MTOK_IN, AI_USD_PER_MTOK_OUT
+
+
+def ai_cost_usd(input_tokens: int, output_tokens: int, model: Optional[str] = None) -> float:
+    rate_in, rate_out = ai_rates(model)
+    return (input_tokens * rate_in + output_tokens * rate_out) / 1_000_000
 
 
 def effective_status(sub: dict, now: datetime, covered_until: Optional[date], today: date, grace_days: int) -> str:
@@ -321,7 +342,8 @@ async def log_event(db, workspace_id: str, type_: str, payload: Optional[dict] =
     )
 
 
-async def record_usage(db, workspace_id: str, input_tokens: int, output_tokens: int, calls: int = 1) -> None:
+async def record_usage(db, workspace_id: str, input_tokens: int, output_tokens: int, calls: int = 1,
+                       model: Optional[str] = None) -> None:
     """Suma una llamada al modelo al consumo del día del negocio. Nunca lanza: medir no puede tumbar al agente."""
     try:
         await db.execute(
@@ -334,7 +356,7 @@ async def record_usage(db, workspace_id: str, input_tokens: int, output_tokens: 
                 output_tokens = agent_usage.output_tokens + EXCLUDED.output_tokens,
                 cost_usd = agent_usage.cost_usd + EXCLUDED.cost_usd
             """),
-            {"w": workspace_id, "n": calls, "i": input_tokens, "o": output_tokens, "c": ai_cost_usd(input_tokens, output_tokens)},
+            {"w": workspace_id, "n": calls, "i": input_tokens, "o": output_tokens, "c": ai_cost_usd(input_tokens, output_tokens, model)},
         )
         await db.commit()
     except Exception as exc:

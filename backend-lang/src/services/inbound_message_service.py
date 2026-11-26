@@ -12,6 +12,8 @@
 Las respuestas automáticas respetan los interruptores del agente (global y por cliente): si el
 negocio lo pausó, el mensaje se guarda pero no se responde.
 """
+import asyncio
+from contextlib import asynccontextmanager
 import logging
 import uuid
 from typing import Optional
@@ -230,6 +232,29 @@ async def handle_kapso_sent(item: dict) -> None:
     )
 
 
+_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+@asynccontextmanager
+async def _conversation_lock(conversation_id: str):
+    """Una sola ejecución del agente por conversación, también entre los 2 procesos de uvicorn.
+
+    Candado en memoria (barato, mismo proceso) + candado de Postgres `pg_advisory_xact_lock`, que se suelta solo
+    al cerrar la sesión. Si la BD no responde se sigue sin ese segundo candado: nunca debe tumbar la respuesta.
+    """
+    if len(_LOCKS) > 2000:
+        for k in [k for k, v in _LOCKS.items() if not v.locked()]:
+            _LOCKS.pop(k, None)
+    async with _LOCKS.setdefault(conversation_id, asyncio.Lock()):
+        async with AsyncSessionLocal() as lock_session:
+            try:
+                await lock_session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"conv:{conversation_id}"})
+            except Exception as exc:
+                log.warning("[conv] sin candado de BD | conv=%s | err=%s", conversation_id, type(exc).__name__)
+            yield
+
+
 async def handle_kapso_message(item: dict) -> None:
     """Procesa un evento whatsapp.message.received. Lanza si algo falla (el webhook libera la clave)."""
     msg = item.get("message") or {}
@@ -251,7 +276,10 @@ async def handle_kapso_message(item: dict) -> None:
 
     if parsed["kind"] == "text":
         await _save_inbound(conversation, parsed["text"])
-        await AgentService.run(conversation=conversation, message=parsed["text"])
+        # Un cliente que escribe seguido no debe disparar dos ejecuciones a la vez: cada una vería
+        # un historial distinto y repetiría o contradiría preguntas. Se atienden en fila.
+        async with _conversation_lock(str(conversation["id"])):
+            await AgentService.run(conversation=conversation, message=parsed["text"])
     elif parsed["kind"] == "button":
         await _handle_button(conversation, parsed["payload"], parsed["text"])
     elif parsed["kind"] == "media":

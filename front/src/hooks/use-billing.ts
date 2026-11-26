@@ -294,6 +294,17 @@ export function useCosts(days: number) {
   return useQuery({ queryKey: ['admin', 'billing', 'costs', days], queryFn: () => adminBillingService.getCosts(days), staleTime: 30_000 });
 }
 
+export function useCostCustomers(workspaceId: string, days: number) {
+  return useQuery({ queryKey: ['admin', 'billing', 'costs', 'customers', workspaceId, days],
+                   queryFn: () => adminBillingService.getCostCustomers(workspaceId, days), staleTime: 30_000 });
+}
+
+export function useCostCustomer(workspaceId: string, customerId: string | null) {
+  return useQuery({ queryKey: ['admin', 'billing', 'costs', 'customer', workspaceId, customerId],
+                   queryFn: () => adminBillingService.getCostCustomer(workspaceId, customerId as string),
+                   enabled: !!customerId, staleTime: 30_000 });
+}
+
 export function useSyncCosts() {
   const queryClient = useQueryClient();
   return useMutation({

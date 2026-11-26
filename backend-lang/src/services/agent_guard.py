@@ -35,6 +35,8 @@ _GOAL = re.compile(r"qued[óo] (confirmada|reagendada)|(fue|qued[óo]) cancelad[
 
 HANDOFF = "Para ayudarte mejor, una persona del equipo te escribirá en breve. ¡Gracias por tu paciencia!"
 
+TECH_FALLBACK = "Tuvimos un inconveniente y no pude procesar tu mensaje. Una persona del equipo te escribirá en breve."
+
 REPEATING = "estaba repitiendo la misma respuesta sin avanzar"
 
 
@@ -122,3 +124,14 @@ async def pause_agent(db, conversation: dict, detail: str) -> None:
     )
     await db.commit()
     log.warning("[agent] pausado por conversación cíclica | conv=%s | %s", conversation["id"], detail)
+
+
+async def set_status(conversation_id, state: str) -> None:
+    """Estado de la conversación (`conversations.state`, migración 026). Nunca lanza: sin la migración no hace nada."""
+    from core.database import AsyncSessionLocal
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("UPDATE conversations SET state = :s WHERE id = :id"), {"s": state, "id": conversation_id})
+            await db.commit()
+    except Exception as exc:
+        log.warning("[conv] no se pudo guardar el estado | conv=%s | err=%s", conversation_id, type(exc).__name__)

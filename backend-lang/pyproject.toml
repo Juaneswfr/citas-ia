@@ -27,6 +27,7 @@ dependencies = [
     "alembic>=1.13",
     "tzdata>=2026.6",
     "fpdf2>=2.9.0",
+    "langchain-google-genai>=4.5.3",
     "langsmith>=0.10.15",
 ]
 

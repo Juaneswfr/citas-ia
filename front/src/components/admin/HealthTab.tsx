@@ -3,7 +3,7 @@
 import { AsyncState } from '@/components/finanzas/ui';
 import { Button } from '@/components/hilo/primitives';
 import { useAdminHealth } from '@/hooks/use-admin';
-import type { AdminHealth, HealthCheck } from '@/lib/types/admin';
+import type { AdminHealth, KapsoUsage, HealthCheck } from '@/lib/types/admin';
 import { errorReasonLabel, healthLabel, timeAgo } from './labels';
 import { ToneTag } from './ui';
 import styles from './Admin.module.css';
@@ -53,6 +53,26 @@ function Activity({ activity }: { activity: AdminHealth['activity'] }) {
   );
 }
 
+function KapsoUsagePanel({ usage }: { usage: KapsoUsage }) {
+  const pct = usage.messages_included ? Math.round((usage.messages_used / usage.messages_included) * 100) : 0;
+  const fmt = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+  return (
+    <section className={styles.panel}>
+      <h3 className={styles.panel__title}>Uso de Kapso (estimado)</h3>
+      <div className={`${styles.kpis} stagger`}>
+        <Stat label="Mensajes del ciclo" value={usage.messages_used} alert={pct >= 80}
+              hint={`${pct}% de ${usage.messages_included.toLocaleString('es-CO')} · ${fmt(usage.cycle_start)} – ${fmt(usage.cycle_end)}`} />
+        <Stat label="Números conectados" value={usage.numbers_used} alert={usage.numbers_used >= usage.numbers_included}
+              hint={`${usage.numbers_used} de ${usage.numbers_included} incluidos`} />
+      </div>
+      <p className={styles.filters__count}>
+        Cuenta los mensajes que Zumit guardó; los topes se editan en Costos. Funciones, transcripción y logs se ven en el{' '}
+        <a href={usage.dashboard_url} target="_blank" rel="noreferrer">panel de Kapso</a>.
+      </p>
+    </section>
+  );
+}
+
 export function HealthTab() {
   const health = useAdminHealth();
   const data = health.data;
@@ -74,6 +94,8 @@ export function HealthTab() {
           <div className={`${styles.cols} stagger`}>
             {data.checks.map((check) => <CheckCard key={check.id} check={check} />)}
           </div>
+
+          {data.kapso_usage && <KapsoUsagePanel usage={data.kapso_usage} />}
 
           <section className={styles.panel}>
             <h3 className={styles.panel__title}>Últimas 24 horas</h3>

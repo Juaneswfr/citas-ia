@@ -114,7 +114,19 @@ export interface HealthError {
   workspace_name: string;
 }
 
+export interface KapsoUsage {
+  estimated: boolean;
+  cycle_start: string;
+  cycle_end: string;
+  messages_used: number;
+  messages_included: number;
+  numbers_used: number;
+  numbers_included: number;
+  dashboard_url: string;
+}
+
 export interface AdminHealth {
+  kapso_usage?: KapsoUsage | null;
   checks: HealthCheck[];
   numbers: HealthNumber[];
   activity: {

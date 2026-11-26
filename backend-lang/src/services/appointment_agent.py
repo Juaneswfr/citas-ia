@@ -12,6 +12,8 @@ redacta el backend solo si la cita quedó insertada o movida en BD (ver `run_age
 Cambiar la hora de una cita la mueve (`reagendar_cita`), nunca crea otra: mover y cancelar
 viven en `services/appointment_service.py`, compartidos con el panel.
 """
+from typing import Optional
+import os
 import asyncio
 import logging
 import re
@@ -48,7 +50,10 @@ def _clock(now: datetime) -> str:
     """«viernes 13/11/2026, 10:05»: día de la semana incluido, para que el modelo entienda «mañana» o «el lunes»."""
     return f"{_DIAS[now.weekday()]} {now:%d/%m/%Y}, {now:%H:%M}"
 
-MODEL = "anthropic:claude-haiku-4-5-20251001"  # mismo modelo que el dispatcher de hilo
+MODEL = "anthropic:claude-haiku-4-5-20251001"  # lector de comprobantes (visión), chequeo de la clave de Anthropic y respaldo del agente
+# Modelo que conversa y agenda. Por defecto el mismo; AGENT_MODEL=google_genai:gemini-3.5-flash-lite lo cambia.
+# Si falla, se reintenta UNA vez con MODEL (solo si todavía no se creó, movió ni canceló nada).
+AGENT_MODEL = os.getenv("AGENT_MODEL", "").strip() or MODEL
 MAX_TOOL_CALLS = 5
 TIMEOUT_S = 45
 HISTORY = 10
@@ -63,11 +68,8 @@ _CLAIMS_CONFIRMED = re.compile(r"confirmad|agendad|reservad|qued[óo] list", re.
 
 _SYSTEM = (
     "Eres el asistente de citas de {workspace} ({business_label}). Responde siempre en español, breve y amable. "
-    "Ahora mismo es {now} (zona {tz}). Usa esta fecha y hora para entender «hoy», «mañana», «esta tarde» o «el viernes».\n\n"
-    "SERVICIOS ACTUALES (usa estos datos, no los del historial):\n{services}\n\n"
-    "{staff_heading} DISPONIBLES (usa estos datos, no los del historial):\n{staff}\n\n"
-    "CITAS PRÓXIMAS DEL CLIENTE (appointment_id | servicio | fecha y hora | {staff_singular} | calendar_id | service_id):\n"
-    "{upcoming}\n\n"
+    "Al final de estas instrucciones están la fecha y hora actuales, los servicios, quienes atienden y las citas del cliente: "
+    "úsalos, no los datos del historial. Usa la fecha y hora para entender «hoy», «mañana», «esta tarde» o «el viernes».\n\n"
     "Quien atiende en este negocio es un {staff_singular}: usa esa palabra al hablar con el cliente.\n"
     "Flujo para agendar: "
     "1) Si hay varios {staff_plural} pregunta cuál prefiere el cliente, si hay uno solo selecciónalo. "
@@ -83,12 +85,18 @@ _SYSTEM = (
     "Si tiene varias citas y no queda claro cuál quiere mover o cancelar, pregúntale.\n"
     "Solo se puede agendar o mover una cita a un horario posterior a la hora actual: nunca ofrezcas ni agendes una hora que ya pasó. "
     "Si el cliente pide una hora de hoy que ya pasó, díselo y ofrécele las siguientes horas libres. "
+    "Si el cliente da solo una hora («a las 8 pm», «8ppm», «8p.m.», «a las 5») sin decir el día y esa hora es posterior a la hora actual, "
+    "asume que es HOY: no le preguntes el día, consulta la disponibilidad de hoy y confírmale «hoy a las HH:MM». "
+    "Si esa hora ya pasó hoy, ofrécele mañana a esa misma hora. Si falta el servicio, pregunta solo por el servicio. "
+    "Nunca repitas una pregunta que el cliente ya respondió en el historial. "
+    "Cuando ya tengas servicio, día y hora, llama a consultar_disponibilidad ANTES de pedir la confirmación, "
+    "para ofrecer solo horas libres; no preguntes «¿confirmamos?» sobre una hora que no has consultado.\n"
     "Si consultar_disponibilidad responde «ocupado», ese horario no está disponible (otra cita o un bloqueo del negocio): "
     "no expliques el motivo y ofrece otras horas.\n"
     "Nunca afirmes que una cita está confirmada o reagendada: el sistema te dirá si se creó o se movió. "
     "No inventes servicios ni horarios.\n"
     "ALCANCE: solo ayudas con citas: agendar, ver disponibilidad, mover, cancelar y consultar las citas del cliente, "
-    "y contar los servicios, precios, duraciones y {staff_plural} que aparecen arriba. "
+    "y contar los servicios, precios, duraciones y {staff_plural} que aparecen al final. "
     "No respondas ni sigas conversación sobre otros temas (preguntas generales, tareas, opiniones, recomendaciones, "
     "programación, política, etc.) ni inventes datos del negocio que no tengas (dirección, horarios de atención, "
     "promociones, métodos de pago, políticas). "
@@ -100,7 +108,14 @@ _SYSTEM = (
     "FORMATO: solo texto plano de WhatsApp. "
     "Usa *texto* para negrita, _texto_ para cursiva, ~texto~ para tachado. "
     "NO uses markdown (#, **, ```, [], ![]). NO uses listas con guiones. "
-    "Separa con saltos de línea, no con símbolos raros."
+    "Separa con saltos de línea, no con símbolos raros.\n\n"
+    # Lo que cambia entre llamadas va AL FINAL: el prefijo idéntico de arriba permite que el proveedor lo cachee
+    # (la entrada en caché cuesta una fracción). Poner la hora antes del texto fijo rompería esa caché cada minuto.
+    "SERVICIOS ACTUALES:\n{services}\n\n"
+    "{staff_heading} DISPONIBLES:\n{staff}\n\n"
+    "CITAS PRÓXIMAS DEL CLIENTE (appointment_id | servicio | fecha y hora | {staff_singular} | calendar_id | service_id):\n"
+    "{upcoming}\n\n"
+    "AHORA MISMO es {now} (zona {tz})."
 )
 
 
@@ -177,9 +192,16 @@ def build_system_prompt(ctx: dict, services_txt: str, staff_txt: str, upcoming_t
     )
 
 
-def _get_llm():
+def _get_llm(model: Optional[str] = None):
     from langchain.chat_models import init_chat_model
-    return init_chat_model(MODEL, temperature=0, max_tokens=MAX_OUTPUT_TOKENS)
+    return init_chat_model(model or AGENT_MODEL, temperature=0, max_tokens=MAX_OUTPUT_TOKENS)
+
+
+def _reply_text(ai) -> str:
+    """Texto de la respuesta: Claude lo manda como str; Gemini puede mandar bloques (texto, firmas de razonamiento)."""
+    if isinstance(ai.content, str):
+        return ai.content
+    return getattr(ai, "text", "") or ""
 
 
 class _ListIn(BaseModel):
@@ -239,6 +261,19 @@ def _is_uuid(value: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _thread_id(ctx: dict) -> str:
+    """Hilo de LangSmith: «Negocio | Teléfono». Una conversación por número, así se monitorea por cliente y por negocio."""
+    phone = str(ctx.get("customer_phone") or "").strip()
+    ws = str((ctx.get("workspace") or {}).get("name") or "").strip()
+    return " | ".join(p for p in (ws, phone) if p) or str(ctx.get("conversation_id", ""))
+
+
+def _chat_name(phone: str, call: int) -> str:
+    """Nombre del run en LangSmith (en vez de «ChatAnthropic»): «573243273969 | Chat»; las llamadas siguientes del mismo turno (tras una herramienta), «… | Chat 2»."""
+    base = f"{phone} | Chat" if phone else "Chat"
+    return base if call == 1 else f"{base} {call}"
 
 
 class PastTime(ValueError):
@@ -464,6 +499,10 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
             ),
             {"conversation_id": ctx["conversation_id"], "workspace_id": ctx["workspace_id"], "limit": HISTORY},
         )).mappings().fetchall()
+        turn = int((await session.execute(
+            text("SELECT count(*) FROM messages WHERE conversation_id=:c AND workspace_id=:w AND direction='inbound'"),
+            {"c": ctx["conversation_id"], "w": ctx["workspace_id"]},
+        )).scalar_one() or 0) or 1
         services_rows = (await session.execute(
             text("SELECT id,name,duration_minutes,price_cop FROM services WHERE workspace_id=:ws AND is_active=TRUE"),
             {"ws": ws},
@@ -483,28 +522,36 @@ async def _loop(llm, ctx: dict, message: str, state: dict) -> str:
         msgs.append(HumanMessage(message[:MAX_MSG_CHARS]))
 
     _phone = ctx.get("customer_phone", "")
-    _thread = f"{_phone}-{ctx.get('conversation_id', '')}" if _phone else str(ctx.get("conversation_id", ""))
+    _ws_name = str((ctx.get("workspace") or {}).get("name") or "").strip()
+    _cust_name = str(ctx.get("customer_name") or "").strip()
+    _thread = _thread_id(ctx)
     lc_config = RunnableConfig(
         metadata={
             "thread_id": _thread,
             "workspace_id": str(ctx.get("workspace_id", "")),
+            "workspace_name": _ws_name,
+            "customer_name": _cust_name,
             "customer_phone": _phone,
             "agent_run_id": str(ctx.get("agent_run_id", "")),
+            "turn": turn,
         },
         configurable={"thread_id": _thread},
         tags=["citas"],
     )
     used = 0
+    call_no = 0
     while True:
-        ai = await bound.ainvoke(msgs, config=lc_config)
+        call_no += 1
+        ai = await bound.ainvoke(msgs, config={**lc_config, "run_name": _chat_name(_phone, call_no)})
         um = getattr(ai, "usage_metadata", None) or {}
         u = state.setdefault("usage", {"calls": 0, "input": 0, "output": 0})
+        u["model"] = state.get("model", AGENT_MODEL)
         u["calls"] += 1
         u["input"] += int(um.get("input_tokens", 0) or 0)
         u["output"] += int(um.get("output_tokens", 0) or 0)
         calls = getattr(ai, "tool_calls", None) or []
         if not calls:
-            return ai.content if isinstance(ai.content, str) else ""
+            return _reply_text(ai)
         msgs.append(ai)
         for c in calls:
             if used >= MAX_TOOL_CALLS:
@@ -549,7 +596,17 @@ async def run_agent(ctx: dict, message: str, llm=None) -> dict:
 
 async def _run_agent(ctx: dict, message: str, llm, state: dict) -> dict:
     try:
-        text_reply = await asyncio.wait_for(_loop(llm or _get_llm(), ctx, message, state), TIMEOUT_S)
+        try:
+            text_reply = await asyncio.wait_for(_loop(llm or _get_llm(), ctx, message, state), TIMEOUT_S)
+        except Exception as first:
+            # Respaldo: si el modelo principal falló y todavía no se hizo nada irreversible, se reintenta con Haiku.
+            if llm is not None or AGENT_MODEL == MODEL or _done(state) or state.get("quota_blocked"):
+                raise
+            log.error("[agent] %s falló (%s); reintento con %s | conv=%s",
+                      AGENT_MODEL, type(first).__name__, MODEL, ctx.get("conversation_id"))
+            state.pop("limit", None)
+            state["model"] = MODEL
+            text_reply = await asyncio.wait_for(_loop(_get_llm(MODEL), ctx, message, state), TIMEOUT_S)
     except Exception as e:
         err = type(e).__name__
         log.error("[agent] llm/herramientas fallaron | conv=%s | err=%s", ctx.get("conversation_id"), err)

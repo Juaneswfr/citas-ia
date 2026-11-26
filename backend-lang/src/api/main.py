@@ -63,10 +63,14 @@ async def lifespan(app: FastAPI):
     from workers.billing_worker import start_billing_scheduler
     billing_task = start_billing_scheduler()
 
+    # Red de seguridad: chats donde el cliente escribió y el agente no contestó
+    from workers.unanswered_worker import start_unanswered_scheduler
+    unanswered_task = start_unanswered_scheduler()
+
     yield
 
     # Shutdown limpio
-    for task in (reminder_task, billing_task):
+    for task in (reminder_task, billing_task, unanswered_task):
         task.cancel()
         try:
             await task

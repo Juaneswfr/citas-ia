@@ -5,7 +5,7 @@ import type { BillingPlanOut, SubscriptionOut } from '../types/api';
 import type {
   Insights, ActivationRequest, ActivationRequestBody, PaymentInfo,
   ActivatePlanBody, AdminWorkspaceBilling, Balance, BillingOverview, BillingUsage, ExtraAppointmentsResult, BillingProfile, BillingSummary, Cartera,
-  CarteraScope, CostsOverview, Issuer, PlanChangePreview, PlanChanges, PlanPreview, PlansDashboard, PlanUpdateResult,
+  CarteraScope, CostCustomerDetail, CostCustomers, CostsOverview, Issuer, PlanChangePreview, PlanChanges, PlanPreview, PlansDashboard, PlanUpdateResult,
   PublicPricing, SyncResult, UpcomingCharge,
 } from '../types/billing';
 
@@ -212,6 +212,14 @@ export const adminBillingService = {
 
   getCosts(days = 30): Promise<CostsOverview> {
     return apiFetch<CostsOverview>(`${ADMIN}/costs?days=${days}`);
+  },
+
+  getCostCustomers(workspaceId: string, days = 30): Promise<CostCustomers> {
+    return apiFetch<CostCustomers>(`${ADMIN}/costs/workspaces/${workspaceId}/customers?days=${days}`);
+  },
+
+  getCostCustomer(workspaceId: string, customerId: string): Promise<CostCustomerDetail> {
+    return apiFetch<CostCustomerDetail>(`${ADMIN}/costs/workspaces/${workspaceId}/customers/${customerId}`);
   },
 
   syncCosts(days = 7): Promise<SyncResult> {

@@ -297,7 +297,8 @@ body{
 /* Contraseña con ojito (components/auth/PasswordInput.tsx) */
 .pw-field { position:relative; }
 .pw-field input { padding-right:46px; }
-.pw-field__eye { position:absolute; top:50%; right:6px; transform:translateY(-50%); width:36px; height:36px;
+/* Centrado sin `transform`: la regla global de :active (scale) lo pisaba y el ojito se caía al hacer clic. */
+.pw-field__eye { position:absolute; top:0; bottom:0; margin:auto 0; right:6px; width:36px; height:36px;
   display:inline-flex; align-items:center; justify-content:center; border:0; border-radius:var(--r-sm);
   background:transparent; color:var(--ink-3); cursor:pointer; transition:color var(--dur-2), background var(--dur-2); }
 .pw-field__eye:hover { color:var(--wine); background:var(--wine-50); }

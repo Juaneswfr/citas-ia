@@ -320,6 +320,8 @@ export interface CostsOverview {
   /** Tarifa vigente de cada categoría (USD por mensaje). Falta la clave si aún no se cargó. */
   meta_rates: Partial<Record<MetaCategory, number>>;
   fixed_costs_cop_month: number;
+  /** Plan de Kapso: topes y día de corte de la tarjeta «Uso de Kapso» (Estado). */
+  kapso_plan: { messages_included: number; numbers_included: number; cycle_day: number };
   rates_missing: MetaCategory[];
   totals: CostsTotals;
   langsmith: LangsmithStatus;
@@ -550,3 +552,76 @@ export interface BillingUsage {
   appointments?: QuotaInfo;
   professionals?: { limit: number | null; active: number; extra: number };
 }
+
+// ── Detalle de costos de IA por cliente, ejecución y cita ──
+
+export type DetailSource = 'langsmith' | 'mixed' | 'estimate' | null;
+
+export interface CostCustomerRow {
+  customer_id: string;
+  name: string | null;
+  phone: string | null;
+  runs: number;
+  calls: number;
+  tokens: number;
+  cost_usd: number;
+  cost_cop: number | null;
+  /** Ejecuciones sin costo medido (anteriores a la migración 024): no cuentan como gratis. */
+  unmeasured: number;
+  source: DetailSource;
+  bookings: number;
+  per_booking_usd: number | null;
+  per_booking_cop: number | null;
+  last_at: string | null;
+}
+
+export type CostCustomers =
+  | { available: false }
+  | { available: true; days: number; usd_cop: number | null; items: CostCustomerRow[]; truncated: boolean };
+
+export interface CostRun {
+  id: string;
+  started_at: string | null;
+  seconds: number | null;
+  status: string;
+  model: string | null;
+  calls: number;
+  tokens: number | null;
+  cost_usd: number | null;
+  cost_cop: number | null;
+  source: DetailSource;
+  input: string | null;
+  output: string | null;
+}
+
+export interface CostBooking {
+  id: string;
+  service: string | null;
+  status: string;
+  price_cop: number | null;
+  created_at: string | null;
+  start_at: string | null;
+  /** Ejecuciones del agente que hicieron falta para llegar a esta cita. */
+  runs: number;
+  unmeasured: number;
+  tokens: number;
+  cost_usd: number;
+  cost_cop: number | null;
+}
+
+export type CostCustomerDetail =
+  | { available: false }
+  | {
+      available: true;
+      customer: { id: string; name: string | null; phone: string | null };
+      /** Nombre del hilo en LangSmith («Negocio | Teléfono»). */
+      thread: string;
+      usd_cop: number | null;
+      totals: {
+        runs: number; cost_usd: number; cost_cop: number | null; unmeasured: number;
+        without_booking_usd: number; without_booking_runs: number;
+      };
+      appointments: CostBooking[];
+      runs: CostRun[];
+      truncated: boolean;
+    };

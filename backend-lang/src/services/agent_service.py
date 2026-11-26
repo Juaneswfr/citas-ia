@@ -130,6 +130,7 @@ class AgentService:
                 await agent_guard.pause_agent(db, conversation, loop_detail)
         if loop_detail:
             await AgentService._hand_off(conversation)
+            await agent_guard.set_status(conversation["id"], "needs_human")
             return None
 
         # Crear registro agent_run (Principio V)
@@ -164,8 +165,9 @@ class AgentService:
             if usage.get("calls"):
                 async with AsyncSessionLocal() as db:
                     await billing_service.record_usage(
-                        db, workspace_id, usage.get("input", 0), usage.get("output", 0), usage["calls"])
+                        db, workspace_id, usage.get("input", 0), usage.get("output", 0), usage["calls"], usage.get("model"))
                 await AgentService._save_run_usage(run_id, usage)
+                await AgentService._save_run_model(run_id, usage.get("model"))
             output = {
                 "reply_text": res["reply_text"],
                 "action_type": "create_appointment" if res["booked"] else "noop",
@@ -204,6 +206,10 @@ class AgentService:
                         content=reply,
                         provider_message_id=sent.message_id or None,
                     )
+                    if res["booked"]:
+                        await agent_guard.set_status(conversation["id"], "booked")
+                    elif agent_error:
+                        await agent_guard.set_status(conversation["id"], "needs_human")
 
             # Actualizar agent_run (error + alerta si el LLM falló, tras enviar el fallback honesto)
             if run_id:
@@ -236,12 +242,13 @@ class AgentService:
         except Exception as e:
             log.error("[agent] error en run | conv=%s | err=%s", conversation["id"], e, exc_info=True)
 
-            if run_id:
+            try:
                 async with AsyncSessionLocal() as db:
-                    await db.execute(
-                        text("UPDATE agent_runs SET status='error', ended_at=:ended_at WHERE id=:run_id"),
-                        {"ended_at": datetime.now(timezone.utc), "run_id": run_id},
-                    )
+                    if run_id:
+                        await db.execute(
+                            text("UPDATE agent_runs SET status='error', ended_at=:ended_at WHERE id=:run_id"),
+                            {"ended_at": datetime.now(timezone.utc), "run_id": run_id},
+                        )
                     await db.execute(
                         text("""
                         INSERT INTO agent_alerts (workspace_id, conversation_id, severity, reason, resolved)
@@ -254,7 +261,12 @@ class AgentService:
                         },
                     )
                     await db.commit()
+            except Exception as exc:
+                log.warning("[agent] no se pudo registrar la alerta | conv=%s | err=%s", conversation["id"], type(exc).__name__)
 
+            # Nunca dejar al cliente en silencio: aviso corto y la conversación pasa al equipo.
+            await AgentService._hand_off(conversation, agent_guard.TECH_FALLBACK)
+            await agent_guard.set_status(conversation["id"], "needs_human")
             return None
 
     @staticmethod
@@ -267,15 +279,28 @@ class AgentService:
             async with AsyncSessionLocal() as db:
                 await db.execute(
                     text("UPDATE agent_runs SET input_tokens = :i, output_tokens = :o, llm_calls = :n, cost_usd = :c WHERE id = :id"),
-                    {"i": i, "o": o, "n": int(usage.get("calls", 0)), "c": billing_service.ai_cost_usd(i, o), "id": run_id},
+                    {"i": i, "o": o, "n": int(usage.get("calls", 0)), "c": billing_service.ai_cost_usd(i, o, usage.get("model")), "id": run_id},
                 )
                 await db.commit()
         except Exception as exc:
             log.warning("[agent] no se pudo guardar el costo de la ejecución | run=%s | err=%s", run_id, type(exc).__name__)
 
     @staticmethod
-    async def _hand_off(conversation: dict) -> None:
+    async def _save_run_model(run_id, model: Optional[str]) -> None:
+        """Con qué modelo respondió la ejecución (migración 027). Aparte del costo: sin la 027 solo falta este dato."""
+        if not run_id or not model:
+            return
+        try:
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("UPDATE agent_runs SET model = :m WHERE id = :id"), {"m": model[:80], "id": run_id})
+                await db.commit()
+        except Exception as exc:
+            log.debug("[agent] sin columna de modelo (¿falta la migración 027?) | err=%s", type(exc).__name__)
+
+    @staticmethod
+    async def _hand_off(conversation: dict, message: Optional[str] = None) -> None:
         """Le dice al cliente que una persona le escribirá. Nunca lanza: la pausa ya quedó guardada."""
+        message = message or agent_guard.HANDOFF
         try:
             context = await AgentService._build_context(conversation["workspace_id"], conversation)
             phone = context.get("customer_phone")
@@ -284,7 +309,7 @@ class AgentService:
             from services.whatsapp_service import WhatsAppService
             from services.conversation_service import ConversationService
             sent = await WhatsAppService.send_text(
-                to=phone, text=agent_guard.HANDOFF,
+                to=phone, text=message,
                 phone_number_id=context.get("channel", {}).get("phone_number_id"),
                 provider=context.get("channel", {}).get("provider"),
             )
@@ -292,7 +317,7 @@ class AgentService:
                 await ConversationService.save_message(
                     conversation_id=conversation["id"], workspace_id=conversation["workspace_id"],
                     channel_id=conversation.get("channel_id"), customer_id=conversation.get("customer_id"),
-                    direction="outbound", sender_type="system", content=agent_guard.HANDOFF,
+                    direction="outbound", sender_type="system", content=message,
                     provider_message_id=sent.message_id or None,
                 )
         except Exception as exc:
@@ -323,6 +348,7 @@ class AgentService:
                 channel = dict(ch) if ch else None
 
             customer_phone = None
+            customer_name = None
             if conversation.get("customer_id"):
                 cust = (await db.execute(
                     text("SELECT phone,name FROM customers WHERE id=:customer_id"),
@@ -330,6 +356,7 @@ class AgentService:
                 )).mappings().fetchone()
                 if cust:
                     customer_phone = cust["phone"]
+                    customer_name = cust["name"]
 
         return {
             "workspace_id": workspace_id,
@@ -338,6 +365,7 @@ class AgentService:
             "conversation_id": conversation["id"],
             "customer_id": conversation.get("customer_id"),
             "customer_phone": customer_phone,
+            "customer_name": customer_name,
             "channel_id": conversation.get("channel_id"),
             "channel": channel or {},
         }

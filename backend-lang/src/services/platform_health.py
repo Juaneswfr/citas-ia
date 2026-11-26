@@ -203,6 +203,48 @@ async def activity(db: AsyncSession) -> dict:
     return {**dict(totals), "recent_errors": [{**dict(r), "id": str(r["id"])} for r in alerts]}
 
 
+def _kapso_cycle(today, cycle_day: int = 27):
+    """Ciclo de Kapso que contiene `today`: del día `cycle_day` de un mes al mismo día del siguiente."""
+    from datetime import date
+    day = cycle_day
+
+    day = min(max(int(day), 1), 28)
+
+    def at(y: int, m: int) -> date:
+        y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+        return date(y, m, day)
+
+    start = at(today.year, today.month) if today.day >= day else at(today.year, today.month - 1)
+    end = at(start.year, start.month + 1)
+    return start, end
+
+
+async def kapso_usage(db: AsyncSession) -> dict:
+    """Uso de Kapso del ciclo. ES UNA ESTIMACIÓN: Kapso no publica su uso por API, así que se cuentan los
+    mensajes (recibidos + enviados) que Hilo guardó; lo exacto (funciones, transcripción, logs) está en su panel."""
+    from datetime import date
+    from services import billing_service
+    cfg = await billing_service.get_settings(db)
+    start, end = _kapso_cycle(date.today(), int(cfg["kapso_cycle_day"]))
+    msgs = (await db.execute(
+        text("SELECT count(*) FROM messages WHERE created_at >= :s AND created_at < :e"),
+        {"s": start, "e": end},
+    )).scalar_one()
+    numbers = (await db.execute(
+        text("SELECT count(*) FROM channels WHERE status = 'active' AND provider = 'kapso' "
+             "AND phone_number_id IS DISTINCT FROM :sb"),
+        {"sb": get_settings().kapso_sandbox_phone_number_id},
+    )).scalar_one()
+    included = int(cfg["kapso_messages_included"])
+    return {
+        "estimated": True,
+        "cycle_start": start.isoformat(), "cycle_end": end.isoformat(),
+        "messages_used": int(msgs), "messages_included": included,
+        "numbers_used": int(numbers), "numbers_included": int(cfg["kapso_numbers_included"]),
+        "dashboard_url": KAPSO_DASHBOARD,
+    }
+
+
 async def health(db: AsyncSession) -> dict:
     """Diagnóstico completo para la pestaña «Estado» del panel de plataforma."""
     anthropic_check = await check_anthropic()
@@ -211,4 +253,13 @@ async def health(db: AsyncSession) -> dict:
         "checks": [anthropic_check, kapso_check, check_kapso_credits()],
         "numbers": numbers,
         "activity": await activity(db),
+        "kapso_usage": await _safe_usage(db),
     }
+
+
+async def _safe_usage(db: AsyncSession):
+    try:
+        return await kapso_usage(db)
+    except Exception as exc:  # el diagnóstico nunca debe caer por una tarjeta de uso
+        log.warning("[health] no se pudo calcular el uso de Kapso: %s", type(exc).__name__)
+        return None

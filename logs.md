@@ -1,11 +1,58 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-26]
+**Corregido — prompt del agente reordenado para que la caché del proveedor sirva**
+- appointment_agent.py (`_SYSTEM`) — lo fijo (rol, flujo, reglas, alcance, formato) va primero; lo que cambia (servicios, quienes atienden, citas del cliente y la hora actual) va al final. Antes «Ahora mismo es …» estaba en la segunda línea y cambiaba cada minuto, así que ningún prefijo se podía cachear. Con prefijo estable, la entrada en caché cuesta una fracción en Gemini y DeepSeek (Anthropic exige un mínimo de tokens mayor al del prompt, así que ahí probablemente no aplica). Texto de las reglas sin cambios, salvo «arriba» → «al final».
+- tests/test_conversation_flow.py — el prefijo del prompt no depende de los datos variables.
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
 **Corregido — migración de LangSmith `list_runs` (`POST /runs/query`, se apaga el 2027-01-31) a `client.runs.query`**
 - langsmith_costs.py — `_fetch` y `ping` son asíncronos (sin `asyncio.to_thread`), resuelven el UUID del proyecto con `aread_project` y consultan `runs.query(project_ids, is_root, run_type="LLM", min/max_start_time, filter=has(tags,"citas"), selects en mayúsculas, page_size=1000)`. Cada llamada al modelo es una raíz con costo propio: no se consultan trazas. Comprobado con una consulta real de solo lectura.
 - pyproject.toml/uv.lock — `langsmith>=0.10.15` declarado (instalada 0.16.2).
 - tests/test_langsmith_costs.py — `FakeClient` imita `aread_project` y `runs.query`.
 - CLAUDE.md — nota de LangSmith actualizada.
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
+**Agregado — detalle de costos de IA por cliente, ejecución y cita (Zumit Manager › Costos)**
+- services/billing_cost_detail.py (nuevo) — `customers` (clientes de un negocio por costo de IA) y `customer` (cada ejecución del agente con modelo, tokens y costo, y lo que costó LLEGAR a cada cita del asistente). Costo = real de LangSmith si ya se sincronizó, si no estimación; una ejecución sin medir (anterior a la 024) se marca «sin medir», nunca gratis. La regla de «costo de llegar a una cita» es la de `billing_insights.ai_cost_per_appointment` (ejecuciones desde la cita anterior del asistente). `thread` devuelve el mismo nombre que LangSmith («Negocio | Teléfono») para buscarlo allí.
+- routes/admin_billing.py — `GET /zmanager/billing/costs/workspaces/{wid}/customers?days=` y `…/customers/{cid}`.
+- migrations/027_agent_run_model.sql (nueva, PENDIENTE de aplicar) + agent_service `_save_run_model` — modelo que respondió cada ejecución (Haiku/Gemini). Sin la 027 el detalle muestra «sin registrar» y todo lo demás sigue igual.
+- front: components/admin/CostDetailDialog.tsx (nuevo), CostsTab.tsx («Ver por cliente» bajo cada negocio), hooks/use-billing.ts, lib/api/billing.ts, lib/types/billing.ts.
+- Probado en solo lectura contra la BD del `.env`: la cita de las 8 pm de la prueba costó 7 ejecuciones, US$0,0228 (~78 COP).
+- tests/test_cost_detail.py — reparto de ejecuciones entre citas, sin medir, origen del costo, nombre del hilo.
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
+**Agregado — modelo del agente configurable (Gemini) con respaldo a Haiku**
+- appointment_agent.py — `AGENT_MODEL` (env; por defecto igual a `MODEL`, o sea Haiku): `google_genai:gemini-3.5-flash-lite` pasa el chat a Gemini. `MODEL` sigue siendo Anthropic para el lector de comprobantes (visión) y el chequeo de la clave. Si el modelo principal falla y aún no se creó/movió/canceló nada, se reintenta UNA vez con Haiku. `_reply_text` lee el texto aunque Gemini mande bloques.
+- billing_service.py — `AI_RATES`/`ai_rates`: tarifa estimada por modelo (Gemini 3.5 Flash-Lite 0,30/2,50 USD por millón; Haiku 1/5; desconocido = Haiku). `ai_cost_usd` y `record_usage` reciben el modelo; `agent_service` lo pasa. LangSmith (`langsmith_costs`) sigue estimando con Haiku solo cuando LangSmith no trae costo.
+- pyproject.toml/uv.lock — `langchain-google-genai` (subió también langchain-core y langsmith; suite verde).
+- Requiere `GOOGLE_API_KEY` en backend-lang/.env (clave de Gemini API; no es la de OAuth de Calendar). Facturación activa en el proyecto de Google. Para activar: `AGENT_MODEL=google_genai:gemini-3.5-flash-lite`.
+- tests/test_conversation_flow.py — tarifa por modelo y texto de respuesta con bloques.
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
+**Corregido — hilo de LangSmith identificable; Corregido — el agente pedía confirmar sin consultar disponibilidad**
+- appointment_agent.py — `_thread_id`: el hilo es «Negocio | Teléfono» (sin id de conversación ni nombre del cliente: así se monitorea por número y por negocio, y cada turno es un trace dentro del hilo). Metadatos `workspace_name`, `customer_name` y `turn`. Los hilos anteriores conservan el id viejo.
+- appointment_agent.py — el run ya no se llama «ChatAnthropic»: `_chat_name` lo nombra «573243273969 | Chat» y «… | Chat 2», «… | Chat 3» para las llamadas siguientes del mismo turno (tras una herramienta). El número del turno queda en el metadato `turn`.
+- agent_service.py — `_build_context` entrega `customer_name`.
+- appointment_agent.py (`_SYSTEM`) — consultar_disponibilidad ANTES de pedir «¿confirmamos?» (en el trace se consultó solo después del «Si»).
+- tests/test_conversation_flow.py — formato del hilo y regla de consultar antes de confirmar.
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
+**Corregido — hilo de LangSmith identificable; Corregido — el agente pedía confirmar sin consultar disponibilidad**
+- appointment_agent.py — `thread_id` ahora es «Negocio | Cliente | teléfono-conversación» (sin nombre de cliente se omite ese tramo); metadatos `workspace_name` y `customer_name`. Los hilos anteriores conservan el id viejo. Si el cliente cambia de nombre a media conversación, el hilo se parte en dos.
+- agent_service.py — `_build_context` entrega `customer_name`.
+- appointment_agent.py (`_SYSTEM`) — consultar_disponibilidad ANTES de pedir «¿confirmamos?».
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
+**Corregido — agente que no contestaba o repetía el día; Agregado — estado de conversación, watchdog y uso de Kapso**
+- appointment_agent.py (`_SYSTEM`) — si el cliente da solo una hora («8 pm», «8ppm») y aún no pasó, se asume HOY y no se pregunta el día; nunca repetir una pregunta ya respondida.
+- inbound_message_service.py — candado por conversación: mensajes seguidos del cliente se atienden en fila, no en paralelo. Memoria + `pg_advisory_xact_lock` de Postgres, porque producción corre uvicorn con 2 workers (un candado solo en memoria no los serializa); si la BD falla sigue sin el segundo. tests/test_conversation_lock.py.
+- agent_service.py — si el agente falla fuera del LLM ya no hay silencio: alerta (también sin `run_id`), aviso corto al cliente (`TECH_FALLBACK`) y conversación a `needs_human`.
+- migrations/026_conversation_state.sql (nueva, PENDIENTE de aplicar) — `conversations.state`: `awaiting_agent`, `awaiting_customer`, `booked`, `needs_human`. Se escribe en `conversation_service.save_message` (SAVEPOINT: sin la migración no rompe) y `agent_guard.set_status`. No se tocó `status` porque `find_or_create` solo reutiliza `open|active`.
+- Diagnóstico del mensaje perdido (cliente de prueba, 26/11 13:22): el `agent_runs` de «Quiero agendar… 8 pm» quedó en `running`, sin fin, sin alerta ni error; los demás runs terminaron en 2-9 s. Es decir, el proceso se detuvo a media ejecución (reinicio/deploy), no fue el modelo. El watchdog ahora cierra además los runs `running` de más de 3 min (`cancelled`).
+- workers/unanswered_worker.py (nuevo) + api/main.py — cada minuto reintenta UNA vez los chats en `awaiting_agent` de 3 a 30 min; si siguen sin respuesta → `needs_human` + alerta `warning`.
+- platform_health.py, front HealthTab.tsx/admin.ts — tarjeta «Uso de Kapso (estimado)»: mensajes del ciclo contra los incluidos y números usados. Los topes NO van en el `.env`: son `platform_settings` (`kapso_messages_included` 2000, `kapso_numbers_included` 1, `kapso_cycle_day` 27; billing_service.DEFAULTS, sin migración) y se editan en Zumit Manager › Costos › «Datos para calcular los costos» (CostsTab, vía `kapso_plan` del payload de `billing_costs.costs`). Así un cambio de membresía de Kapso no pide tocar el servidor. Es estimación: no se encontró API de uso en Kapso (funciones, transcripción y logs siguen en su panel).
+- tests/test_conversation_flow.py — ciclo de Kapso y regla de «hoy» en el prompt.
 
 ### [AGENTE: claude] [FECHA: 2026-11-26]
 **Agregado — correos con el diseño de la landing; Corregido — «Sesión expirada» al escribir mal la contraseña; Agregado — ojito en contraseñas**

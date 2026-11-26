@@ -182,4 +182,23 @@ class ConversationService:
             )
             await session.commit()
 
+            # Estado visible de la conversación (migración 026). En SAVEPOINT: sin la migración no rompe el guardado.
+            try:
+                async with session.begin_nested():
+                    await session.execute(
+                        text("""
+                        UPDATE conversations SET state = CASE
+                            WHEN :direction = 'inbound' AND :sender_type = 'customer'
+                                THEN CASE WHEN state = 'needs_human' THEN state ELSE 'awaiting_agent' END
+                            WHEN :direction = 'outbound'
+                                THEN CASE WHEN state IN ('needs_human', 'booked') THEN state ELSE 'awaiting_customer' END
+                            ELSE state END
+                        WHERE id = :conversation_id
+                        """),
+                        {"direction": direction, "sender_type": sender_type, "conversation_id": conversation_id},
+                    )
+                await session.commit()
+            except Exception as exc:
+                log.warning("[conv] sin estado de conversación (¿migración 026?): %s", type(exc).__name__)
+
             return dict(row)

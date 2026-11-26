@@ -13,6 +13,7 @@ import { fmtCOP } from '@/lib/hilo-data';
 import type { CostRow, CostSource, CostsOverview, MetaCategory } from '@/lib/types/billing';
 import { shortDate, timeAgo } from './labels';
 import { ToneTag } from './ui';
+import { CostDetailDialog } from './CostDetailDialog';
 import { WorkspaceDialog } from './WorkspaceDialog';
 import styles from './Admin.module.css';
 import bill from './Billing.module.css';
@@ -96,6 +97,18 @@ function Inputs({ data }: { data: CostsOverview }) {
                   pending={setting.isPending}
                   hint="Kapso, servidor y lo demás que pagas igual. Se reparte en partes iguales entre los negocios que pagan. Déjalo en 0 si no lo quieres contar."
                   onSave={(v) => setting.mutate({ key: 'fixed_costs_cop_month', value: Math.round(v) })} />
+        <ValueRow key={`kapso-msgs-${data.kapso_plan.messages_included}`} label="Kapso: mensajes incluidos" unit="mensajes por ciclo" step="1"
+                  value={data.kapso_plan.messages_included} pending={setting.isPending}
+                  hint="Tope de tu plan de Kapso. Cámbialo cuando cambies de membresía: lo usa la barra «Uso de Kapso» de Estado."
+                  onSave={(v) => setting.mutate({ key: 'kapso_messages_included', value: Math.round(v) })} />
+        <ValueRow key={`kapso-nums-${data.kapso_plan.numbers_included}`} label="Kapso: números incluidos" unit="números" step="1"
+                  value={data.kapso_plan.numbers_included} pending={setting.isPending}
+                  hint="Cuántos números de WhatsApp incluye tu plan de Kapso."
+                  onSave={(v) => setting.mutate({ key: 'kapso_numbers_included', value: Math.round(v) })} />
+        <ValueRow key={`kapso-day-${data.kapso_plan.cycle_day}`} label="Kapso: día en que inicia el ciclo" unit="día del mes (1-28)" step="1"
+                  value={data.kapso_plan.cycle_day} pending={setting.isPending}
+                  hint="Al cambiar de plan, Kapso puede reiniciar el ciclo en esa fecha: míralo en su panel."
+                  onSave={(v) => setting.mutate({ key: 'kapso_cycle_day', value: Math.min(28, Math.max(1, Math.round(v))) })} />
       </div>
     </section>
   );
@@ -154,7 +167,7 @@ function Cell({ main, sub, tag }: { main: ReactNode; sub?: ReactNode; tag?: Reac
   );
 }
 
-function CostTable({ items, onOpen }: { items: CostRow[]; onOpen: (id: string, name: string) => void }) {
+function CostTable({ items, onOpen, onDetail }: { items: CostRow[]; onOpen: (id: string, name: string) => void; onDetail: (id: string, name: string) => void }) {
   return (
     <div className={bill.table__scroll}>
       <table className={bill.table}>
@@ -175,6 +188,9 @@ function CostTable({ items, onOpen }: { items: CostRow[]; onOpen: (id: string, n
                   <span className={bill.rows__sub}>
                     {r.plan ?? 'Sin plan'}{!r.paying && ' · no paga'} · {r.bookings} cita(s)
                   </span>
+                  <button type="button" className={`${bill.rows__sub} ${bill['rows__name--link']}`} onClick={() => onDetail(r.workspace_id, r.workspace)}>
+                    Ver por cliente
+                  </button>
                 </td>
                 <Cell main={pesos(r.revenue_cop)} />
                 <Cell main={usd(r.ai.cost_usd)} sub={r.ai.cost_cop !== null ? fmtCOP(r.ai.cost_cop) : undefined}
@@ -200,7 +216,7 @@ function CostTable({ items, onOpen }: { items: CostRow[]; onOpen: (id: string, n
   );
 }
 
-function Body({ days, onOpen }: { days: number; onOpen: (id: string, name: string) => void }) {
+function Body({ days, onOpen, onDetail }: { days: number; onOpen: (id: string, name: string) => void; onDetail: (id: string, name: string) => void }) {
   const costs = useCosts(days);
   const data = costs.data;
   const t = data?.totals;
@@ -238,7 +254,7 @@ function Body({ days, onOpen }: { days: number; onOpen: (id: string, name: strin
             </p>
             {data.items.length === 0
               ? <p className={styles.panel__empty}>Aún no hay consumo ni ingresos en este periodo.</p>
-              : <CostTable items={data.items} onOpen={onOpen} />}
+              : <CostTable items={data.items} onOpen={onOpen} onDetail={onDetail} />}
           </section>
 
           <Inputs data={data} />
@@ -252,14 +268,16 @@ function Body({ days, onOpen }: { days: number; onOpen: (id: string, name: strin
 export function CostsTab() {
   const [days, setDays] = useState(30);
   const [open, setOpen] = useState<{ id: string; name: string } | null>(null);
+  const [detail, setDetail] = useState<{ id: string; name: string } | null>(null);
   return (
     <>
       <div className={cartera.toolbar}>
         <p className={cartera.hint}>Costo de IA, WhatsApp y costos fijos contra lo que cobras.</p>
         <Segmented size="sm" options={PERIODS} value={String(days)} onChange={(v) => setDays(Number(v))} />
       </div>
-      <Body days={days} onOpen={(id, name) => setOpen({ id, name })} />
+      <Body days={days} onOpen={(id, name) => setOpen({ id, name })} onDetail={(id, name) => setDetail({ id, name })} />
       {open && <WorkspaceDialog workspaceId={open.id} name={open.name} onClose={() => setOpen(null)} />}
+      {detail && <CostDetailDialog workspaceId={detail.id} name={detail.name} days={days} onClose={() => setDetail(null)} />}
     </>
   );
 }

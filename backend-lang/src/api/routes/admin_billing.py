@@ -20,7 +20,7 @@ from core.database import get_db
 from core.security import require_platform_admin
 from integrations import langsmith_costs
 from services import (
-    billing_cartera, billing_costs, billing_documents, billing_insights, billing_metrics, billing_plans, billing_service,
+    billing_cartera, billing_cost_detail, billing_costs, billing_documents, billing_insights, billing_metrics, billing_plans, billing_service,
     subscription_service as subs,
 )
 from services.audit_service import AuditService
@@ -420,6 +420,21 @@ async def get_costs(days: int = Query(30, ge=1, le=90), db: AsyncSession = Depen
 @router.get("/insights", summary="Análisis semana a semana: ingreso vs costo, citas, plantillas y precipicio de precio")
 async def get_insights(weeks: int = Query(12, ge=4, le=26), db: AsyncSession = Depends(get_db)):
     return await billing_insights.insights(db, weeks)
+
+
+@router.get("/costs/workspaces/{workspace_id}/customers",
+            summary="Costo de IA de cada cliente de un negocio (los que más cuestan primero)")
+async def get_cost_customers(workspace_id: str, days: int = Query(30, ge=1, le=90), db: AsyncSession = Depends(get_db)):
+    return await billing_cost_detail.customers(db, workspace_id, days)
+
+
+@router.get("/costs/workspaces/{workspace_id}/customers/{customer_id}",
+            summary="Cada ejecución del agente de un cliente, lo que costó y lo que costó llegar a cada cita")
+async def get_cost_customer(workspace_id: str, customer_id: str, db: AsyncSession = Depends(get_db)):
+    out = await billing_cost_detail.customer(db, workspace_id, customer_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    return out
 
 
 @router.post("/costs/sync", summary="Traer ahora el costo de LangSmith (también corre solo cada hora)")

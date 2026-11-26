@@ -222,6 +222,9 @@ async def costs(db, days: int = 30, today: Optional[date] = None) -> dict:
     return {
         "days": days, "since": since, "until": today, "usd_cop": usd_cop, "usd_cop_day": fx["day"] if fx else None,
         "meta_rates": rates, "fixed_costs_cop_month": settings["fixed_costs_cop_month"],
+        "kapso_plan": {"messages_included": settings.get("kapso_messages_included", 2000),
+                       "numbers_included": settings.get("kapso_numbers_included", 1),
+                       "cycle_day": settings.get("kapso_cycle_day", 27)},
         "rates_missing": missing,
         "totals": {
             "revenue_cop": tot_rev, "cost_cop": tot_cost, "margin_cop": tot_margin,
