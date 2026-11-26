@@ -4,7 +4,7 @@
 
 # Zumit (agente: Hilo)
 
-La plataforma se llama **Zumit**; el agente conversacional se llama **Hilo**. Los identificadores técnicos (dominio `hilo.esjuanez.com`, plantillas `hilo_*_v1`, `sent_via='hilo'`, carpetas `hilo`) conservan el nombre antiguo.
+La plataforma se llama **Zumit**; el agente conversacional se llama **Hilo**. Los identificadores técnicos (plantillas `hilo_*_v1`, `sent_via='hilo'`, carpetas `hilo`) conservan el nombre antiguo.
 
 SaaS multi-tenant de citas por WhatsApp para cualquier negocio que atienda con cita: barberías, salones, spas, consultorios, veterinarias, etc. (ver «Tipos de negocio»).
 Backend FastAPI + LangGraph en `backend-lang/`, front TanStack Start en `front/`, datos en PostgreSQL (servidor propio, sin Supabase).
@@ -27,7 +27,7 @@ No tocar los Dockerfiles — son la configuración actual de producción.
 
 ## Producción (VPS)
 
-YA ESTAN CORRIENDO EN PRODUCCION https://hilo.esjuanez.com/
+YA ESTAN CORRIENDO EN PRODUCCION https://zumit.app/ (el dominio antiguo `hilo.esjuanez.com` sigue como alias en nginx solo durante la migración; retirarlo de `server_name` cuando Google, Meta y Kapso ya apunten a zumit.app)
 
 ```bash
 git pull && docker compose up --build -d
@@ -248,7 +248,7 @@ Onboarding: `POST /workspaces/{wid}/kapso/onboarding-link` → Embedded Signup �
 
 Número sandbox Kapso: **+56 9 2040 3095** — `phone_number_id = 597907523413541` (fijo, no cambia).
 
-1. Configurar en Kapso Dashboard: WhatsApp → Configurations → Sandbox WhatsApp → Webhooks → URL: `https://hilo.esjuanez.com/webhooks/kapso/sandbox`
+1. Configurar en Kapso Dashboard: WhatsApp → Configurations → Sandbox WhatsApp → Webhooks → URL: `https://zumit.app/webhooks/kapso/sandbox`
 2. Copiar el webhook secret auto-generado por Kapso al `backend-lang/.env` como `KAPSO_SANDBOX_WEBHOOK_SECRET`
 3. En la app: Settings → Sandbox de pruebas → ingresar número de WhatsApp → crear sesión → enviar código de activación
 4. Enviar mensajes al número sandbox para probar el agente
@@ -310,7 +310,7 @@ Qué agregan las últimas:
 - Flujo manual de Meta: diálogo OAuth con `state` firmado (`kind=signin_fb`) → intercambio **GET** del código por token (el `client_secret` solo vive en el servidor, `redirect_uri` idéntico al del diálogo) → `/me?fields=id,name,email`. Alcances `public_profile,email`: acceso estándar, **sin App Review**.
 - Misma lógica que Google (`_oauth_signin` en `routes/auth.py`): cuenta nueva = usuario sin contraseña (`users.facebook_sub`) + negocio «Negocio de {nombre}» + dueño, **sin calendario** (Facebook no lo da; se conecta en el onboarding). Un correo ya registrado (contraseña u otro proveedor) **no se enlaza solo** (`?auth_error=exists`). Sin correo (la persona lo negó o la cuenta no tiene) → `?auth_error=no_email`; si cancela, `denied`. El regreso reutiliza el ticket y `POST /auth/google/ticket`.
 - `GRAPH_VERSION` (hoy `v25.0`) está en `facebook_login.py`: Meta retira cada versión ~2 años después; revisar la tabla de versiones antes de que caduque (v25.0: jul-2028).
-- Variable nueva en `backend-lang/.env`: `FACEBOOK_REDIRECT_URI=https://hilo.esjuanez.com/auth/facebook/callback` (debe estar en «URI de redireccionamiento de OAuth válidos» de Facebook Login). Requiere la migración 021.
+- Variable nueva en `backend-lang/.env`: `FACEBOOK_REDIRECT_URI=https://zumit.app/auth/facebook/callback` (debe estar en «URI de redireccionamiento de OAuth válidos» de Facebook Login). Requiere la migración 021.
 - En el panel de Meta: app en modo Live, URL de la política de privacidad (`/politicas-de-privacidad`, que ya explica cómo pedir la eliminación de datos) y esa misma URL como instrucciones de eliminación de datos. Meta no obliga a un callback automático si hay instrucciones.
 
 ## Buscador, historial y dashboard

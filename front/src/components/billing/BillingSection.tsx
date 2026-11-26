@@ -9,6 +9,7 @@ import { useBillingProfile, useBillingSummary, useCancelSubscription, useSaveBil
 import { meterTone, planNotice, trialDaysLeft } from '@/lib/billing-notices';
 import { fmtCOP } from '@/lib/hilo-data';
 import type { BillingProfile, BillingSummary, InvoiceStatus } from '@/lib/types/billing';
+import { RequestActivationDialog } from './RequestActivationDialog';
 import { RequestAppointmentsDialog } from './RequestAppointmentsDialog';
 import styles from './Billing.module.css';
 
@@ -82,6 +83,7 @@ function ProfileForm({ workspaceId }: { workspaceId: string }) {
 function Body({ workspaceId, summary }: { workspaceId: string; summary: BillingSummary }) {
   const cancel = useCancelSubscription(workspaceId);
   const [requesting, setRequesting] = useState(false);
+  const [activating, setActivating] = useState(false);
   const notice = planNotice(summary);
   const status = STATUS_LABEL[summary.status] ?? { text: summary.status, tone: 'warn' as const };
   const quota = summary.appointments;
@@ -89,6 +91,11 @@ function Body({ workspaceId, summary }: { workspaceId: string; summary: BillingS
   const daysLeft = trialDaysLeft(summary);
   const discounted = (summary.discount_cycles_remaining ?? 0) > 0;
   const plan = summary.plan!;
+  // Sin plan pagado (prueba o pausa) se elige plan; con plan, «Confirmar pago» sale mientras haya facturas sin pagar.
+  const needsPlan = summary.status === 'trial' || summary.status === 'paused';
+  const pendingCop = (summary.invoices ?? [])
+    .filter((inv) => inv.status === 'pending' || inv.status === 'overdue')
+    .reduce((sum, inv) => sum + inv.amount_cop, 0);
 
   return (
     <div className={styles.plan}>
@@ -134,6 +141,15 @@ function Body({ workspaceId, summary }: { workspaceId: string; summary: BillingS
           <Button size="sm" variant="secondary" onClick={() => setRequesting(true)}>Pedir más citas</Button>
         </div>
       )}
+      {(needsPlan || pendingCop > 0) && (
+        <div>
+          <Button size="sm" onClick={() => setActivating(true)}>
+            {needsPlan ? 'Activar mi plan' : 'Confirmar pago'}
+          </Button>
+          {!needsPlan && <span className={styles.plan__note}> Tienes {fmtCOP(pendingCop)} pendientes de pago.</span>}
+        </div>
+      )}
+      {activating && <RequestActivationDialog needsPlan={needsPlan} pendingCop={pendingCop} onClose={() => setActivating(false)} />}
       <p className={styles.plan__note}>
         ¿Necesitas más citas? Pídelas aquí: se suman hoy y queda un saldo pendiente de pago. Para cambiar de plan, escríbenos y lo dejamos listo el mismo día.
         {summary.pending_plan ? ` Tu cambio a ${summary.pending_plan_name ?? summary.pending_plan} entra en el siguiente ciclo.` : ''}

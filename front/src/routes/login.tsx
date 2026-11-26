@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { AuthLegal } from "@/components/auth/AuthLegal";
 import { AuthBanners } from "@/components/auth/AuthBanners";
 import { useAuth } from "@/lib/auth-context";
 
@@ -15,6 +16,7 @@ const AUTH_ERRORS: Record<string, string> = {
   unverified: 'Tu correo de Google no está verificado, así que no podemos usarlo.',
   no_email: 'Tu cuenta de Facebook no comparte un correo con nosotros. Usa otro método o crea la cuenta con tu correo.',
   exists: 'Ya existe una cuenta con ese correo. Entra con tu contraseña.',
+  exists_other: 'Ya existe una cuenta con ese correo creada con otro método (Google o Facebook). Entra con ese mismo método.',
   blocked: 'Esta cuenta está bloqueada. Escríbenos si crees que es un error.',
   suspended: 'Este negocio está suspendido. Escríbenos para reactivarlo.',
   server: 'Algo salió mal al entrar. Inténtalo de nuevo en un momento.',
@@ -26,7 +28,7 @@ function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | null>(null);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | 'ticket' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const anyLoading = loading || !!oauthLoading;
@@ -42,7 +44,7 @@ function LoginPage() {
     // Se limpia la URL ya: el ticket no debe quedar en el historial ni en un enlace copiado.
     window.history.replaceState(null, '', window.location.pathname);
     if (reason) { setError(AUTH_ERRORS[reason] ?? AUTH_ERRORS.server); return; }
-    setOauthLoading('google');
+    setOauthLoading('ticket'); // no se sabe por cuál proveedor volvió: se bloquean los botones sin girar ninguno
     completeOAuthSignIn(ticket!)
       .then(({ isNew }) => navigate({ to: isNew ? '/onboarding' : '/dashboard' }))
       .catch((err) => { setError((err as Error).message ?? AUTH_ERRORS.server); setOauthLoading(null); });
@@ -112,6 +114,7 @@ function LoginPage() {
           <div className="auth-card">
             <h1 className="auth-h">Bienvenido de nuevo</h1>
             <p className="auth-sub">Inicia sesión para entrar al panel de tu negocio.</p>
+            {oauthLoading === 'ticket' && <p className="auth-sub" role="status">Entrando a tu cuenta…</p>}
 
             {/* Google */}
             <button
@@ -208,6 +211,7 @@ function LoginPage() {
               ¿No tienes cuenta?{' '}
               <Link to="/signup">Crea una gratis</Link>
             </div>
+            <AuthLegal action="entrar" />
           </div>
         </div>
         <div />

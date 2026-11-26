@@ -240,8 +240,7 @@ const BLOCKS: Block[] = [
     body: (
       <ul>
         <li>El cupo es de 30 negocios. Es miembro Zumit Member el Cliente que se registre y active su plan dentro del cupo.</li>
-        <li>Recibe, sin costo adicional: valor real del plan congelado, insignia Member, canal directo con Zumit, entrada anticipada a nuevas etapas y el kit de miembro.</li>
-        <li>El congelamiento cubre el valor real del plan. No cubre citas adicionales, profesionales adicionales ni mensajes de Meta.</li>
+        <li>Recibe, sin costo adicional: insignia Member, canal directo con Zumit, entrada anticipada a nuevas etapas y el kit de miembro.</li>
         <li>Pierde estos beneficios si incumple las Condiciones o cae en mora de más de 30 días.</li>
       </ul>
     ),

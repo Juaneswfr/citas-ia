@@ -44,16 +44,14 @@ class Settings(BaseSettings):
     graph_timeout: int = Field(default=90, alias="GRAPH_TIMEOUT")
 
     # ── Redis / Workers ────────────────────────────────────────────────────
-    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    redis_url: str = Field(default="", alias="REDIS_URL")
 
     # ── Frontend URL (para redirects OAuth) ───────────────────────────────
-    frontend_url: str = Field(default="https://hilo.esjuanez.com", alias="FRONTEND_URL")
+    frontend_url: str = Field(..., alias="FRONTEND_URL")
 
     # ── Resend (emails transaccionales) ───────────────────────────────────
     resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
-    resend_from_email: str = Field(
-        default="Zumit <noreply@hilo.esjuanez.com>", alias="RESEND_FROM_EMAIL"
-    )
+    resend_from_email: str = Field(..., alias="RESEND_FROM_EMAIL")
 
     # ── Kapso (proveedor WhatsApp) ─────────────────────────────────────────
     kapso_enabled: bool = Field(default=False, alias="KAPSO_ENABLED")
@@ -70,7 +68,7 @@ class Settings(BaseSettings):
     # Secreto del webhook de sandbox (auto-generado por Kapso al configurar el webhook en Sandbox WhatsApp).
     kapso_sandbox_webhook_secret: str = Field(default="", alias="KAPSO_SANDBOX_WEBHOOK_SECRET")
     # phone_number_id del número sandbox de Kapso (+56 9 2040 3095 en Meta).
-    kapso_sandbox_phone_number_id: str = Field(default="597907523413541", alias="KAPSO_SANDBOX_PHONE_NUMBER_ID")
+    kapso_sandbox_phone_number_id: str = Field(default="", alias="KAPSO_SANDBOX_PHONE_NUMBER_ID")
 
     @model_validator(mode="after")
     def _require_kapso_secrets(self):

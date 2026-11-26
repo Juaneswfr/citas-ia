@@ -19,7 +19,7 @@ type Slide = {
 };
 
 const SLIDES: Slide[] = [
-  { src: "/images/hero-1.jpg", alt: "Equipo mirando una sola agenda", focus60: true, pre: "Tú atiendes.", titleLogo: true, em: "agenda.", s1: "Tu agenda se llena sola. Por", s2: "tu mismo WhatsApp", s3: "." },
+  { src: "/images/hero-1.jpg", alt: "Equipo mirando una sola agenda", focus60: true, pre: "Tú atiendes.", titleLogo: true, em: "agenda.", s1: "Tu agenda se llena sola. Por", s2: "tu WhatsApp", s3: "." },
   { src: "/images/hero-2.jpg", alt: "Manicurista atendiendo a una clienta", pre: "Agenda con un", em: "mensaje.", s1: "Tu cliente escribe y", textLogo: true, s2: "te guarda el turno", s3: "." },
   { src: "/images/hero-3.jpg", alt: "Local con reloj en la pared", pre: "Sin", em: "esperas.", s1: "Cada mensaje se contesta al instante,", s2: "a cualquier hora", s3: "." },
   { src: "/images/hero-4.jpg", alt: "Zumit en el computador", pre: "Tu", em: "mismo", post: "número. Cero líos.", s1: "Sigues con", s2: "tu WhatsApp Business de siempre", s3: "." },

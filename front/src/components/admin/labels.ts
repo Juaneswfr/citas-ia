@@ -34,6 +34,7 @@ export const invoiceTone = (status: string): Tone => INVOICE_TONE[status] ?? 'ne
 
 const EVENT_LABEL: Record<string, string> = {
   trial_started: 'Empezó la prueba', trial_extended: 'Se extendió la prueba', activated: 'Activó su plan',
+  activation_requested: 'Pidió activar su plan',
   plan_changed: 'Cambió de plan', invoice_issued: 'Se generó un cobro', payment_registered: 'Pago registrado',
   past_due: 'Entró en mora', paused: 'Asistente pausado', reactivated: 'Asistente reactivado',
   cancel_requested: 'Pidió cancelar', cancel_reverted: 'Deshizo la cancelación', cancelled: 'Suscripción cancelada',

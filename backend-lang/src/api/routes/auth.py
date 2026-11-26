@@ -347,8 +347,9 @@ async def google_calendar_authorize_url(
     summary="Callback OAuth de Google Calendar",
 )
 async def google_oauth_callback(
-    code: str,
+    code: str = "",
     state: str = "",
+    error: str = "",
     db: AsyncSession = Depends(get_db),
 ):
     from fastapi.responses import RedirectResponse
@@ -359,7 +360,10 @@ async def google_oauth_callback(
 
     # El state viene firmado por /google/calendar/url: nadie puede fabricar uno para otro negocio.
     parsed = verify_state(settings.jwt_secret, state)
+    cancelled = bool(error) or not code  # la persona canceló o rechazó los permisos en Google
     if parsed and parsed.get("kind") == "signin":
+        if cancelled:
+            return RedirectResponse(url=f"{frontend}/login?auth_error=denied", status_code=302)
         return await _google_signin(code, db, settings)
     return_to = parsed.get("return_to", "onboarding") if parsed else "onboarding"
 
@@ -370,7 +374,7 @@ async def google_oauth_callback(
 
     workspace_id = (parsed or {}).get("workspace_id", "")
     member_id = (parsed or {}).get("member_id", "")
-    if not workspace_id or not member_id:
+    if cancelled or not workspace_id or not member_id:
         log.warning("[auth] callback de Google con state inválido, vencido o sin persona")
         return error_redirect()
 
@@ -464,6 +468,7 @@ async def _oauth_signin(db: AsyncSession, settings, provider: str, identity: dic
         row = (await db.execute(
             text(f"""
                 SELECT u.id, u.role, u.is_active, u.{col} AS provider_sub,
+                       (u.password_hash IS NOT NULL) AS has_password,
                        wm.id AS member_id, wm.workspace_id, w.is_active AS workspace_active
                 FROM users u
                 LEFT JOIN workspace_members wm ON wm.user_id = u.id AND wm.status = 'active'
@@ -478,7 +483,8 @@ async def _oauth_signin(db: AsyncSession, settings, provider: str, identity: dic
             if not row["is_active"]:
                 return fail("blocked")
             if row["provider_sub"] != identity["sub"]:
-                return fail("exists")  # cuenta con contraseña (o de otro proveedor / otra cuenta): no se enlaza sola
+                # No se enlaza sola. Con contraseña se le pide la contraseña; si no tiene, se creó con otro proveedor.
+                return fail("exists" if row.get("has_password", True) else "exists_other")
             if row["workspace_active"] is False and row["role"] != "super_admin":
                 return fail("suspended")
             user_id, workspace_id, role, is_new = str(row["id"]), str(row["workspace_id"] or ""), row["role"], False

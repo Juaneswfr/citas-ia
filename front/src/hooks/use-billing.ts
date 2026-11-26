@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { adminBillingService, billingService, listPlans } from '@/lib/api/billing';
 import { ApiError } from '@/lib/api/client';
-import type { ActivatePlanBody, BillingProfile, CarteraScope, Issuer, PlanChanges } from '@/lib/types/billing';
+import type { ActivatePlanBody, ActivationRequestBody, BillingProfile, CarteraScope, Issuer, PlanChanges } from '@/lib/types/billing';
 
 const errorDetail = (error: unknown, fallback: string) => (error instanceof ApiError ? error.detail : fallback);
 
@@ -181,6 +181,36 @@ export function useCartera(scope: CarteraScope) {
     queryKey: ['admin', 'billing', 'cartera', scope],
     queryFn: () => adminBillingService.getCartera(scope),
     staleTime: 30_000,
+  });
+}
+
+export function useActivationRequests() {
+  return useQuery({
+    queryKey: ['admin', 'billing', 'activation-requests'],
+    queryFn: () => adminBillingService.getActivationRequests(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+export function usePaymentInfo(workspaceId: string) {
+  return useQuery({
+    queryKey: ['billing', 'payment-info', workspaceId],
+    queryFn: () => billingService.getPaymentInfo(workspaceId),
+    enabled: !!workspaceId,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+/** El dueño avisa que quiere activar su plan (o que ya pagó). */
+export function useRequestActivation(workspaceId: string) {
+  return useMutation({
+    mutationFn: (body: ActivationRequestBody) => billingService.requestActivation(workspaceId, body),
+    onSuccess: (res) => toast.success(res.already_requested
+      ? 'Ya teníamos tu solicitud; la actualizamos. Te activamos apenas veamos el pago.'
+      : 'Listo, avisamos al equipo de Zumit. Te activamos apenas veamos el pago.'),
+    onError: (error) => toast.error(errorDetail(error, 'No se pudo enviar la solicitud.')),
   });
 }
 

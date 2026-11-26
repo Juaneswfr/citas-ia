@@ -1,5 +1,32 @@
 # Cambios por agente
 
+### [AGENTE: claude] [FECHA: 2026-11-26]
+**Corregido — dominio de producción pasa a zumit.app (hilo.esjuanez.com queda de alias temporal)**
+- nginx/nginx.conf — `server_name zumit.app www.zumit.app hilo.esjuanez.com`. Requiere `docker compose restart nginx`.
+- backend-lang/.env.example — `FACEBOOK_REDIRECT_URI` y `FRONTEND_URL` a zumit.app. `GOOGLE_REDIRECT_URI` no estaba en el ejemplo.
+- front/.env, front/.env.development — `VITE_API_URL` y comentarios a zumit.app.
+- CLAUDE.md — dominio, webhook sandbox y callback de Facebook.
+- Pendiente fuera del repo: DNS y SSL de zumit.app en Apache, `.env` del servidor, Google Cloud (redirect, dominios, Search Console, In production), Meta y Kapso.
+
+### [AGENTE: claude] [FECHA: 2026-11-24]
+**Agregado — «Quiero activar mi plan» (aviso de pago); Corregido — textos de landing y precio congelado**
+- subscription_service.py — `request_activation` (evento `activation_requested`, una abierta a la vez, solo `trial`/`paused`) y `list_activation_requests`. Sin migración: usa `billing_events`. No activa nada: lo sigue haciendo el super_admin.
+- routes/billing.py — `POST /billing/workspaces/{id}/request-activation?confirmed=true` (`workspace_owner`); envía correo a los super_admin (mejor esfuerzo). routes/admin_billing.py — `GET /zmanager/billing/activation-requests`.
+- front: botón y `RequestActivationDialog` en Ajustes › Plan; panel «Quieren activar su plan» arriba de Zumit Manager › Cobros; etiqueta en la línea de tiempo.
+- routes/billing.py — `GET /billing/workspaces/{id}/payment-info` (`workspace_owner`): solo `payment_instructions` y `phone` de `platform_issuer`.
+- front/RequestActivationDialog — ahora «Confirmar pago»: instrucciones, referencia sugerida (negocio + número) y botón que abre WhatsApp (`wa.me`) con el mensaje escrito (negocio, cliente, número, plan, valor). En Ajustes › Plan el botón sale en prueba/pausa («Activar mi plan») y mientras haya facturas pendientes o vencidas («Confirmar pago»).
+- tests/test_activation_request.py — 4 pruebas.
+- Landing: «tu WhatsApp» en Hero, Steps, Faq; Intro reescrito («plataforma con un agente de IA…»); quitado el beneficio de precio congelado de Founders y de las condiciones de pago (§17). `grant_founder` sigue siendo solo manual.
+
+### [AGENTE: claude] [FECHA: 2026-11-23]
+**Corregido — login y registro con Google/Facebook; quitados fallbacks de dominio**
+- routes/auth.py — el callback de Google ya no exige `code`: si la persona cancela (`?error=access_denied`) vuelve a `/login?auth_error=denied` (o `calendar_error=1` al conectar el calendario) en vez de un 422 crudo. Una cuenta existente sin contraseña (creada con otro proveedor) da `exists_other` en lugar de «entra con tu contraseña».
+- integrations/google_calendar.py — se exige que Google haya concedido el alcance de Calendar; sin él el intercambio falla (`oauth`) y no se guarda un calendario con un token inservible.
+- core/config.py — `FRONTEND_URL` y `RESEND_FROM_EMAIL` son obligatorias (antes caían a `hilo.esjuanez.com`); `KAPSO_SANDBOX_PHONE_NUMBER_ID` y `REDIS_URL` sin valor por defecto. `.env.example` las documenta.
+- front/lib/api/client.ts — sin `VITE_API_URL` lanza error en vez de apuntar a localhost.
+- front: `AuthLegal` (condiciones y privacidad, más el aviso de que Google/Facebook crean la cuenta con prueba) en login y signup; signup lee los días de prueba de `usePricing` (antes fijos en 7); el spinner de retorno OAuth ya no gira siempre en Google; mensaje `exists_other`.
+- Pruebas: 7 nuevas en `test_google_signin.py`. 1087 pasan.
+
 ### [AGENTE: claude] [FECHA: 2026-11-21]
 **Agregado — «Pedir más citas»: se acreditan ya y queda un saldo pendiente de pago**
 - services/subscription_service.py — `request_extra_appointments`: valida el bloque (50/100/200/300), acredita una recarga (`appointments_topup`, $500 por cita, hasta el cierre del ciclo) y crea la factura pendiente (`proration` + línea `appointments`) que vence en 7 días o al cierre del ciclo si llega antes. Topes: solo plan `active`, **una solicitud sin pagar a la vez** (limita la deuda a un bloque, máx. $150.000). Evento `extra_appointments_requested`.

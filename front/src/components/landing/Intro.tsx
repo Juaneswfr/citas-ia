@@ -20,8 +20,8 @@ export function Intro() {
           Tu agenda se llena <Tag>sola.</Tag> Por WhatsApp.
         </h2>
         <p className="home-lead home-intro__lead">
-          <Logo dark={false} /> es un agente que conversa con tus clientes por WhatsApp y agenda,
-          reagenda y confirma citas, sin que dejes de atender.
+          <Logo dark={false} /> es una plataforma con un agente de IA que conversa con tus clientes desde tu número
+          de WhatsApp. ¡Es como si tu cliente hablara contigo!
         </p>
         <ul className="home-intro__points">
           {POINTS.map(([strong, text]) => (

@@ -16,6 +16,7 @@
 .total strong { font-size: 18px; }
 .total span { color: var(--ink-3); font-size: 12.5px; }
 .note { margin: 0; font: 400 12px/1.5 var(--font-sans); color: var(--ink-3); }
+.instructions { white-space: pre-line; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
 @media (max-width: 879px) {

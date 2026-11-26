@@ -251,6 +251,54 @@ async def charge_extra_professionals(db, sub: dict, now: Optional[datetime] = No
     return {"invoice_id": inv, "quantity": missing, "amount_cop": amount, "due_date": end}
 
 
+async def request_activation(db, workspace_id: str, plan_code: str, whatsapp_phone: str,
+                             payment_reference: Optional[str], actor_user_id: Optional[str]) -> dict:
+    """El dueño avisa que quiere activar su plan (o que ya pagó). No activa nada: lo hace el super_admin al ver el pago.
+
+    Solo vale para quien aún no pagó (prueba o pausado). Una solicitud abierta a la vez: repetirla la actualiza.
+    Devuelve `{"created": bool, "workspace_name", "plan_name"}` para que quien llama avise al equipo de Zumit.
+    """
+    sub = await get_live_subscription(db, workspace_id)
+    if sub["status"] not in ("trial", "paused"):
+        raise BillingError("El negocio ya tiene un plan activo.")
+    plan = await _plan(db, plan_code)
+    if not bs.normalize_phone(whatsapp_phone):
+        raise BillingError("Escribe el número de WhatsApp con el que atiende el negocio.")
+    open_req = (await db.execute(
+        text("""
+        SELECT 1 FROM billing_events e
+        WHERE e.workspace_id = :w AND e.type = 'activation_requested'
+          AND e.created_at > COALESCE((SELECT MAX(a.created_at) FROM billing_events a
+                                        WHERE a.workspace_id = :w AND a.type = 'activated'), 'epoch')
+        LIMIT 1
+        """),
+        {"w": workspace_id},
+    )).scalar_one_or_none()
+    await bs.log_event(db, workspace_id, "activation_requested",
+                       {"plan": plan_code, "phone": bs.normalize_phone(whatsapp_phone),
+                        "reference": payment_reference, "by": actor_user_id}, str(sub["id"]))
+    name = (await db.execute(text("SELECT name FROM workspaces WHERE id = :w"), {"w": workspace_id})).scalar_one_or_none()
+    return {"created": not open_req, "workspace_name": name or "Negocio", "plan_name": plan["name"]}
+
+
+async def list_activation_requests(db) -> list[dict]:
+    """Solicitudes de activación sin atender (la última de cada negocio que aún no se activó), la más antigua primero."""
+    rows = (await db.execute(text("""
+        SELECT DISTINCT ON (e.workspace_id)
+               e.workspace_id, w.name AS workspace, e.created_at AS requested_at,
+               e.payload->>'plan' AS plan, e.payload->>'phone' AS phone, e.payload->>'reference' AS reference,
+               s.status
+        FROM billing_events e
+        JOIN workspaces w ON w.id = e.workspace_id
+        JOIN subscriptions s ON s.id = e.subscription_id
+        WHERE e.type = 'activation_requested' AND s.status IN ('trial', 'paused')
+          AND e.created_at > COALESCE((SELECT MAX(a.created_at) FROM billing_events a
+                                        WHERE a.workspace_id = e.workspace_id AND a.type = 'activated'), 'epoch')
+        ORDER BY e.workspace_id, e.created_at DESC
+    """))).mappings().fetchall()
+    return sorted((dict(r) for r in rows), key=lambda r: r["requested_at"])
+
+
 async def activate_plan(db, workspace_id: str, plan_code: str, whatsapp_phone: str, payment_method: str,
                         payment_reference: Optional[str], actor_user_id: Optional[str],
                         now: Optional[datetime] = None) -> dict:

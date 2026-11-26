@@ -5,7 +5,7 @@ import { useIsMobile } from "@/hooks/use-is-mobile";
 // Para agregar preguntas, suma un objeto a este arreglo.
 const FAQS = [
   { q: "¿Mi cliente tiene que descargar algo?", a: "No. Escribe por WhatsApp como siempre." },
-  { q: "¿Pierdo mi número?", a: "No. Sigues con tu mismo número y tu WhatsApp Business de siempre." },
+  { q: "¿Pierdo mi número?", a: "No. Sigues con tu número y tu WhatsApp Business de siempre." },
   {
     q: "¿Sirve para mi tipo de negocio?",
     a: "Sí. Funciona en barberías, salones, manicure, spas, estética, tatuajes, consultorios, odontología, psicología, fisioterapia, veterinarias, fitness y otros negocios que atienden con cita. Todo se adapta a cómo llamas a quien atiende.",

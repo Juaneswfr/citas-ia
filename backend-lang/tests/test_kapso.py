@@ -178,9 +178,9 @@ async def test_config_requires_secrets_when_enabled():
     assert "not-a-fernet-key" not in str(e.value)
     Settings(
         DATABASE_URL="postgresql://x", JWT_SECRET="j", KAPSO_ENABLED=True, KAPSO_API_KEY="k",
-        KAPSO_WEBHOOK_SECRET_PROJECT="p", KAPSO_SECRETS_KEY=Fernet.generate_key().decode(), _env_file=None,
+        KAPSO_WEBHOOK_SECRET_PROJECT="p", KAPSO_SECRETS_KEY=Fernet.generate_key().decode(), FRONTEND_URL="https://t", RESEND_FROM_EMAIL="t <t@t>", _env_file=None,
     )
-    ok = Settings(DATABASE_URL="postgresql://x", JWT_SECRET="j", _env_file=None)
+    ok = Settings(DATABASE_URL="postgresql://x", JWT_SECRET="j", FRONTEND_URL="https://t", RESEND_FROM_EMAIL="t <t@t>", _env_file=None)
     assert ok.kapso_enabled is False and ok.kapso_base_url == "https://api.kapso.ai"
 
 

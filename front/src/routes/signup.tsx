@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { AuthLegal } from "@/components/auth/AuthLegal";
+import { usePricing } from "@/hooks/use-pricing";
 import { AuthBanners } from "@/components/auth/AuthBanners";
 import { useAuth } from "@/lib/auth-context";
 
@@ -10,6 +12,7 @@ export const Route = createFileRoute("/signup")({
 
 function SignupPage() {
   const navigate = useNavigate();
+  const { trialDays } = usePricing();
   const { register, signInWithGoogle, signInWithFacebook } = useAuth();
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
@@ -90,7 +93,7 @@ function SignupPage() {
         <div className="auth-form-wrap">
           <div className="auth-card">
             <h1 className="auth-h">Crea tu cuenta</h1>
-            <p className="auth-sub">Empieza gratis 7 días. Sin tarjeta de crédito.</p>
+            <p className="auth-sub">Empieza gratis {trialDays} días. Sin tarjeta de crédito.</p>
 
             {/* Google */}
             <button
@@ -196,6 +199,7 @@ function SignupPage() {
               ¿Ya tienes cuenta?{' '}
               <Link to="/login">Inicia sesión</Link>
             </div>
+            <AuthLegal action="crear" />
           </div>
         </div>
         <div />

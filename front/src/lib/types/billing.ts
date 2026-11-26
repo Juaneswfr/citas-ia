@@ -129,6 +129,30 @@ export interface ActivatePlanBody {
   payment_reference?: string;
 }
 
+/** GET /billing/workspaces/{id}/payment-info: cómo pagar a Zumit y a qué WhatsApp mandar el comprobante. */
+export interface PaymentInfo {
+  payment_instructions: string | null;
+  phone: string | null;
+}
+
+/** POST /billing/workspaces/{id}/request-activation: el dueño avisa que quiere activar su plan. */
+export interface ActivationRequestBody {
+  plan: 'emprendedor' | 'equipo';
+  whatsapp_phone: string;
+  payment_reference?: string;
+}
+
+/** GET /zmanager/billing/activation-requests */
+export interface ActivationRequest {
+  workspace_id: string;
+  workspace: string;
+  requested_at: string;
+  plan: string | null;
+  phone: string | null;
+  reference: string | null;
+  status: string;
+}
+
 // ── Cartera, cuenta de cobro y costos (Zumit Manager) ────────────────────────
 
 /** Una factura de la cartera, con su cuenta de cobro y si ya se envió. Los montos van en pesos. */

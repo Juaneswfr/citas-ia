@@ -266,6 +266,75 @@ async def request_appointments(
     return res
 
 
+@router.get(
+    "/workspaces/{workspace_id}/payment-info",
+    summary="Cómo pagar a Zumit: instrucciones y WhatsApp para enviar el comprobante",
+    dependencies=[Depends(require_workspace_access("workspace_owner"))],
+)
+async def payment_info(workspace_id: str, db: AsyncSession = Depends(get_db)):
+    """Solo lo que el cliente necesita para pagar. No expone el resto de los datos de quien cobra."""
+    from services import billing_documents
+    issuer = await billing_documents.get_issuer(db) or {}
+    return {"payment_instructions": issuer.get("payment_instructions"), "phone": issuer.get("phone")}
+
+
+class ActivationRequestIn(BaseModel):
+    plan: str = Field(..., max_length=40, description="Código del plan que quiere: emprendedor o equipo")
+    whatsapp_phone: str = Field(..., min_length=7, max_length=30)
+    payment_reference: Optional[str] = Field(None, max_length=120, description="Referencia o nota del pago, si ya pagó")
+
+
+async def _email_activation_request(db, workspace_id: str, res: dict, body: ActivationRequestIn) -> None:
+    """Correo a los super_admin. Mejor esfuerzo: la solicitud ya quedó guardada y se ve en Zumit Manager › Cobros."""
+    try:
+        from services.email_service import EmailService, _base_template
+        emails = (await db.execute(
+            text("SELECT email FROM users WHERE role = 'super_admin' AND is_active = TRUE"))).scalars().all()
+        ref = f"<br>Referencia del pago: {body.payment_reference}" if body.payment_reference else ""
+        html = _base_template(
+            f"<h2 style='margin:0 0 12px'>Solicitud de activación: {res['workspace_name']}</h2>"
+            f"<p style='line-height:1.6'>Quiere activar el plan {res['plan_name']}.<br>WhatsApp: {body.whatsapp_phone}{ref}</p>"
+            "<p style='line-height:1.6'>Cuando veas el pago, actívalo en Zumit Manager › Cobros.</p>",
+            "Aviso automático de Zumit.")
+        for to in emails:
+            await EmailService._send(to, f"Solicitud de activación: {res['workspace_name']}", html)
+    except Exception as exc:
+        log.warning("[billing] correo de solicitud de activación falló | ws=%s | err=%s", workspace_id, type(exc).__name__)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/request-activation",
+    summary="Avisar que quiere activar el plan (el super_admin lo activa al ver el pago)",
+)
+async def request_activation(
+    workspace_id: str,
+    body: ActivationRequestIn,
+    confirmed: bool = Query(False),
+    current_user: dict = Depends(require_workspace_access("workspace_owner")),
+    db: AsyncSession = Depends(get_db),
+):
+    if not confirmed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Solicitar la activación requiere confirmación explícita (confirmed=true).",
+        )
+    try:
+        res = await subs.request_activation(db, workspace_id, body.plan, body.whatsapp_phone,
+                                            body.payment_reference, current_user.get("sub"))
+    except subs.BillingNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except subs.BillingError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    await db.commit()
+    await AuditService.log(
+        workspace_id=workspace_id, actor_user_id=current_user.get("sub"), action="billing.activation_request",
+        entity_type="subscription", entity_id=workspace_id, after_data={"plan": body.plan},
+    )
+    if res["created"]:
+        await _email_activation_request(db, workspace_id, res, body)
+    return {"ok": True, "already_requested": not res["created"]}
+
+
 @router.post(
     "/workspaces/{workspace_id}/cancel",
     summary="Pedir la cancelación al final del ciclo pagado (o deshacerla con undo=true)",

@@ -274,3 +274,51 @@ async def test_si_la_cuenta_se_bloquea_entre_el_callback_y_el_canje_no_hay_sesio
     async with client_for(DB(ticket_user=user)) as c:
         res = await c.post("/auth/google/ticket", json={"ticket": good_ticket()})
     assert res.status_code == 401 and jwt == []
+
+
+# ── Cancelar en Google, cuenta sin contraseña, permiso de calendario ─────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("params", [{"error": "access_denied"}, {}])
+async def test_cancelar_en_google_vuelve_al_login_con_denied_y_no_toca_la_bd(google, params):
+    db = DB()
+    st = oauth_state.sign_state(SECRET, {"kind": "signin"})
+    async with client_for(db) as c:
+        res = await c.get("/auth/google/callback", params={**params, "state": st})
+    assert res.status_code == 302 and res.headers["location"] == "https://hilo.test/login?auth_error=denied"
+    assert google["codes"] == [] and not db.sql
+
+
+@pytest.mark.asyncio
+async def test_cancelar_al_conectar_el_calendario_vuelve_con_calendar_error(google):
+    st = oauth_state.sign_state(SECRET, {"workspace_id": "ws-1", "member_id": "m-1", "return_to": "settings"})
+    async with client_for(DB()) as c:
+        res = await c.get("/auth/google/callback", params={"error": "access_denied", "state": st})
+    assert res.headers["location"] == "https://hilo.test/settings?calendar_error=1"
+
+
+@pytest.mark.asyncio
+async def test_cuenta_creada_con_otro_proveedor_no_dice_que_entre_con_contrasena(google):
+    db = DB(user={**EXISTING, "provider_sub": None, "has_password": False})
+    assert (await callback(db)).headers["location"] == "https://hilo.test/login?auth_error=exists_other"
+
+
+@pytest.mark.asyncio
+async def test_cuenta_con_contrasena_sigue_diciendo_exists(google):
+    db = DB(user={**EXISTING, "provider_sub": None, "has_password": True})
+    assert (await callback(db)).headers["location"] == "https://hilo.test/login?auth_error=exists"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope,ok", [
+    ("openid email profile https://www.googleapis.com/auth/calendar", True),
+    ("openid email profile", False),
+])
+async def test_sin_permiso_de_calendario_el_intercambio_falla(monkeypatch, scope, ok):
+    async def token_request(code):
+        return {"scope": scope, "refresh_token": "rt", "id_token": id_token()}
+    monkeypatch.setattr(google_calendar, "_token_request", token_request)
+    monkeypatch.setattr(google_calendar, "encrypt_token", lambda t: "enc")
+    monkeypatch.setattr(google_calendar, "get_settings", lambda: SimpleNamespace(google_client_id=CLIENT_ID))
+    assert bool(await google_calendar.exchange_oauth_code_with_identity("c")) is ok
+    assert bool(await google_calendar.exchange_oauth_code("c")) is ok

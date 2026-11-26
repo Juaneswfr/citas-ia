@@ -56,6 +56,18 @@ async def _token_request(code: str) -> Optional[dict]:
         return None
 
 
+CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar"
+
+
+def _granted_calendar(data: dict) -> bool:
+    """Google deja desmarcar permisos en la pantalla de consentimiento: sin este alcance el token no sirve."""
+    granted = str(data.get("scope") or "").split()
+    if CALENDAR_SCOPE not in granted:
+        log.warning("[google_calendar] la persona no concedió el permiso de calendario | scope=%s", granted)
+        return False
+    return True
+
+
 async def exchange_oauth_code(code: str) -> Optional[dict]:
     """
     Intercambia el código OAuth por access_token + refresh_token.
@@ -64,7 +76,7 @@ async def exchange_oauth_code(code: str) -> Optional[dict]:
         Dict con 'encrypted_refresh_token' listo para persistir, o None si falló.
     """
     data = await _token_request(code)
-    if not data:
+    if not data or not _granted_calendar(data):
         return None
     refresh_token = data.get("refresh_token")
     if not refresh_token:
@@ -109,7 +121,7 @@ async def exchange_oauth_code_with_identity(code: str) -> Optional[dict]:
     """
     settings = get_settings()
     data = await _token_request(code)
-    if not data:
+    if not data or not _granted_calendar(data):
         return None
     refresh_token = data.get("refresh_token")
     identity = identity_from_id_token(data.get("id_token") or "", settings.google_client_id)

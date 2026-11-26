@@ -307,6 +307,11 @@ async def list_invoices(scope: Literal["open", "paid", "all"] = Query("open"),
     return await billing_cartera.invoices(db, scope, workspace_id, limit)
 
 
+@router.get("/activation-requests", summary="Negocios que pidieron activar su plan y aún no se activan")
+async def list_activation_requests(db: AsyncSession = Depends(get_db)):
+    return await subs.list_activation_requests(db)
+
+
 @router.get("/balances", summary="Saldo por negocio: lo pendiente y lo vencido")
 async def list_balances(db: AsyncSession = Depends(get_db)):
     return await billing_cartera.balances(db)

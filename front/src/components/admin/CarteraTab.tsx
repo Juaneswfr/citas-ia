@@ -4,7 +4,7 @@
 import { useState, type ReactNode } from 'react';
 import { Segmented } from '@/components/hilo/primitives';
 import { AsyncState } from '@/components/finanzas/ui';
-import { useBalances, useCartera, useUpcoming } from '@/hooks/use-billing';
+import { useActivationRequests, useBalances, useCartera, useUpcoming } from '@/hooks/use-billing';
 import { fmtCOP } from '@/lib/hilo-data';
 import type { CarteraInvoice, CarteraScope, UpcomingCharge } from '@/lib/types/billing';
 import { InvoiceActions } from './InvoiceActions';
@@ -123,6 +123,7 @@ function Body({ onOpen }: { onOpen: Open }) {
   const list = useCartera(scope);
   const upcoming = useUpcoming();
   const balances = useBalances();
+  const requests = useActivationRequests();
   const t = list.data?.totals;
 
   return (
@@ -135,6 +136,28 @@ function Body({ onOpen }: { onOpen: Open }) {
         <Kpi label="Sin cuenta de cobro" value={String(t?.without_document ?? 0)} hint="Facturas abiertas sin generar"
              alert={(t?.without_document ?? 0) > 0} />
       </div>
+
+      {(requests.data?.length ?? 0) > 0 && (
+        <Panel title={`Quieren activar su plan (${requests.data!.length})`}
+               hint="Avisaron que van a pagar o que ya pagaron. Verifica el pago y actívalos desde su ficha: ahí puedes poner el plan, el método y la referencia.">
+          <div className={bill.rows}>
+            {requests.data!.map((r) => (
+              <div key={r.workspace_id} className={bill.rows__item}>
+                <span className={bill.rows__name}>
+                  <NameButton onClick={() => onOpen(r.workspace_id, r.workspace)}>{r.workspace}</NameButton>
+                  <span className={bill.rows__sub}>
+                    Pidió {r.plan ?? 'un plan'} {timeAgo(r.requested_at)} · WhatsApp {r.phone ?? '—'}
+                    {r.reference ? ` · ref. ${r.reference}` : ' · sin referencia de pago'}
+                  </span>
+                </span>
+                <span className={bill.rows__value}>
+                  <ToneTag tone="warn">{r.status === 'paused' ? 'En pausa' : 'En prueba'}</ToneTag>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
 
       <Panel title="Cuentas por cobrar"
              hint="Genera la cuenta de cobro, envíala al correo del negocio y márcala pagada cuando llegue el dinero."

@@ -34,6 +34,13 @@ interface ApiFetchOptions extends RequestInit {
   public?: boolean;
 }
 
+/** Base de la API: sin VITE_API_URL falla fuerte en vez de apuntar en silencio a localhost. */
+function apiBase(): string {
+  const base = import.meta.env.VITE_API_URL as string | undefined;
+  if (!base) throw new Error('Falta VITE_API_URL en front/.env');
+  return base;
+}
+
 /**
  * Wrapper sobre fetch que:
  * - Usa VITE_API_URL como base
@@ -42,7 +49,7 @@ interface ApiFetchOptions extends RequestInit {
  * - Llama _onUnauthorized en 401
  */
 export async function apiFetch<T>(path: string, options?: ApiFetchOptions): Promise<T> {
-  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:9001';
+  const base = apiBase();
   const url = `${base}${path}`;
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -91,7 +98,7 @@ async function toApiError(response: Response): Promise<ApiError> {
 
 /** fetch autenticado para respuestas no-JSON (subidas multipart y descargas). */
 async function authedFetch(path: string, init: RequestInit): Promise<Response> {
-  const base = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:9001';
+  const base = apiBase();
   const headers: Record<string, string> = {};
   if (_apiToken) headers['Authorization'] = `Bearer ${_apiToken}`;
 

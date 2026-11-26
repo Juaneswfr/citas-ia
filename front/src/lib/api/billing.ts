@@ -3,7 +3,7 @@
 import { apiDownload, apiFetch } from './client';
 import type { BillingPlanOut, SubscriptionOut } from '../types/api';
 import type {
-  Insights,
+  Insights, ActivationRequest, ActivationRequestBody, PaymentInfo,
   ActivatePlanBody, AdminWorkspaceBilling, Balance, BillingOverview, BillingUsage, ExtraAppointmentsResult, BillingProfile, BillingSummary, Cartera,
   CarteraScope, CostsOverview, Issuer, PlanChangePreview, PlanChanges, PlanPreview, PlansDashboard, PlanUpdateResult,
   PublicPricing, SyncResult, UpcomingCharge,
@@ -43,6 +43,15 @@ export const billingService = {
     return apiFetch<ExtraAppointmentsResult>(
       `/billing/workspaces/${workspaceId}/request-appointments?confirmed=true`, json({ quantity }),
     );
+  },
+
+  getPaymentInfo(workspaceId: string): Promise<PaymentInfo> {
+    return apiFetch<PaymentInfo>(`/billing/workspaces/${workspaceId}/payment-info`);
+  },
+
+  /** El dueño avisa que quiere activar su plan: no activa nada, avisa al equipo de Zumit. */
+  requestActivation(workspaceId: string, body: ActivationRequestBody): Promise<{ ok: boolean; already_requested: boolean }> {
+    return apiFetch(`/billing/workspaces/${workspaceId}/request-activation?confirmed=true`, json(body));
   },
 
   getProfile(workspaceId: string): Promise<BillingProfile | null> {
@@ -154,6 +163,10 @@ export const adminBillingService = {
   /** Facturas con su cuenta de cobro y los totales de la cartera. */
   getCartera(scope: CarteraScope): Promise<Cartera> {
     return apiFetch<Cartera>(`${ADMIN}/invoices?scope=${scope}`);
+  },
+
+  getActivationRequests(): Promise<ActivationRequest[]> {
+    return apiFetch<ActivationRequest[]>(`${ADMIN}/activation-requests`);
   },
 
   getBalances(): Promise<Balance[]> {

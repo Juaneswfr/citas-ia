@@ -3,7 +3,6 @@ import { Logo } from "./ui/Logo";
 import { Tag } from "./ui/Tag";
 
 const PERKS = [
-  "Tu precio real congelado mientras tu cuenta esté activa",
   "Insignia Zumit Member",
   "Canal directo con el equipo de Zumit",
   "Kit de miembro para tu local, sin costo",
