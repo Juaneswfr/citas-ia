@@ -6,6 +6,7 @@ skills-lock.json
 .venv/
 venv/
 env/
+screenshots
 front-app
 .env*
 backend-lang/graphify-out/cache

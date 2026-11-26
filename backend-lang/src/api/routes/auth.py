@@ -8,14 +8,16 @@ Seguridad (Principio XI):
 """
 import logging
 import urllib.parse
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
 from core.database import get_db
 from core.oauth_state import sign_state, verify_state
 from core.security import create_access_token, decode_token, get_current_user, require_workspace_access
+from core.throttle import client_ip, limit_or_429, too_many
 from services import subscription_service
 from schemas.auth import (
-    GoogleTicketRequest, GoogleTicketResponse, LoginRequest, ProfileUpdate, RefreshRequest, RegisterRequest, TokenResponse,
+    ForgotPasswordRequest, GoogleTicketRequest, GoogleTicketResponse, LoginRequest, OAuthLinkRequest, ProfileUpdate,
+    RefreshRequest, RegisterRequest, ResetPasswordRequest, TokenResponse,
 )
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -278,6 +280,150 @@ async def google_ticket(body: GoogleTicketRequest, db: AsyncSession = Depends(ge
                                 is_new=bool(data.get("new")))
 
 
+LINK_TTL_SECONDS = 600   # el tiempo que tiene la persona para escribir su contraseña y vincular
+RESET_TTL_SECONDS = 3600
+
+
+def _pw_fingerprint(password_hash: str | None) -> str:
+    """Huella de la contraseña actual: va en el token de restablecer y lo vuelve de un solo uso."""
+    import hashlib
+    return hashlib.sha256((password_hash or "").encode()).hexdigest()[:16]
+
+
+@router.post(
+    "/oauth/link",
+    response_model=GoogleTicketResponse,
+    summary="Vincula Google o Facebook a una cuenta de correo y contraseña ya existente",
+)
+async def oauth_link(body: OAuthLinkRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    """Exige la contraseña de la cuenta: sin ella, quien registró el correo de otra persona no se la puede quedar."""
+    from core.config import get_settings
+    settings = get_settings()
+    limit_or_429(f"link:ip:{client_ip(request)}", 20, 600)
+    invalid = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="El enlace venció. Vuelve a intentarlo.")
+    data = verify_state(settings.jwt_secret, body.ticket)
+    if not data or data.get("kind") != "link" or not data.get("uid") or not data.get("sub") \
+            or data.get("provider") not in PROVIDER_COLUMNS:
+        raise invalid
+    limit_or_429(f"link:uid:{data['uid']}", 8, 600)  # fuerza bruta contra la contraseña de esa cuenta
+    col = PROVIDER_COLUMNS[data["provider"]]
+    try:
+        row = (await db.execute(
+            text(f"""
+                SELECT u.id, u.email, u.name, u.password_hash, u.role, u.is_active, u.{col} AS provider_sub,
+                       wm.id AS member_id, wm.workspace_id, w.is_active AS workspace_active
+                FROM users u
+                LEFT JOIN workspace_members wm ON wm.user_id = u.id AND wm.status = 'active'
+                LEFT JOIN workspaces w ON w.id = wm.workspace_id
+                WHERE u.id = :uid
+                LIMIT 1
+            """),
+            {"uid": data["uid"]},
+        )).mappings().fetchone()
+        if not row or not row["is_active"] or not row["password_hash"] \
+                or (row["workspace_active"] is False and row["role"] != "super_admin"):
+            raise invalid
+        if not bcrypt_ctx.verify(body.password, row["password_hash"]):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="La contraseña no es correcta.")
+        if row["provider_sub"] not in (None, data["sub"]):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="Esta cuenta ya está vinculada a otra cuenta de ese proveedor.")
+
+        await db.execute(
+            text(f"UPDATE users SET {col} = :sub WHERE id = :uid AND {col} IS NULL"),
+            {"sub": data["sub"], "uid": str(row["id"])},
+        )
+        cal_token, workspace_id = data.get("cal") or "", str(row["workspace_id"] or "")
+        if cal_token and row["member_id"]:
+            status_now = (await db.execute(
+                text("SELECT sync_status FROM calendars WHERE workspace_id = :w AND member_id = :m"),
+                {"w": workspace_id, "m": str(row["member_id"])},
+            )).scalar_one_or_none()
+            if status_now is None:
+                await _upsert_member_calendar(db, workspace_id, str(row["member_id"]), row["name"] or data["email"], cal_token)
+            elif status_now != "disconnected":
+                await db.execute(
+                    text("""
+                        UPDATE calendars SET oauth_refresh_token_encrypted = :token, sync_enabled = TRUE, sync_status = 'active'
+                        WHERE workspace_id = :w AND member_id = :m
+                    """),
+                    {"token": cal_token, "w": workspace_id, "m": str(row["member_id"])},
+                )
+        await db.commit()
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        log.error("[auth] vincular %s falló | err=%s: %s", data["provider"], type(e).__name__, e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="No pudimos vincular la cuenta. Inténtalo de nuevo.")
+
+    log.info("[auth] %s vinculado a cuenta existente | user=%s", data["provider"], row["id"])
+    jwt = create_access_token({
+        "sub": str(row["id"]), "email": row["email"], "role": row["role"] or "viewer", "workspace_id": workspace_id,
+    })
+    return GoogleTicketResponse(access_token=jwt, expires_in=3600, workspace_id=workspace_id, is_new=False)
+
+
+@router.post(
+    "/forgot-password",
+    summary="Envía por correo el enlace para elegir una contraseña nueva",
+)
+async def forgot_password(body: ForgotPasswordRequest, request: Request, background: BackgroundTasks,
+                          db: AsyncSession = Depends(get_db)):
+    """Responde siempre lo mismo, exista o no el correo: no revela quién tiene cuenta."""
+    from core.config import get_settings
+    from services.email_service import EmailService
+    settings = get_settings()
+    email = body.email.strip().lower()
+    limit_or_429(f"forgot:ip:{client_ip(request)}", 10, 900)
+    reply = {"ok": True}
+    if too_many(f"forgot:email:{email}", 3, 900):
+        return reply  # no se manda otro correo, y tampoco se avisa
+    row = (await db.execute(
+        text("SELECT id, email, name, password_hash, is_active FROM users WHERE lower(email) = :email LIMIT 1"),
+        {"email": email},
+    )).mappings().fetchone()
+    if row and row["is_active"]:
+        token = sign_state(settings.jwt_secret, {
+            "kind": "reset", "uid": str(row["id"]), "fp": _pw_fingerprint(row["password_hash"]),
+        }, ttl=RESET_TTL_SECONDS)
+        url = f"{settings.frontend_url}/login#reset_token={token}"
+        background.add_task(EmailService.send_password_reset, row["email"], row["name"] or "", url, RESET_TTL_SECONDS // 60)
+        log.info("[auth] enlace de restablecer enviado | user=%s", row["id"])
+    return reply
+
+
+@router.post(
+    "/reset-password",
+    summary="Cambia la contraseña con el enlace que llegó por correo",
+)
+async def reset_password(body: ResetPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    from core.config import get_settings
+    settings = get_settings()
+    limit_or_429(f"reset:ip:{client_ip(request)}", 20, 900)
+    invalid = HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="El enlace venció o ya se usó. Pide uno nuevo.")
+    data = verify_state(settings.jwt_secret, body.token)
+    if not data or data.get("kind") != "reset" or not data.get("uid"):
+        raise invalid
+    row = (await db.execute(
+        text("SELECT id, password_hash, is_active FROM users WHERE id = :uid"),
+        {"uid": data["uid"]},
+    )).mappings().fetchone()
+    # La huella cambia al guardar la contraseña nueva: el mismo enlace no sirve dos veces.
+    if not row or not row["is_active"] or data.get("fp") != _pw_fingerprint(row["password_hash"]):
+        raise invalid
+    await db.execute(
+        text("UPDATE users SET password_hash = :h WHERE id = :uid"),
+        {"h": bcrypt_ctx.hash(body.password), "uid": str(row["id"])},
+    )
+    await db.commit()
+    log.info("[auth] contraseña restablecida | user=%s", row["id"])
+    return {"ok": True}
+
+
 RETURN_TO = ("onboarding", "settings", "equipo")
 MANAGER_ROLES = ("super_admin", "workspace_owner", "manager")
 
@@ -482,9 +628,21 @@ async def _oauth_signin(db: AsyncSession, settings, provider: str, identity: dic
         if row:
             if not row["is_active"]:
                 return fail("blocked")
+            has_password = row.get("has_password", True)
+            if row["provider_sub"] is None and has_password:
+                # Cuenta de correo y contraseña sin este proveedor: se vincula, pero solo si la persona escribe su
+                # contraseña (el correo de Google está verificado, el de la cuenta existente nunca lo estuvo).
+                if row["workspace_active"] is False and row["role"] != "super_admin":
+                    return fail("suspended")
+                link = sign_state(settings.jwt_secret, {
+                    "kind": "link", "uid": str(row["id"]), "provider": provider, "sub": identity["sub"],
+                    "email": identity["email"], "cal": token or "",
+                }, ttl=LINK_TTL_SECONDS)
+                log.info("[auth] %s requiere vincular cuenta existente | user=%s", provider, row["id"])
+                return RedirectResponse(url=f"{frontend}/login#link_ticket={link}", status_code=302)
             if row["provider_sub"] != identity["sub"]:
-                # No se enlaza sola. Con contraseña se le pide la contraseña; si no tiene, se creó con otro proveedor.
-                return fail("exists" if row.get("has_password", True) else "exists_other")
+                # Sin contraseña: la cuenta se creó con otro proveedor. Con otro `sub` del mismo proveedor, no se toca.
+                return fail("exists" if has_password else "exists_other")
             if row["workspace_active"] is False and row["role"] != "super_admin":
                 return fail("suspended")
             user_id, workspace_id, role, is_new = str(row["id"]), str(row["workspace_id"] or ""), row["role"], False

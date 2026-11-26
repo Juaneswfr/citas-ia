@@ -92,6 +92,25 @@ class EmailService:
     # ── Templates ─────────────────────────────────────────────────────────────
 
     @classmethod
+    async def send_password_reset(cls, to: str, name: str, url: str, minutes: int = 60) -> bool:
+        """Enlace para elegir una contraseña nueva (también sirve a quien entró solo con Google)."""
+        import html as _html
+        safe_name = _html.escape(name or "")
+        safe_url = _html.escape(url, quote=True)
+        content = f"""
+        <h2 style="margin:0 0 8px;font-size:22px;font-weight:500;color:{_WINE}">Restablece tu contraseña</h2>
+        <p>Hola{(' <strong>' + safe_name + '</strong>') if safe_name else ''}, recibimos una solicitud para cambiar la contraseña de tu cuenta en Zumit.</p>
+        <p style="margin:24px 0">
+          <a href="{safe_url}" style="background:{_WINE};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:8px;display:inline-block">Elegir contraseña nueva</a>
+        </p>
+        <p style="font-size:13px;color:#666">El enlace sirve una sola vez y vence en {minutes} minutos. Si el botón no abre, copia esta dirección en tu navegador:<br>
+        <span style="word-break:break-all">{safe_url}</span></p>
+        <p style="font-size:13px;color:#666">Si no fuiste tú, ignora este correo: tu contraseña actual sigue igual.</p>
+        """
+        html_body = _base_template(content, "Este correo fue generado automáticamente por Zumit.")
+        return await cls._send(to=to, subject="Restablece tu contraseña de Zumit", html=html_body)
+
+    @classmethod
     async def send_appointment_confirmation(
         cls,
         customer_email: str,

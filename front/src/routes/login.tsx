@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { AuthLegal } from "@/components/auth/AuthLegal";
 import { AuthBanners } from "@/components/auth/AuthBanners";
 import { useAuth } from "@/lib/auth-context";
+import { requestPasswordReset, resetPassword } from "@/lib/api/auth";
+import { SHOW_FACEBOOK_LOGIN } from "@/lib/features";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Zumit · Inicia sesión" }] }),
@@ -15,40 +17,111 @@ const AUTH_ERRORS: Record<string, string> = {
   denied: 'Cancelaste el acceso. Puedes intentarlo de nuevo cuando quieras.',
   unverified: 'Tu correo de Google no está verificado, así que no podemos usarlo.',
   no_email: 'Tu cuenta de Facebook no comparte un correo con nosotros. Usa otro método o crea la cuenta con tu correo.',
-  exists: 'Ya existe una cuenta con ese correo. Entra con tu contraseña.',
+  exists: 'Ya existe una cuenta con ese correo asociada a otra cuenta de Google. Entra con tu contraseña.',
   exists_other: 'Ya existe una cuenta con ese correo creada con otro método (Google o Facebook). Entra con ese mismo método.',
   blocked: 'Esta cuenta está bloqueada. Escríbenos si crees que es un error.',
   suspended: 'Este negocio está suspendido. Escríbenos para reactivarlo.',
   server: 'Algo salió mal al entrar. Inténtalo de nuevo en un momento.',
 };
 
+/** Correo que viaja dentro del ticket de vinculación (solo para mostrarlo; el servidor no confía en esto). */
+function emailFromTicket(ticket: string): string {
+  try {
+    const body = ticket.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+    const json = JSON.parse(atob(body + '='.repeat((4 - (body.length % 4)) % 4)));
+    return typeof json.email === 'string' ? json.email : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Qué se ve en la tarjeta: entrar, pedir el enlace, elegir contraseña nueva o vincular Google a la cuenta. */
+type Mode = 'login' | 'forgot' | 'reset' | 'link';
+
 function LoginPage() {
   const navigate = useNavigate();
-  const { login, signInWithGoogle, signInWithFacebook, completeOAuthSignIn } = useAuth();
+  const { login, signInWithGoogle, signInWithFacebook, completeOAuthSignIn, completeOAuthLink } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | 'facebook' | 'ticket' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>('login');
+  const [linkTicket, setLinkTicket] = useState('');
+  const [linkEmail, setLinkEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   const anyLoading = loading || !!oauthLoading;
   const handledReturn = useRef(false);
 
   // Al volver de Google o Facebook el callback deja un ticket en el fragmento (#auth_ticket=…) o un motivo en ?auth_error=…
+  // Otros dos fragmentos: #link_ticket (hay que escribir la contraseña para vincular) y #reset_token (enlace del correo).
   useEffect(() => {
     if (handledReturn.current) return;
     handledReturn.current = true;
-    const ticket = new URLSearchParams(window.location.hash.slice(1)).get('auth_ticket');
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const ticket = hash.get('auth_ticket');
+    const link = hash.get('link_ticket');
+    const reset = hash.get('reset_token');
     const reason = new URLSearchParams(window.location.search).get('auth_error');
-    if (!ticket && !reason) return;
+    if (!ticket && !link && !reset && !reason) return;
     // Se limpia la URL ya: el ticket no debe quedar en el historial ni en un enlace copiado.
     window.history.replaceState(null, '', window.location.pathname);
     if (reason) { setError(AUTH_ERRORS[reason] ?? AUTH_ERRORS.server); return; }
+    if (link) { setLinkTicket(link); setLinkEmail(emailFromTicket(link)); setMode('link'); return; }
+    if (reset) { setResetToken(reset); setMode('reset'); return; }
     setOauthLoading('ticket'); // no se sabe por cuál proveedor volvió: se bloquean los botones sin girar ninguno
     completeOAuthSignIn(ticket!)
       .then(({ isNew }) => navigate({ to: isNew ? '/onboarding' : '/dashboard' }))
       .catch((err) => { setError((err as Error).message ?? AUTH_ERRORS.server); setOauthLoading(null); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goTo = (next: Mode) => { setMode(next); setError(null); setNotice(null); setPassword(''); setNewPassword(''); };
+
+  const handleLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      await completeOAuthLink(linkTicket, password);
+      navigate({ to: '/dashboard' });
+    } catch (err) {
+      setError((err as Error).message ?? AUTH_ERRORS.server);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      await requestPasswordReset(email.trim());
+      setNotice('Si ese correo tiene una cuenta, te enviamos un enlace para elegir una contraseña nueva. Revisa también el spam; vence en 1 hora.');
+    } catch (err) {
+      setError((err as Error).message ?? AUTH_ERRORS.server);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      await resetPassword(resetToken, newPassword);
+      goTo('login');
+      setNotice('Listo, tu contraseña quedó guardada. Ya puedes entrar con ella.');
+    } catch (err) {
+      setError((err as Error).message ?? AUTH_ERRORS.server);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,10 +185,82 @@ function LoginPage() {
 
         <div className="auth-form-wrap">
           <div className="auth-card">
-            <h1 className="auth-h">Bienvenido de nuevo</h1>
-            <p className="auth-sub">Inicia sesión para entrar al panel de tu negocio.</p>
+            <h1 className="auth-h">{{
+              login: 'Bienvenido de nuevo',
+              link: 'Vincula tu cuenta de Google',
+              forgot: 'Recupera tu contraseña',
+              reset: 'Elige una contraseña nueva',
+            }[mode]}</h1>
+            <p className="auth-sub">{{
+              login: 'Inicia sesión para entrar al panel de tu negocio.',
+              link: <>Ya tienes una cuenta con <strong>{linkEmail || 'ese correo'}</strong>. Escribe su contraseña una vez para vincular Google a ella; no se crea otra cuenta.</>,
+              forgot: 'Escribe el correo de tu cuenta y te enviamos un enlace para elegir una contraseña nueva.',
+              reset: 'Mínimo 8 caracteres. El enlace sirve una sola vez.',
+            }[mode]}</p>
             {oauthLoading === 'ticket' && <p className="auth-sub" role="status">Entrando a tu cuenta…</p>}
+            {notice && (
+              <div role="status" style={{
+                padding: '9px 12px', borderRadius: 'var(--r-sm)', marginBottom: 12,
+                background: 'var(--success-bg, #eef8f1)', border: '1px solid var(--success, #2e9b63)',
+                color: 'var(--success-fg, #1f6b43)', font: '400 13px/1.4 var(--font-sans)',
+              }}>{notice}</div>
+            )}
 
+            {mode !== 'login' && (
+              <form onSubmit={mode === 'link' ? handleLink : mode === 'forgot' ? handleForgot : handleReset}>
+                {mode === 'forgot' && !notice && (
+                  <div className="field">
+                    <label htmlFor="forgot-email">Correo</label>
+                    <input id="forgot-email" type="email" required autoFocus placeholder="tu@negocio.com"
+                      value={email} onChange={e => setEmail(e.target.value)} />
+                  </div>
+                )}
+                {mode === 'link' && (
+                  <div className="field">
+                    <label htmlFor="link-pass">Contraseña de tu cuenta</label>
+                    <input id="link-pass" type="password" required autoFocus placeholder="••••••••" autoComplete="current-password"
+                      value={password} onChange={e => setPassword(e.target.value)} />
+                  </div>
+                )}
+                {mode === 'reset' && (
+                  <div className="field">
+                    <label htmlFor="new-pass">Contraseña nueva</label>
+                    <input id="new-pass" type="password" required minLength={8} autoFocus placeholder="Mínimo 8 caracteres"
+                      autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                  </div>
+                )}
+
+                {error && (
+                  <div role="alert" style={{
+                    padding: '9px 12px', borderRadius: 'var(--r-sm)',
+                    background: 'var(--danger-bg, #fff0f0)', border: '1px solid var(--danger, #e53e3e)',
+                    color: 'var(--danger, #c53030)', font: '400 13px/1.4 var(--font-sans)', marginBottom: 4,
+                  }}>{error}</div>
+                )}
+
+                {!(mode === 'forgot' && notice) && (
+                  <button className="auth-btn" type="submit" disabled={anyLoading}>
+                    {loading
+                      ? 'Un momento…'
+                      : mode === 'link' ? 'Vincular y entrar' : mode === 'forgot' ? 'Enviar enlace' : 'Guardar contraseña'}
+                  </button>
+                )}
+                {mode === 'link' && (
+                  <div className="auth-row" style={{ marginTop: 12 }}>
+                    <a style={{ cursor: 'pointer', color: 'var(--wine)', font: '400 13px/1 var(--font-sans)' }}
+                       onClick={() => { setEmail(linkEmail); goTo('forgot'); }}>
+                      ¿Olvidaste tu contraseña?
+                    </a>
+                    <span />
+                  </div>
+                )}
+                <div className="auth-foot">
+                  <a style={{ cursor: 'pointer' }} onClick={() => goTo('login')}>Volver a iniciar sesión</a>
+                </div>
+              </form>
+            )}
+
+            {mode === 'login' && (<>
             {/* Google */}
             <button
               className="auth-google"
@@ -140,8 +285,8 @@ function LoginPage() {
               Continuar con Google
             </button>
 
-            {/* Facebook */}
-            <button
+            {/* Facebook (oculto con SHOW_FACEBOOK_LOGIN) */}
+            {SHOW_FACEBOOK_LOGIN && <button
               className="auth-google"
               onClick={handleFacebook}
               disabled={anyLoading}
@@ -159,7 +304,7 @@ function LoginPage() {
                 </svg>
               )}
               Continuar con Facebook
-            </button>
+            </button>}
 
             <div className="auth-or">o con tu correo</div>
 
@@ -185,7 +330,8 @@ function LoginPage() {
 
               <div className="auth-row">
                 <span />
-                <a style={{ cursor: 'pointer', color: 'var(--wine)', font: '400 13px/1 var(--font-sans)' }}>
+                <a style={{ cursor: 'pointer', color: 'var(--wine)', font: '400 13px/1 var(--font-sans)' }}
+                   onClick={() => { goTo('forgot'); }}>
                   ¿Olvidaste tu contraseña?
                 </a>
               </div>
@@ -211,6 +357,7 @@ function LoginPage() {
               ¿No tienes cuenta?{' '}
               <Link to="/signup">Crea una gratis</Link>
             </div>
+            </>)}
             <AuthLegal action="entrar" />
           </div>
         </div>

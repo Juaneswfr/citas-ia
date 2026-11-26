@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import {
-  loginToBackend, refreshBackendToken, getMe, registerToBackend, getGoogleLoginUrl, getFacebookLoginUrl, exchangeGoogleTicket,
+  loginToBackend, refreshBackendToken, getMe, registerToBackend, getGoogleLoginUrl, getFacebookLoginUrl, exchangeGoogleTicket, linkOAuthAccount,
 } from "./api/auth";
 import { setApiToken, registerUnauthorizedHandler } from "./api/client";
 import type { MeResponse } from "./types/api";
@@ -37,6 +37,8 @@ interface AuthContextType {
   signInWithFacebook: () => Promise<void>;
   /** Cambia el ticket que trae el regreso de Google o Facebook por la sesión. `isNew`: la cuenta se acaba de crear. */
   completeOAuthSignIn: (ticket: string) => Promise<{ isNew: boolean }>;
+  /** Vincula Google (o Facebook) a la cuenta de correo existente escribiendo su contraseña, y abre la sesión. */
+  completeOAuthLink: (ticket: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -179,6 +181,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { isNew: !!tokenResp.is_new };
   }, [applyToken]);
 
+  const completeOAuthLink = useCallback(async (ticket: string, password: string) => {
+    const tokenResp = await linkOAuthAccount(ticket, password);
+    applyToken(tokenResp.access_token);
+    setMe(await getMe());
+  }, [applyToken]);
+
   const signInWithFacebook = useCallback(async () => {
     const { url } = await getFacebookLoginUrl();
     window.location.href = url;
@@ -197,9 +205,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signInWithGoogle,
     signInWithFacebook,
     completeOAuthSignIn,
+    completeOAuthLink,
     refreshMe,
     logout,
-  }), [backendJwt, me, initializing, login, signup, register, signInWithGoogle, signInWithFacebook, completeOAuthSignIn, refreshMe, logout]);
+  }), [backendJwt, me, initializing, login, signup, register, signInWithGoogle, signInWithFacebook, completeOAuthSignIn, completeOAuthLink, refreshMe, logout]);
 
   if (initializing) {
     return (

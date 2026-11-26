@@ -43,6 +43,33 @@ export async function exchangeGoogleTicket(ticket: string): Promise<TokenRespons
   });
 }
 
+/** POST /auth/oauth/link — vincula Google (o Facebook) a la cuenta de correo existente, con su contraseña. */
+export async function linkOAuthAccount(ticket: string, password: string): Promise<TokenResponse> {
+  return apiFetch<TokenResponse>('/auth/oauth/link', {
+    method: 'POST',
+    body: JSON.stringify({ ticket, password }),
+    public: true,
+  });
+}
+
+/** POST /auth/forgot-password — manda el enlace para elegir contraseña nueva. Responde igual exista o no el correo. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+    public: true,
+  });
+}
+
+/** POST /auth/reset-password — guarda la contraseña nueva con el token del enlace del correo. */
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
+    public: true,
+  });
+}
+
 /** GET /auth/me — datos del usuario autenticado (requiere JWT en header) */
 export async function getMe(): Promise<MeResponse> {
   return apiFetch<MeResponse>('/auth/me');

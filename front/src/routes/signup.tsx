@@ -4,6 +4,7 @@ import { AuthLegal } from "@/components/auth/AuthLegal";
 import { usePricing } from "@/hooks/use-pricing";
 import { AuthBanners } from "@/components/auth/AuthBanners";
 import { useAuth } from "@/lib/auth-context";
+import { SHOW_FACEBOOK_LOGIN } from "@/lib/features";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({ meta: [{ title: "Zumit · Crea tu cuenta" }] }),
@@ -119,8 +120,8 @@ function SignupPage() {
               Continuar con Google
             </button>
 
-            {/* Facebook */}
-            <button
+            {/* Facebook (oculto con SHOW_FACEBOOK_LOGIN) */}
+            {SHOW_FACEBOOK_LOGIN && <button
               onClick={handleFacebook}
               disabled={anyLoading}
               style={{
@@ -145,7 +146,7 @@ function SignupPage() {
                 </svg>
               )}
               Continuar con Facebook
-            </button>
+            </button>}
 
             <div className="auth-or">o con tu correo</div>
 

@@ -1,6 +1,13 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-26]
+**Agregado — vincular Google a una cuenta con contraseña y recuperación de contraseña; Quitado — botón de Facebook (oculto)**
+- routes/auth.py — `_oauth_signin`: correo existente con contraseña ya no responde `exists`, redirige a `/login#link_ticket=`. `POST /auth/oauth/link` (contraseña obligatoria, ticket de 10 min, topes de intentos), `POST /auth/forgot-password` y `POST /auth/reset-password` (token firmado de 1 h con huella de la contraseña: un solo uso). Sin migración.
+- core/throttle.py — tope de intentos en memoria por IP, cuenta y correo. services/email_service.py — `send_password_reset`. schemas/auth.py — tres esquemas nuevos.
+- front: login.tsx con pasos «vincular», «olvidé mi contraseña» y «contraseña nueva» (todo dentro de `/login`, sin rutas nuevas); lib/api/auth.ts, auth-context.tsx (`completeOAuthLink`); lib/features.ts (`SHOW_FACEBOOK_LOGIN = false`) oculta Facebook en login y signup.
+- tests/test_account_link_reset.py (nuevo, 28 casos) y test_google_signin.py (los de `exists` pasan a esperar el ticket de vinculación). Para correr los tests hace falta `DATABASE_URL` en el entorno (cualquier valor).
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
 **Corregido — dominio de producción pasa a zumit.app (hilo.esjuanez.com queda de alias temporal)**
 - nginx/nginx.conf — `server_name zumit.app www.zumit.app hilo.esjuanez.com`. Requiere `docker compose restart nginx`.
 - backend-lang/.env.example — `FACEBOOK_REDIRECT_URI` y `FRONTEND_URL` a zumit.app. `GOOGLE_REDIRECT_URI` no estaba en el ejemplo.

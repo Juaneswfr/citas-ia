@@ -175,7 +175,6 @@ async def test_quien_ya_entro_con_google_vuelve_a_entrar_y_se_renueva_su_calenda
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("user,reason", [
-    ({**EXISTING, "provider_sub": None}, "exists"),            # cuenta con contraseña: no se enlaza sola
     ({**EXISTING, "provider_sub": "OTRA-CUENTA"}, "exists"),   # mismo correo, otra cuenta de Google
     ({**EXISTING, "is_active": False}, "blocked"),
     ({**EXISTING, "workspace_active": False}, "suspended"),
@@ -304,9 +303,23 @@ async def test_cuenta_creada_con_otro_proveedor_no_dice_que_entre_con_contrasena
 
 
 @pytest.mark.asyncio
-async def test_cuenta_con_contrasena_sigue_diciendo_exists(google):
+async def test_cuenta_con_contrasena_pide_la_contrasena_para_vincular_y_no_entra_sola(google):
     db = DB(user={**EXISTING, "provider_sub": None, "has_password": True})
-    assert (await callback(db)).headers["location"] == "https://hilo.test/login?auth_error=exists"
+    res = await callback(db)
+    assert res.status_code == 302
+    location = res.headers["location"]
+    assert location.startswith("https://hilo.test/login#link_ticket="), location
+    data = oauth_state.verify_state(SECRET, location.split("#link_ticket=")[1])
+    assert data["kind"] == "link" and data["uid"] == "u-1" and data["provider"] == "google"
+    assert data["sub"] == SUB and data["email"] == "ana@gmail.com" and data["cal"] == "enc"
+    # No vincula ni crea nada hasta que se escriba la contraseña.
+    assert not db.ran("INSERT") and not db.ran("UPDATE") and db.committed == 0
+
+
+@pytest.mark.asyncio
+async def test_vincular_respeta_negocio_suspendido(google):
+    db = DB(user={**EXISTING, "provider_sub": None, "has_password": True, "workspace_active": False})
+    assert (await callback(db)).headers["location"] == "https://hilo.test/login?auth_error=suspended"
 
 
 @pytest.mark.asyncio

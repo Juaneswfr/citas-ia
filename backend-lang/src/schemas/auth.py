@@ -43,5 +43,19 @@ class GoogleTicketRequest(BaseModel):
     ticket: str = Field(..., description="Ticket de un solo uso que entrega el callback de Google")
 
 
+class OAuthLinkRequest(BaseModel):
+    ticket: str = Field(..., description="Ticket de vinculación que dejó el callback de Google o Facebook")
+    password: str = Field(..., min_length=1, max_length=200, description="Contraseña de la cuenta existente")
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr = Field(..., description="Correo de la cuenta")
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., description="Token del enlace que llegó por correo")
+    password: str = Field(..., min_length=8, max_length=200, description="Contraseña nueva")
+
+
 class GoogleTicketResponse(TokenResponse):
     is_new: bool = Field(default=False, description="True si la cuenta se acaba de crear con Google")
