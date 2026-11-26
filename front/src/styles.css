@@ -294,6 +294,14 @@ body{
 .field input { width:100%; padding:13px 14px; border-radius:var(--r-md); border:1px solid var(--line-strong);
   background:var(--surface-2); font:400 15px/1.2 var(--font-sans); color:var(--ink-1); outline:none; transition:all var(--dur-2); }
 .field input:focus { border-color:var(--wine); box-shadow:var(--ring); }
+/* Contraseña con ojito (components/auth/PasswordInput.tsx) */
+.pw-field { position:relative; }
+.pw-field input { padding-right:46px; }
+.pw-field__eye { position:absolute; top:50%; right:6px; transform:translateY(-50%); width:36px; height:36px;
+  display:inline-flex; align-items:center; justify-content:center; border:0; border-radius:var(--r-sm);
+  background:transparent; color:var(--ink-3); cursor:pointer; transition:color var(--dur-2), background var(--dur-2); }
+.pw-field__eye:hover { color:var(--wine); background:var(--wine-50); }
+.pw-field__eye:focus-visible { outline:none; box-shadow:var(--ring); color:var(--wine); }
 .auth-btn { width:100%; display:inline-flex; align-items:center; justify-content:center; gap:8px;
   padding:14px; border:0; border-radius:var(--r-md); background:var(--ink-1); color:#fff; cursor:pointer;
   font:600 15px/1 var(--font-sans); transition:all var(--dur-2); margin-top:6px; }

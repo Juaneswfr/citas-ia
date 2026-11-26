@@ -148,20 +148,33 @@ async def render_pdf(db, invoice_id: str) -> tuple[bytes, str]:
 # ── Envío ────────────────────────────────────────────────────────────────────
 
 def _email_body(inv: dict, issuer: dict, profile: dict) -> tuple[str, str]:
+    from services import email_layout as L
     esc = html_lib.escape
     number, amount = inv["document_number"], cuenta_cobro.cop(inv["amount_cop"])
     subject = f"Cuenta de cobro {number} · Zumit"
     parts = [
-        f"<h2 style='margin:0 0 12px'>Cuenta de cobro {esc(number)}</h2>",
-        f"<p style='line-height:1.6'>Hola, {esc(profile['legal_name'])}. Adjuntamos la cuenta de cobro "
-        f"<strong>{esc(number)}</strong> por <strong>{esc(amount)}</strong>, del servicio de la plataforma Zumit "
-        f"entre el {esc(cuenta_cobro.fecha_larga(inv['period_start']))} y el {esc(cuenta_cobro.fecha_larga(inv['period_end']))}.</p>",
-        f"<p style='line-height:1.6'>Vence el <strong>{esc(cuenta_cobro.fecha_larga(inv['due_date']))}</strong>.</p>",
+        L.paragraph(f"Hola, <strong>{esc(profile['legal_name'])}</strong>. Adjuntamos en PDF la cuenta de cobro "
+                    "por el servicio de la plataforma Zumit."),
+        L.details([
+            ("Cuenta de cobro", number),
+            ("Valor", amount),
+            ("Periodo", f"{cuenta_cobro.fecha_larga(inv['period_start'])} al {cuenta_cobro.fecha_larga(inv['period_end'])}"),
+            ("Vence el", cuenta_cobro.fecha_larga(inv["due_date"])),
+        ]),
     ]
     if (issuer.get("payment_instructions") or "").strip():
-        parts.append(f"<p style='line-height:1.6'><strong>Cómo pagar:</strong><br>"
-                     f"{esc(issuer['payment_instructions']).replace(chr(10), '<br>')}</p>")
+        parts.append(L.callout("<strong>Cómo pagar</strong><br>"
+                               f"{esc(issuer['payment_instructions']).replace(chr(10), '<br>')}"))
+    parts.append(L.paragraph("Cuando hagas el pago, avísanos por WhatsApp para confirmarlo y dejar tu plan al día.",
+                             muted=True, size=14))
     return subject, "".join(parts)
+
+
+def _email_html(inv: dict, body: str) -> str:
+    """Correo de la cuenta de cobro con el diseño de Zumit (el PDF viaja adjunto)."""
+    from services import email_layout as L
+    return L.base_template(body, "Cuenta de cobro adjunta en PDF.", title="Tu cuenta de", highlight="cobro.",
+                           eyebrow=inv["document_number"], preheader=f"Cuenta de cobro {inv['document_number']} adjunta.")
 
 
 async def send_document(db, invoice_id: str, to: Optional[str] = None, sender=None) -> dict:
@@ -170,7 +183,7 @@ async def send_document(db, invoice_id: str, to: Optional[str] = None, sender=No
     `sender` (async, firma de `EmailService._send`) se inyecta en las pruebas. Si el correo no sale, no se guarda
     nada: la factura no queda marcada como enviada.
     """
-    from services.email_service import EmailService, _base_template
+    from services.email_service import EmailService
 
     issued = await issue_document(db, invoice_id)
     if issued["issued"]:
@@ -187,7 +200,7 @@ async def send_document(db, invoice_id: str, to: Optional[str] = None, sender=No
     pdf, filename = await render_pdf(db, invoice_id)
     subject, body = _email_body(inv, issuer, profile)
     ok = await (sender or EmailService._send)(
-        recipient, subject, _base_template(body, "Cuenta de cobro adjunta en PDF."), [(filename, pdf)])
+        recipient, subject, _email_html(inv, body), [(filename, pdf)])
     if not ok:
         raise BillingError("No se pudo enviar el correo. Revisa la configuración de Resend e intenta de nuevo.")
     await db.execute(

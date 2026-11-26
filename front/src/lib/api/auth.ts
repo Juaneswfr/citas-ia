@@ -9,6 +9,7 @@ export async function loginToBackend(email: string, password: string): Promise<T
     method: 'POST',
     body: JSON.stringify({ email, password }),
     public: true,
+    authError: true,
   });
 }
 
@@ -40,6 +41,7 @@ export async function exchangeGoogleTicket(ticket: string): Promise<TokenRespons
     method: 'POST',
     body: JSON.stringify({ ticket }),
     public: true,
+    authError: true,
   });
 }
 
@@ -49,6 +51,7 @@ export async function linkOAuthAccount(ticket: string, password: string): Promis
     method: 'POST',
     body: JSON.stringify({ ticket, password }),
     public: true,
+    authError: true,
   });
 }
 
@@ -58,6 +61,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
     method: 'POST',
     body: JSON.stringify({ email }),
     public: true,
+    authError: true,
   });
 }
 
@@ -67,6 +71,7 @@ export async function resetPassword(token: string, password: string): Promise<vo
     method: 'POST',
     body: JSON.stringify({ token, password }),
     public: true,
+    authError: true,
   });
 }
 

@@ -5,6 +5,7 @@ import { usePricing } from "@/hooks/use-pricing";
 import { AuthBanners } from "@/components/auth/AuthBanners";
 import { useAuth } from "@/lib/auth-context";
 import { SHOW_FACEBOOK_LOGIN } from "@/lib/features";
+import { PasswordInput } from "@/components/auth/PasswordInput";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({ meta: [{ title: "Zumit · Crea tu cuenta" }] }),
@@ -171,8 +172,8 @@ function SignupPage() {
               </div>
               <div className="field">
                 <label htmlFor="pass">Contraseña</label>
-                <input
-                  id="pass" type="password" required minLength={8}
+                <PasswordInput
+                  id="pass" required minLength={8}
                   placeholder="Mínimo 8 caracteres"
                   value={password}
                   onChange={e => setPassword(e.target.value)}

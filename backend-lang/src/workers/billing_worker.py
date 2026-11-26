@@ -65,10 +65,9 @@ async def notify(db, workspace_id: str, kind: str, ref: str, subject: str, messa
     to = await _recipient(db, workspace_id)
     if to:
         try:
-            from services.email_service import EmailService, _base_template
-            html = _base_template(f"<h2 style='margin:0 0 12px'>{subject}</h2><p style='line-height:1.6'>{message}</p>",
-                                  "Si ya pagaste, ignora este mensaje: se actualiza apenas confirmamos el pago.")
-            emailed = await EmailService._send(to, subject, html)
+            from services.email_service import EmailService
+            from services.email_layout import notice_email
+            emailed = await EmailService._send(to, subject, notice_email(subject, message, severity))
         except Exception as exc:
             log.warning("[billing-worker] correo falló | ws=%s | err=%s", workspace_id, type(exc).__name__)
     await db.execute(

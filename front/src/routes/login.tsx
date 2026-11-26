@@ -5,6 +5,7 @@ import { AuthBanners } from "@/components/auth/AuthBanners";
 import { useAuth } from "@/lib/auth-context";
 import { requestPasswordReset, resetPassword } from "@/lib/api/auth";
 import { SHOW_FACEBOOK_LOGIN } from "@/lib/features";
+import { PasswordInput } from "@/components/auth/PasswordInput";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Zumit · Inicia sesión" }] }),
@@ -218,14 +219,14 @@ function LoginPage() {
                 {mode === 'link' && (
                   <div className="field">
                     <label htmlFor="link-pass">Contraseña de tu cuenta</label>
-                    <input id="link-pass" type="password" required autoFocus placeholder="••••••••" autoComplete="current-password"
+                    <PasswordInput id="link-pass" required autoFocus placeholder="••••••••" autoComplete="current-password"
                       value={password} onChange={e => setPassword(e.target.value)} />
                   </div>
                 )}
                 {mode === 'reset' && (
                   <div className="field">
                     <label htmlFor="new-pass">Contraseña nueva</label>
-                    <input id="new-pass" type="password" required minLength={8} autoFocus placeholder="Mínimo 8 caracteres"
+                    <PasswordInput id="new-pass" required minLength={8} autoFocus placeholder="Mínimo 8 caracteres"
                       autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
                   </div>
                 )}
@@ -320,8 +321,8 @@ function LoginPage() {
               </div>
               <div className="field">
                 <label htmlFor="pass">Contraseña</label>
-                <input
-                  id="pass" type="password" required
+                <PasswordInput
+                  id="pass" required
                   placeholder="••••••••"
                   value={password}
                   onChange={e => setPassword(e.target.value)}

@@ -4,6 +4,8 @@ Servicio de emails transaccionales via Resend.
 Principio X: responsabilidad única — solo maneja el envío de emails.
 Principio VII: la API key se carga desde settings, nunca hardcodeada.
 
+El diseño (logo, colores, tipografía, botones) vive en `services/email_layout.py` y sigue la landing de zumit.app.
+
 Uso:
     from services.email_service import EmailService
     await EmailService.send_appointment_confirmation(...)
@@ -13,36 +15,14 @@ from typing import Optional
 
 import httpx
 
+from services import email_layout as L
+from services.email_layout import base_template as _base_template  # noqa: F401  (lo importan billing y workers)
+
 log = logging.getLogger(__name__)
 
 _RESEND_URL = "https://api.resend.com/emails"
 
-# ── Estilos base compartidos ──────────────────────────────────────────────────
-
-_BASE_STYLE = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a;padding:32px 24px"
-_CARD_STYLE = "background:#faf8f7;border-left:3px solid #7c2d2d;padding:16px 20px;border-radius:4px;margin:20px 0;font-size:14px;line-height:1.6"
-_FOOTER_STYLE = "font-size:12px;color:#999;margin-top:32px;border-top:1px solid #eee;padding-top:16px"
-_WINE = "#7c2d2d"
-
-
-def _base_template(content: str, footer_extra: str = "") -> str:
-    """Wrapper HTML con cabecera y footer comunes."""
-    return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f5f5f5">
-<div style="{_BASE_STYLE}">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px">
-    <span style="background:{_WINE};color:#fff;font-weight:700;font-size:15px;padding:6px 12px;border-radius:8px;letter-spacing:-0.02em">Zumit</span>
-  </div>
-  {content}
-  <div style="{_FOOTER_STYLE}">
-    {footer_extra}
-    <br>Zumit · Agendamiento inteligente por WhatsApp
-  </div>
-</div>
-</body>
-</html>"""
+_AUTO = "Este correo fue generado automáticamente por Zumit."
 
 
 class EmailService:
@@ -54,6 +34,7 @@ class EmailService:
         """Envía un email via Resend API. Retorna True si tuvo éxito.
 
         `attachments`: lista de (nombre de archivo, contenido en bytes). Resend los recibe en base64.
+        Siempre viaja también la versión en texto: mejora la entrega y es lo que ven los clientes sin HTML.
         """
         import base64
         from core.config import get_settings
@@ -68,6 +49,7 @@ class EmailService:
             "to": [to] if isinstance(to, str) else to,
             "subject": subject,
             "html": html,
+            "text": L.plain_text(html),
         }
         if attachments:
             payload["attachments"] = [
@@ -89,26 +71,88 @@ class EmailService:
             log.error("[email] error | to=%s | subject=%s | err=%s", to, subject, e)
             return False
 
-    # ── Templates ─────────────────────────────────────────────────────────────
+    # ── Plantillas (HTML puro, para poder probarlas sin enviar) ───────────────
+
+    @staticmethod
+    def password_reset_html(name: str, url: str, minutes: int = 60) -> str:
+        hi = f"Hola, <strong>{L.esc(name)}</strong>." if name else "Hola."
+        return L.base_template(
+            L.paragraph(f"{hi} Recibimos una solicitud para cambiar la contraseña de tu cuenta en Zumit. "
+                        "Toca el botón y elige una nueva.")
+            + L.button("Elegir contraseña nueva", url)
+            + L.link_fallback(url)
+            + L.callout(f"El enlace sirve <strong>una sola vez</strong> y vence en {minutes} minutos. "
+                        "Si no fuiste tú, ignora este correo: tu contraseña actual sigue igual."),
+            _AUTO,
+            title="Restablece tu", highlight="contraseña.", eyebrow="Seguridad de tu cuenta",
+            preheader="Elige una contraseña nueva. El enlace vence en una hora.",
+        )
+
+    @staticmethod
+    def appointment_confirmation_html(customer_name: str, business_name: str, service_name: str, start_time: str,
+                                      professional_name: Optional[str] = None) -> str:
+        return L.base_template(
+            L.paragraph(f"Hola, <strong>{L.esc(customer_name)}</strong>. Tu cita en <strong>{L.esc(business_name)}</strong> "
+                        "quedó agendada. Aquí tienes los datos:")
+            + L.details([("Servicio", service_name), ("Cuándo", start_time), ("Con", professional_name or ""),
+                         ("Lugar", business_name)])
+            + L.paragraph("Si necesitas cancelar o cambiar la hora, escríbenos por WhatsApp y lo resolvemos al instante.",
+                          muted=True),
+            _AUTO,
+            title="Tu cita quedó", highlight="confirmada.", eyebrow=business_name,
+            preheader=f"{service_name} · {start_time}",
+        )
+
+    @staticmethod
+    def appointment_reminder_html(customer_name: str, business_name: str, service_name: str, start_time: str,
+                                  hours_before: int = 24) -> str:
+        when = "mañana" if hours_before >= 24 else f"en {hours_before} horas"
+        return L.base_template(
+            L.paragraph(f"Hola, <strong>{L.esc(customer_name)}</strong>. Te recordamos que tienes una cita {when} "
+                        f"en <strong>{L.esc(business_name)}</strong>.")
+            + L.details([("Servicio", service_name), ("Cuándo", start_time), ("Lugar", business_name)])
+            + L.paragraph("¿No puedes asistir? Avísanos por WhatsApp para liberar el espacio o buscarte otra hora.",
+                          muted=True),
+            _AUTO,
+            title=f"Tu cita es {when}", highlight="¡Te esperamos!", eyebrow="Recordatorio",
+            preheader=f"{service_name} · {start_time}",
+        )
+
+    @staticmethod
+    def appointment_cancelled_html(customer_name: str, business_name: str, service_name: str, start_time: str) -> str:
+        return L.base_template(
+            L.paragraph(f"Hola, <strong>{L.esc(customer_name)}</strong>. Tu cita en <strong>{L.esc(business_name)}</strong> "
+                        "fue cancelada.")
+            + L.details([("Servicio", service_name), ("Era el", start_time), ("Lugar", business_name)],
+                        struck={"Era el"})
+            + L.paragraph("Si quieres reagendar, escríbenos por WhatsApp y con gusto te buscamos un nuevo horario.",
+                          muted=True),
+            _AUTO,
+            title="Tu cita fue", highlight="cancelada.", eyebrow=business_name,
+            preheader="Escríbenos por WhatsApp si quieres agendar otra hora.",
+        )
+
+    @staticmethod
+    def appointment_rescheduled_html(customer_name: str, business_name: str, service_name: str,
+                                     new_start_time: str, old_start_time: str) -> str:
+        return L.base_template(
+            L.paragraph(f"Hola, <strong>{L.esc(customer_name)}</strong>. Moviste tu cita en "
+                        f"<strong>{L.esc(business_name)}</strong> y ya quedó con el nuevo horario.")
+            + L.details([("Servicio", service_name), ("Nuevo horario", new_start_time), ("Antes", old_start_time),
+                         ("Lugar", business_name)], struck={"Antes"})
+            + L.paragraph("Si algo no cuadra, escríbenos por WhatsApp.", muted=True),
+            _AUTO,
+            title="Tu cita quedó", highlight="reagendada.", eyebrow=business_name,
+            preheader=f"Nuevo horario: {new_start_time}",
+        )
+
+    # ── Envíos ────────────────────────────────────────────────────────────────
 
     @classmethod
     async def send_password_reset(cls, to: str, name: str, url: str, minutes: int = 60) -> bool:
         """Enlace para elegir una contraseña nueva (también sirve a quien entró solo con Google)."""
-        import html as _html
-        safe_name = _html.escape(name or "")
-        safe_url = _html.escape(url, quote=True)
-        content = f"""
-        <h2 style="margin:0 0 8px;font-size:22px;font-weight:500;color:{_WINE}">Restablece tu contraseña</h2>
-        <p>Hola{(' <strong>' + safe_name + '</strong>') if safe_name else ''}, recibimos una solicitud para cambiar la contraseña de tu cuenta en Zumit.</p>
-        <p style="margin:24px 0">
-          <a href="{safe_url}" style="background:{_WINE};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:8px;display:inline-block">Elegir contraseña nueva</a>
-        </p>
-        <p style="font-size:13px;color:#666">El enlace sirve una sola vez y vence en {minutes} minutos. Si el botón no abre, copia esta dirección en tu navegador:<br>
-        <span style="word-break:break-all">{safe_url}</span></p>
-        <p style="font-size:13px;color:#666">Si no fuiste tú, ignora este correo: tu contraseña actual sigue igual.</p>
-        """
-        html_body = _base_template(content, "Este correo fue generado automáticamente por Zumit.")
-        return await cls._send(to=to, subject="Restablece tu contraseña de Zumit", html=html_body)
+        return await cls._send(to=to, subject="Restablece tu contraseña de Zumit",
+                               html=cls.password_reset_html(name, url, minutes))
 
     @classmethod
     async def send_appointment_confirmation(
@@ -121,23 +165,11 @@ class EmailService:
         professional_name: Optional[str] = None,
     ) -> bool:
         """Email de confirmación cuando se crea o agenda una cita."""
-        pro_line = f"<p style='margin:4px 0'>Con <strong>{professional_name}</strong></p>" if professional_name else ""
-        content = f"""
-        <h2 style="margin:0 0 8px;font-size:22px;font-weight:500;color:{_WINE}">Cita confirmada</h2>
-        <p>Hola <strong>{customer_name}</strong>, tu cita ha quedado agendada.</p>
-        <div style="{_CARD_STYLE}">
-          <p style="margin:0 0 4px;font-size:16px;font-weight:600">{service_name}</p>
-          <p style="margin:4px 0">{start_time}</p>
-          {pro_line}
-          <p style="margin:4px 0;color:#666">{business_name}</p>
-        </div>
-        <p>Si necesitas cancelar o reagendar, escríbenos directamente por WhatsApp.</p>
-        """
-        html = _base_template(content, "Este correo fue generado automáticamente por Zumit.")
         return await cls._send(
             to=customer_email,
             subject=f"Cita confirmada en {business_name}",
-            html=html,
+            html=cls.appointment_confirmation_html(customer_name, business_name, service_name, start_time,
+                                                   professional_name),
         )
 
     @classmethod
@@ -152,21 +184,10 @@ class EmailService:
     ) -> bool:
         """Email recordatorio X horas antes de la cita."""
         when = "mañana" if hours_before >= 24 else f"en {hours_before} horas"
-        content = f"""
-        <h2 style="margin:0 0 8px;font-size:22px;font-weight:500;color:{_WINE}">Recordatorio de cita</h2>
-        <p>Hola <strong>{customer_name}</strong>, te recordamos que tienes una cita {when}.</p>
-        <div style="{_CARD_STYLE}">
-          <p style="margin:0 0 4px;font-size:16px;font-weight:600">{service_name}</p>
-          <p style="margin:4px 0">{start_time}</p>
-          <p style="margin:4px 0;color:#666">{business_name}</p>
-        </div>
-        <p>Si necesitas cancelar, escríbenos por WhatsApp.</p>
-        """
-        html = _base_template(content)
         return await cls._send(
             to=customer_email,
             subject=f"Recordatorio — tu cita {when} en {business_name}",
-            html=html,
+            html=cls.appointment_reminder_html(customer_name, business_name, service_name, start_time, hours_before),
         )
 
     @classmethod
@@ -179,21 +200,10 @@ class EmailService:
         start_time: str,
     ) -> bool:
         """Email cuando se cancela una cita."""
-        content = f"""
-        <h2 style="margin:0 0 8px;font-size:22px;font-weight:500;color:#555">Cita cancelada</h2>
-        <p>Hola <strong>{customer_name}</strong>, tu cita ha sido cancelada.</p>
-        <div style="background:#f5f5f5;border-left:3px solid #bbb;padding:16px 20px;border-radius:4px;margin:20px 0;font-size:14px;line-height:1.6">
-          <p style="margin:0 0 4px;font-size:16px;font-weight:600">{service_name}</p>
-          <p style="margin:4px 0">{start_time}</p>
-          <p style="margin:4px 0;color:#666">{business_name}</p>
-        </div>
-        <p>Si quieres reagendar, escríbenos por WhatsApp y con gusto te buscamos un nuevo horario.</p>
-        """
-        html = _base_template(content)
         return await cls._send(
             to=customer_email,
             subject=f"Cita cancelada — {business_name}",
-            html=html,
+            html=cls.appointment_cancelled_html(customer_name, business_name, service_name, start_time),
         )
 
     @classmethod
@@ -207,19 +217,9 @@ class EmailService:
         old_start_time: str,
     ) -> bool:
         """Email cuando se reagenda una cita."""
-        content = f"""
-        <h2 style="margin:0 0 8px;font-size:22px;font-weight:500;color:{_WINE}">Cita reagendada</h2>
-        <p>Hola <strong>{customer_name}</strong>, tu cita ha sido movida al nuevo horario.</p>
-        <div style="{_CARD_STYLE}">
-          <p style="margin:0 0 4px;font-size:16px;font-weight:600">{service_name}</p>
-          <p style="margin:4px 0"><strong>Nuevo horario:</strong> {new_start_time}</p>
-          <p style="margin:4px 0;color:#888;text-decoration:line-through">Antes: {old_start_time}</p>
-          <p style="margin:4px 0;color:#666">{business_name}</p>
-        </div>
-        """
-        html = _base_template(content)
         return await cls._send(
             to=customer_email,
             subject=f"Cita reagendada — {business_name}",
-            html=html,
+            html=cls.appointment_rescheduled_html(customer_name, business_name, service_name, new_start_time,
+                                                  old_start_time),
         )

@@ -1,6 +1,14 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-26]
+**Agregado — correos con el diseño de la landing; Corregido — «Sesión expirada» al escribir mal la contraseña; Agregado — ojito en contraseñas**
+- services/email_layout.py (nuevo) — plantilla común: cabecera borgoña con logo, título pesado con palabra resaltada en turquesa, tarjeta de datos, botón en píldora, aviso, pie oscuro con enlaces, preheader y versión en texto. services/email_service.py — las 5 plantillas (cita confirmada, recordatorio, cancelada, reagendada, restablecer contraseña) reescritas sobre ella; `_send` manda también `text`. Ahora escapan los datos (antes no).
+- billing_documents.py (cuenta de cobro), workers/billing_worker.py (avisos de cobro), routes/billing.py (solicitud de activación) — usan el mismo diseño.
+- front client.ts — opción `authError`: un 401 de login/vincular/olvidé/restablecer ya no dispara el cierre de sesión ni dice «Sesión expirada»; muestra «La contraseña no es correcta». Era la causa de que el primer intento de vincular fallara raro y el segundo diera otra respuesta.
+- front components/auth/PasswordInput.tsx + styles.css (`.pw-field`) — ojito en login, registro, vincular y contraseña nueva.
+- tests/test_email_layout.py (nuevo); test_facebook_signin.py ajustado al ticket de vinculación.
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
 **Agregado — vincular Google a una cuenta con contraseña y recuperación de contraseña; Quitado — botón de Facebook (oculto)**
 - routes/auth.py — `_oauth_signin`: correo existente con contraseña ya no responde `exists`, redirige a `/login#link_ticket=`. `POST /auth/oauth/link` (contraseña obligatoria, ticket de 10 min, topes de intentos), `POST /auth/forgot-password` y `POST /auth/reset-password` (token firmado de 1 h con huella de la contraseña: un solo uso). Sin migración.
 - core/throttle.py — tope de intentos en memoria por IP, cuenta y correo. services/email_service.py — `send_password_reset`. schemas/auth.py — tres esquemas nuevos.

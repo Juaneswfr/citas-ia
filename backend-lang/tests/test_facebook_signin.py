@@ -158,8 +158,16 @@ async def test_quien_ya_entro_con_facebook_vuelve_a_entrar_sin_tocar_nada(facebo
 
 
 @pytest.mark.asyncio
+async def test_cuenta_con_contrasena_pide_la_contrasena_para_vincular_facebook(facebook):
+    """Ya no responde `exists`: manda a /login con un ticket de vinculación y no toca la BD."""
+    db = DB(user={**EXISTING, "provider_sub": None, "has_password": True})
+    res = await callback(db)
+    assert res.status_code == 302 and "/login#link_ticket=" in res.headers["location"]
+    assert not db.ran("INSERT") and not db.ran("UPDATE") and db.committed == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("user,reason", [
-    ({**EXISTING, "provider_sub": None}, "exists"),           # cuenta con contraseña o Google: no se enlaza sola
     ({**EXISTING, "provider_sub": "OTRA-CUENTA"}, "exists"),  # mismo correo, otra cuenta de Facebook
     ({**EXISTING, "is_active": False}, "blocked"),
     ({**EXISTING, "workspace_active": False}, "suspended"),

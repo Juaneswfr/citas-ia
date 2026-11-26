@@ -287,15 +287,18 @@ class ActivationRequestIn(BaseModel):
 async def _email_activation_request(db, workspace_id: str, res: dict, body: ActivationRequestIn) -> None:
     """Correo a los super_admin. Mejor esfuerzo: la solicitud ya quedó guardada y se ve en Zumit Manager › Cobros."""
     try:
-        from services.email_service import EmailService, _base_template
+        from services.email_service import EmailService
+        from services import email_layout as L
         emails = (await db.execute(
             text("SELECT email FROM users WHERE role = 'super_admin' AND is_active = TRUE"))).scalars().all()
-        ref = f"<br>Referencia del pago: {body.payment_reference}" if body.payment_reference else ""
-        html = _base_template(
-            f"<h2 style='margin:0 0 12px'>Solicitud de activación: {res['workspace_name']}</h2>"
-            f"<p style='line-height:1.6'>Quiere activar el plan {res['plan_name']}.<br>WhatsApp: {body.whatsapp_phone}{ref}</p>"
-            "<p style='line-height:1.6'>Cuando veas el pago, actívalo en Zumit Manager › Cobros.</p>",
-            "Aviso automático de Zumit.")
+        html = L.base_template(
+            L.paragraph("Un negocio avisó que quiere activar su plan. Cuando veas el pago, actívalo desde Zumit Manager.")
+            + L.details([("Negocio", res["workspace_name"]), ("Plan", res["plan_name"]),
+                         ("WhatsApp", body.whatsapp_phone), ("Referencia del pago", body.payment_reference or "")])
+            + L.button("Abrir Zumit Manager › Cobros", f"{L.SITE}/zmanager/cobros"),
+            "Aviso automático de Zumit.",
+            title="Quieren activar su", highlight="plan.", eyebrow="Zumit Manager",
+            preheader=f"{res['workspace_name']} quiere activar {res['plan_name']}.")
         for to in emails:
             await EmailService._send(to, f"Solicitud de activación: {res['workspace_name']}", html)
     except Exception as exc:

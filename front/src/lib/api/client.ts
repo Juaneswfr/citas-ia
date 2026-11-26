@@ -32,6 +32,12 @@ export class ApiError extends Error {
 interface ApiFetchOptions extends RequestInit {
   /** Si true, omite el header Authorization (endpoints públicos) */
   public?: boolean;
+  /**
+   * Si true, un 401 es la respuesta del endpoint (contraseña incorrecta, enlace vencido…) y no una sesión caída:
+   * se muestra el mensaje del backend y NO se llama al handler de cierre de sesión. Sin esto, escribir mal la
+   * contraseña daba «Sesión expirada» y reiniciaba la pantalla.
+   */
+  authError?: boolean;
 }
 
 /** Base de la API: sin VITE_API_URL falla fuerte en vez de apuntar en silencio a localhost. */
@@ -62,14 +68,15 @@ export async function apiFetch<T>(path: string, options?: ApiFetchOptions): Prom
     headers['Authorization'] = `Bearer ${_apiToken}`;
   }
 
+  const { public: _public, authError, ...init } = options ?? {};
   let response: Response;
   try {
-    response = await fetch(url, { ...options, headers });
+    response = await fetch(url, { ...init, headers });
   } catch {
     throw new ApiError(0, 'Sin conexión, verifica tu red');
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 && !authError) {
     _onUnauthorized?.();
     throw new ApiError(401, 'Sesión expirada, inicia sesión de nuevo');
   }
