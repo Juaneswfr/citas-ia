@@ -20,16 +20,23 @@ def run(ws="w1", start=BOGOTA_NOON, cost=0.01, prompt=1000, completion=100, tota
 
 
 class FakeClient:
-    """Se comporta como `langsmith.Client.list_runs`: registra con qué se le pidió."""
+    """Se comporta como `langsmith.Client` con la API nueva: `aread_project` y `runs.query` (iterador asíncrono)."""
 
     def __init__(self, runs=(), error=None):
-        self.runs, self.error, self.calls = list(runs), error, []
+        self.runs_list, self.error, self.calls = list(runs), error, []
+        self.runs = SimpleNamespace(query=self._query)
 
-    def list_runs(self, **kwargs):
+    async def aread_project(self, **kwargs):
+        if self.error:
+            raise self.error
+        return SimpleNamespace(id="proj-1")
+
+    async def _query(self, **kwargs):
         self.calls.append(kwargs)
         if self.error:
             raise self.error
-        return iter(self.runs)
+        for r in self.runs_list:
+            yield r
 
 
 # ── Agregación ───────────────────────────────────────────────────────────────
@@ -82,9 +89,10 @@ async def test_le_pide_a_langsmith_solo_las_llamadas_del_agente_en_el_rango():
     out = await ls.fetch_costs(date(2026, 11, 19), date(2026, 11, 20), client)
     (call,) = client.calls
     assert call["is_root"] is True and 'has(tags, "citas")' in call["filter"]
-    assert call["start_time"] == datetime(2026, 11, 19, 5, tzinfo=timezone.utc)  # medianoche de Bogotá en UTC
-    assert "2026-11-21T05:00:00Z" in call["filter"]  # hasta el final del 20 en Bogotá
-    assert "total_cost" in call["select"] and "extra" in call["select"]
+    assert call["project_ids"] == ["proj-1"] and call["run_type"] == "LLM"
+    assert call["min_start_time"] == datetime(2026, 11, 19, 5, tzinfo=timezone.utc)  # medianoche de Bogotá en UTC
+    assert call["max_start_time"] == datetime(2026, 11, 21, 5, tzinfo=timezone.utc)  # hasta el final del 20 en Bogotá
+    assert "TOTAL_COST" in call["selects"] and "METADATA" in call["selects"]
     assert out[("w1", date(2026, 11, 20))]["runs"] == 1
 
 

@@ -8,10 +8,11 @@ por día (zona de Bogotá, igual que `agent_usage`).
 LangSmith conserva los trazos poco tiempo (14 días en el plan base): por eso `billing_costs.sync` guarda los totales en
 nuestra BD cada hora y no se consulta LangSmith al abrir la pantalla.
 
-Lo que no se pudo comprobar sin llamar a LangSmith: la forma exacta de `list_runs` con `select` y `filter`. Está escrito
-contra el SDK instalado; la prueba de conexión de Zumit Manager (Estado) y la primera sincronización lo confirman.
+Se lee con `client.runs.query` (API nueva de SmithDB, `langsmith>=0.10.15`; `list_runs` y `POST /runs/query` dejan de
+funcionar el 2027-01-31). La forma exacta (`filter`, `selects`, costo propio de la llamada) se comprobó contra LangSmith
+real el 2026-11-26 con una consulta de solo lectura. Cada llamada al modelo del agente es una ejecución raíz con su propio
+costo, por eso aquí no hace falta consultar trazas ni sumar ejecuciones hijas.
 """
-import asyncio
 import logging
 import os
 from collections import defaultdict
@@ -25,7 +26,7 @@ log = logging.getLogger(__name__)
 
 BOGOTA = ZoneInfo("America/Bogota")
 TAG = "citas"
-SELECT = ["id", "start_time", "extra", "total_tokens", "prompt_tokens", "completion_tokens", "total_cost"]
+SELECT = ["ID", "START_TIME", "METADATA", "TOTAL_TOKENS", "PROMPT_TOKENS", "COMPLETION_TOKENS", "TOTAL_COST"]
 MAX_RUNS = 50_000  # tope de seguridad por sincronización
 
 
@@ -107,10 +108,6 @@ def aggregate_by_run(runs: Iterable[Any]) -> dict[str, dict]:
     return dict(out)
 
 
-def _iso(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def day_window(day_from: date, day_to: date) -> tuple[datetime, datetime]:
     """Desde el inicio de `day_from` hasta el final de `day_to`, en hora de Bogotá."""
     start = datetime.combine(day_from, datetime.min.time(), tzinfo=BOGOTA)
@@ -118,18 +115,29 @@ def day_window(day_from: date, day_to: date) -> tuple[datetime, datetime]:
     return start, end
 
 
-def _fetch(day_from: date, day_to: date, client: Optional[Any] = None) -> list[Any]:
-    """Bloqueante: las llamadas al modelo de ese rango. Se ejecuta en un hilo."""
-    if client is None:
-        if not is_configured():
-            raise LangSmithError("LangSmith no está configurado (falta LANGSMITH_API_KEY).")
-        from langsmith import Client
-        client = Client(api_key=api_key())
+def _client(client: Optional[Any] = None) -> Any:
+    if client is not None:
+        return client
+    if not is_configured():
+        raise LangSmithError("LangSmith no está configurado (falta LANGSMITH_API_KEY).")
+    from langsmith import Client
+    return Client(api_key=api_key())
+
+
+async def _project_id(client: Any) -> str:
+    """`runs.query` pide el UUID del proyecto, no su nombre."""
+    return str((await client.aread_project(project_name=project_name())).id)
+
+
+async def _fetch(day_from: date, day_to: date, client: Optional[Any] = None) -> list[Any]:
+    """Las llamadas al modelo de ese rango (más recientes primero)."""
+    client = _client(client)
     start, end = day_window(day_from, day_to)
     runs = []
-    for run in client.list_runs(
-        project_name=project_name(), is_root=True, start_time=start.astimezone(timezone.utc),
-        filter=f'and(has(tags, "{TAG}"), lt(start_time, "{_iso(end)}"))', select=SELECT,
+    async for run in client.runs.query(
+        project_ids=[await _project_id(client)], is_root=True, run_type="LLM",
+        min_start_time=start.astimezone(timezone.utc), max_start_time=end.astimezone(timezone.utc),
+        filter=f'has(tags, "{TAG}")', selects=SELECT, page_size=1000,
     ):
         runs.append(run)
         if len(runs) >= MAX_RUNS:
@@ -141,7 +149,7 @@ def _fetch(day_from: date, day_to: date, client: Optional[Any] = None) -> list[A
 async def fetch_all(day_from: date, day_to: date, client: Optional[Any] = None) -> tuple[dict[tuple[str, date], dict], dict[str, dict]]:
     """Una sola lectura de LangSmith: el costo por (negocio, día) y el costo por ejecución del agente."""
     try:
-        runs = await asyncio.to_thread(_fetch, day_from, day_to, client)
+        runs = await _fetch(day_from, day_to, client)
     except LangSmithError:
         raise
     except Exception as exc:
@@ -158,16 +166,10 @@ async def ping(client: Optional[Any] = None) -> dict:
     """Prueba de conexión barata: pide una sola llamada reciente. Devuelve {ok, detail}."""
     if client is None and not is_configured():
         return {"ok": False, "detail": "Falta LANGSMITH_API_KEY."}
-
-    def _ping() -> str:
-        c = client
-        if c is None:
-            from langsmith import Client
-            c = Client(api_key=api_key())
-        next(iter(c.list_runs(project_name=project_name(), is_root=True, limit=1, select=["id"])), None)
-        return f"Conectado al proyecto «{project_name()}»."
-
     try:
-        return {"ok": True, "detail": await asyncio.to_thread(_ping)}
+        c = _client(client)
+        async for _ in c.runs.query(project_ids=[await _project_id(c)], is_root=True, page_size=1):
+            break
+        return {"ok": True, "detail": f"Conectado al proyecto «{project_name()}»."}
     except Exception as exc:
         return {"ok": False, "detail": f"{type(exc).__name__}: {str(exc)[:200]}"}

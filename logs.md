@@ -1,6 +1,13 @@
 # Cambios por agente
 
 ### [AGENTE: claude] [FECHA: 2026-11-26]
+**Corregido — migración de LangSmith `list_runs` (`POST /runs/query`, se apaga el 2027-01-31) a `client.runs.query`**
+- langsmith_costs.py — `_fetch` y `ping` son asíncronos (sin `asyncio.to_thread`), resuelven el UUID del proyecto con `aread_project` y consultan `runs.query(project_ids, is_root, run_type="LLM", min/max_start_time, filter=has(tags,"citas"), selects en mayúsculas, page_size=1000)`. Cada llamada al modelo es una raíz con costo propio: no se consultan trazas. Comprobado con una consulta real de solo lectura.
+- pyproject.toml/uv.lock — `langsmith>=0.10.15` declarado (instalada 0.16.2).
+- tests/test_langsmith_costs.py — `FakeClient` imita `aread_project` y `runs.query`.
+- CLAUDE.md — nota de LangSmith actualizada.
+
+### [AGENTE: claude] [FECHA: 2026-11-26]
 **Agregado — correos con el diseño de la landing; Corregido — «Sesión expirada» al escribir mal la contraseña; Agregado — ojito en contraseñas**
 - services/email_layout.py (nuevo) — plantilla común: cabecera borgoña con logo, título pesado con palabra resaltada en turquesa, tarjeta de datos, botón en píldora, aviso, pie oscuro con enlaces, preheader y versión en texto. services/email_service.py — las 5 plantillas (cita confirmada, recordatorio, cancelada, reagendada, restablecer contraseña) reescritas sobre ella; `_send` manda también `text`. Ahora escapan los datos (antes no).
 - billing_documents.py (cuenta de cobro), workers/billing_worker.py (avisos de cobro), routes/billing.py (solicitud de activación) — usan el mismo diseño.
