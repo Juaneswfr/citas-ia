@@ -30,10 +30,11 @@ No tocar los Dockerfiles — son la configuración actual de producción.
 YA ESTAN CORRIENDO EN PRODUCCION https://zumit.app/ (el dominio antiguo `hilo.esjuanez.com` sigue como alias en nginx solo durante la migración; retirarlo de `server_name` cuando Google, Meta y Kapso ya apunten a zumit.app)
 
 ```bash
-git pull && docker compose up --build -d
+git pull && docker compose up -d --build backend nginx   # el front NO se construye en el VPS
+# Front: en local `cd front && npm run build`, subir front/dist a ./front/dist del VPS y `docker compose restart frontend`
 ```
 
-- Frontend: multi-stage Dockerfile (bun install + npm run build → Nitro SSR en node:20-alpine)
+- Frontend: Nitro SSR en node:20-alpine. El build se hace en local y `front/dist` se sube a mano; el compose lo monta como volumen de solo lectura (el Dockerfile ya no construye). Los `VITE_*` se inlinan al construir: salen del `front/.env` local, no del servidor
 - Backend: Python 3.12 slim + uv, código montado como volumen
 - Nginx: reverse proxy interno en puerto 7000, Apache del host maneja SSL. Resuelve `frontend` y `backend` en cada petición (variables en `proxy_pass`, no bloques `upstream`), así sobrevive a que esos contenedores cambien de IP. Un cambio en `nginx/nginx.conf` no se aplica con `up -d`: hay que correr `docker compose restart nginx`.
 

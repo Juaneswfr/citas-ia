@@ -1,8 +1,8 @@
 services:
 
-  # ── Frontend: SSR Nitro (build dentro del container) ──────────────────────────
-  # Actualizar: git pull + docker compose up --build frontend
-  # Rebuild si cambia package-lock.json o código fuente
+  # ── Frontend: SSR Nitro (build FUERA del servidor) ────────────────────────────
+  # Local: cd front && npm run build  → subir front/dist al VPS (queda en ./front/dist, no está en git)
+  # Actualizar: reemplazar ./front/dist + docker compose restart frontend
   frontend:
     build:
       context: ./front
@@ -10,6 +10,8 @@ services:
     restart: unless-stopped
     env_file:
       - ./front/.env
+    volumes:
+      - ./front/dist:/app/dist:ro
     environment:
       - NITRO_HOST=0.0.0.0
       - NITRO_PORT=3000

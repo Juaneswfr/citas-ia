@@ -1,21 +1,9 @@
-# Multi-stage: build SSR dentro del container
-# Actualizar: git pull + docker compose up --build frontend
-FROM oven/bun:1-alpine AS build
-
-WORKDIR /app
-
-COPY package.json bun.lock ./
-RUN bun install
-
-# .env debe existir en el server (VITE_* se inlinan en el bundle del cliente)
-COPY . .
-RUN bun run build
-
-# ── Runtime: solo el output de Nitro ───────────────────────────────────────
+# Runtime solamente: el build (npm run build) se hace fuera del servidor y se sube ./front/dist.
+# docker-compose.yml monta ./front/dist en /app/dist, así que actualizar el front es copiar dist y
+# `docker compose restart frontend`: no hay build ni rebuild de imagen en el VPS.
 FROM node:20-alpine
 
 WORKDIR /app
-COPY --from=build /app/dist ./dist
 
 EXPOSE 3000
 
