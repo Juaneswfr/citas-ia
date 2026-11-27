@@ -264,7 +264,11 @@ export interface CostRow {
   /** false = en prueba, pausado o sin plan: cuesta y no paga. */
   paying: boolean;
   bookings: number;
-  ai: { calls: number; tokens: number; cost_usd: number; cost_cop: number | null; source: CostSource };
+  ai: {
+    calls: number; tokens: number; cost_usd: number; cost_cop: number | null; source: CostSource;
+    /** Transcripción de audios: ya está incluida en cost_usd. Siempre una estimación (tokens o segundos × tarifa). */
+    audio: { count: number; seconds: number | null; cost_usd: number };
+  };
   /** Siempre una estimación: plantillas enviadas × la tarifa de Meta que cargaste. */
   whatsapp: {
     sent: number; billable: number; free: number; cost_usd: number; cost_cop: number | null;
@@ -302,6 +306,9 @@ export interface CostsTotals {
   margin_pct: number | null;
   ai_cost_usd: number;
   whatsapp_cost_usd: number;
+  /** Lo que de `ai_cost_usd` corresponde a transcribir audios (estimado). */
+  audio_cost_usd: number;
+  audio_count: number;
   fixed_cop: number;
   whatsapp_sent: number;
   whatsapp_billable: number;

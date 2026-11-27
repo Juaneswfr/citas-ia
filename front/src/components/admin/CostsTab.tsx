@@ -194,7 +194,7 @@ function CostTable({ items, onOpen, onDetail }: { items: CostRow[]; onOpen: (id:
                 </td>
                 <Cell main={pesos(r.revenue_cop)} />
                 <Cell main={usd(r.ai.cost_usd)} sub={r.ai.cost_cop !== null ? fmtCOP(r.ai.cost_cop) : undefined}
-                      tag={<span title={SOURCE[r.ai.source].hint}><ToneTag tone={SOURCE[r.ai.source].tone}>{SOURCE[r.ai.source].label}</ToneTag></span>} />
+                      tag={<span title={`${SOURCE[r.ai.source].hint}${r.ai.audio.count > 0 ? ` Incluye ${r.ai.audio.count} audio(s) transcritos: ${usd(r.ai.audio.cost_usd)} (estimado).` : ''}`}><ToneTag tone={SOURCE[r.ai.source].tone}>{SOURCE[r.ai.source].label}</ToneTag></span>} />
                 <Cell main={usd(wa.cost_usd)} sub={`${wa.billable} de ${wa.sent} cobrables`}
                       tag={wa.rates_missing.length > 0
                         ? <ToneTag tone="warn">Falta tarifa de {wa.rates_missing.map((c) => CATEGORY_LABEL[c]).join(' y ')}</ToneTag>
@@ -228,7 +228,7 @@ function Body({ days, onOpen, onDetail }: { days: number; onOpen: (id: string, n
           <div className={`${styles.kpis} stagger`}>
             <Kpi label="Ingreso del periodo" value={fmtCOP(t.revenue_cop)} hint="Lo cobrado, repartido por los días de cada ciclo" />
             <Kpi label="Costo total" value={pesos(t.cost_cop)}
-                 hint={`IA ${usd(t.ai_cost_usd)} · WhatsApp ${usd(t.whatsapp_cost_usd)}${t.fixed_cop > 0 ? ` · fijos ${fmtCOP(t.fixed_cop)}` : ''}`} />
+                 hint={`IA ${usd(t.ai_cost_usd)}${t.audio_count > 0 ? ` (audios ${usd(t.audio_cost_usd)})` : ''} · WhatsApp ${usd(t.whatsapp_cost_usd)}${t.fixed_cop > 0 ? ` · fijos ${fmtCOP(t.fixed_cop)}` : ''}`} />
             <Kpi label="Margen" value={pesos(t.margin_cop)} alert={(t.margin_cop ?? 0) < 0}
                  hint={t.margin_pct !== null ? `${t.margin_pct}% del ingreso` : 'Sin ingreso o sin tasa del dólar'} />
             <Kpi label="Costo por cita" value={t.per_booking.cop != null ? fmtCOP(t.per_booking.cop) : usd(t.per_booking.usd, 3)}

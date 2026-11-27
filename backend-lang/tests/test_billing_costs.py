@@ -118,11 +118,12 @@ W_PAY, W_PAY2, W_TRIAL, W_GONE = "w-pay", "w-pay2", "w-trial", "w-borrado"
 
 
 class CostDB(FakeSession):
-    def __init__(self, fx=4000, rates=None, settings=None, ai=None, wa=None, invoices=None, bookings=None, info=None):
+    def __init__(self, fx=4000, rates=None, settings=None, ai=None, wa=None, invoices=None, bookings=None, info=None, audio=None):
         self.fx = {"usd_cop": fx, "day": TODAY} if fx else None
         self.rates = [{"category": c, "usd_price": v} for c, v in (rates if rates is not None else {"utility": UTIL, "marketing": MKT}).items()]
         self.settings = [{"key": k, "value": v} for k, v in (settings or {}).items()]
         self.ai, self.wa, self.invoices, self.bookings = ai or [], wa or [], invoices or [], bookings or []
+        self.audio = audio or []
         self.info = info if info is not None else [
             {"id": W_PAY, "name": "Barbería Paga", "plan": "Emprendedor", "plan_id": "plan-a", "status": "active"},
             {"id": W_PAY2, "name": "Salón Callado", "plan": "Equipo", "plan_id": "plan-e", "status": "active"},
@@ -136,6 +137,7 @@ class CostDB(FakeSession):
         if "FROM meta_template_rates" in q: return self.rates
         if "FROM platform_settings" in q: return self.settings
         if "FROM agent_usage" in q: return self.ai
+        if "FROM audio_usage" in q: return self.audio
         if "FROM appointments" in q: return self.bookings
         if "FROM followup_sends fs" in q: return self.wa
         if "FROM billing_invoices" in q: return self.invoices
@@ -283,3 +285,47 @@ async def test_cada_fila_dice_a_que_plan_pertenece_por_su_id():
     out = await bc.costs(CostDB(invoices=[invoice(W_PAY)]), 30, today=TODAY)
     by = {i["workspace_id"]: i for i in out["items"]}
     assert by[W_PAY]["plan_id"] == "plan-a" and by[W_PAY2]["plan_id"] == "plan-e"
+
+
+# ── Transcripción de audios: es IA, entra en el costo de IA ──────────────────
+
+def audio_row(ws, audios=10, seconds=120.0, usd=0.02):
+    return {"workspace_id": ws, "audios": audios, "seconds": seconds, "cost_usd": usd}
+
+
+async def test_el_costo_de_los_audios_se_suma_a_la_ia_y_al_total():
+    db = CostDB(ai=[ai_row(W_PAY, 1.5)], audio=[audio_row(W_PAY, 10, 120.0, 0.02)], bookings=[{"workspace_id": W_PAY, "n": 4}])
+    out = await bc.costs(db, 30, today=TODAY)
+    item = next(i for i in out["items"] if i["workspace_id"] == W_PAY)
+    assert item["ai"]["cost_usd"] == pytest.approx(1.52)
+    assert item["ai"]["audio"] == {"count": 10, "seconds": 120.0, "cost_usd": 0.02}
+    assert item["cost_cop"] == round(1.52 * 4000)                       # entra en el costo total y el margen
+    assert item["per_booking"]["usd"] == pytest.approx(1.52 / 4, abs=1e-5)  # y en el costo por cita
+    assert out["totals"]["ai_cost_usd"] == pytest.approx(1.52, abs=1e-4)
+    assert out["totals"]["audio_cost_usd"] == pytest.approx(0.02) and out["totals"]["audio_count"] == 10
+
+
+async def test_un_negocio_que_solo_mando_audios_aparece_con_ese_costo():
+    out = await bc.costs(CostDB(audio=[audio_row(W_TRIAL, 3, None, 0.004)]), 30, today=TODAY)
+    item = next(i for i in out["items"] if i["workspace_id"] == W_TRIAL)
+    assert item["ai"]["audio"]["seconds"] is None                        # la duración desconocida no se inventa
+    assert item["ai"]["cost_usd"] == pytest.approx(0.004) and item["ai"]["source"] == "estimate"
+
+
+async def test_sin_audios_el_calculo_no_cambia():
+    out = await bc.costs(CostDB(ai=[ai_row(W_PAY, 1.5)]), 30, today=TODAY)
+    item = next(i for i in out["items"] if i["workspace_id"] == W_PAY)
+    assert item["ai"]["cost_usd"] == 1.5 and item["ai"]["audio"] == {"count": 0, "seconds": None, "cost_usd": 0.0}
+    assert out["totals"]["audio_cost_usd"] == 0 and out["totals"]["audio_count"] == 0
+
+
+async def test_sin_la_migracion_028_el_costo_sigue_calculandose():
+    class NoAudioTable(CostDB):
+        def handle(self, q, p):
+            if "FROM audio_usage" in q:
+                raise RuntimeError('relation "audio_usage" does not exist')
+            return super().handle(q, p)
+
+    out = await bc.costs(NoAudioTable(ai=[ai_row(W_PAY, 1.5)]), 30, today=TODAY)
+    item = next(i for i in out["items"] if i["workspace_id"] == W_PAY)
+    assert item["ai"]["cost_usd"] == 1.5 and out["totals"]["audio_count"] == 0

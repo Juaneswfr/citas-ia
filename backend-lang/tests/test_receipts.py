@@ -122,7 +122,8 @@ async def test_ingest_outcomes_that_store_nothing(monkeypatch):
      {"kind": "button", "payload": "optout", "text": "No más mensajes"}),
     ({"type": "image", "image": {"id": "M1", "caption": "pago"}},
      {"kind": "media", "type": "image", "media_id": "M1", "text": "pago"}),
-    ({"type": "audio", "audio": {"id": "A"}}, {"kind": "other", "type": "audio"}),
+    ({"type": "audio", "audio": {"id": "A"}}, {"kind": "audio", "type": "audio", "media_id": "A"}),
+    ({"type": "video", "video": {"id": "V"}}, {"kind": "other", "type": "video"}),
     ({"type": "reaction"}, {"kind": "ignore"}),
     ({}, {"kind": "ignore"}),
 ])
@@ -200,11 +201,6 @@ async def test_non_receipt_image(chat):
     assert chat.replies == [inbound.ONLY_TEXT_OR_RECEIPT] and chat.agent == ["quiero este corte"]
 
 
-async def test_audio_gets_only_text_notice(chat):
-    await inbound.handle_kapso_message(_item({"type": "audio", "audio": {"id": "A"}}))
-    assert chat.replies == [inbound.ONLY_TEXT] and chat.saved == [("inbound", "[audio]", "audio")]
-
-
 async def test_video_gets_its_own_notice_and_never_reaches_the_agent(chat):
     await inbound.handle_kapso_message(_item({"type": "video", "video": {"id": "V"}}))
     assert chat.saved == [("inbound", "[video]", "video")]
@@ -218,7 +214,7 @@ async def test_sticker_location_and_contact_are_saved_but_get_no_reply(chat, kin
     assert chat.replies == [] and chat.agent == []   # y no se responde ni se llama al agente
 
 
-@pytest.mark.parametrize("kind,notice", [("audio", inbound.ONLY_TEXT), ("video", inbound.NO_VIDEO)])
+@pytest.mark.parametrize("kind,notice", [("video", inbound.NO_VIDEO), ("unknown", inbound.ONLY_TEXT)])
 async def test_the_fixed_notice_is_not_repeated_back_to_back(chat, kind, notice):
     await inbound.handle_kapso_message(_item({"type": kind, kind: {"id": "A"}}))
     assert chat.replies == [notice]

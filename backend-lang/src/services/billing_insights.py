@@ -174,6 +174,16 @@ async def insights(db, weeks: int = 12, today: Optional[date] = None) -> dict:
                 FROM agent_usage WHERE day >= :since GROUP BY 1"""),
         {"since": since},
     )).mappings().fetchall()}
+    try:  # transcripción de audios (migración 028): es IA, entra en el costo semanal; sin la tabla no pasa nada
+        async with db.begin_nested():
+            for r in (await db.execute(
+                text("""SELECT date_trunc('week', day)::date AS week, COALESCE(SUM(cost_usd), 0) AS usd
+                        FROM audio_usage WHERE day >= :since GROUP BY 1"""),
+                {"since": since},
+            )).mappings().fetchall():
+                ai[r["week"]] = ai.get(r["week"], 0.0) + float(r["usd"])
+    except Exception as e:
+        log.warning("[insights] sin consumo de audios (¿falta la migración 028?) | err=%s", type(e).__name__)
 
     wa_rows: dict[date, list[dict]] = {}
     for r in (await db.execute(

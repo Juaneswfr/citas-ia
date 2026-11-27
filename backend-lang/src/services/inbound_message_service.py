@@ -3,7 +3,10 @@
 - Texto → agente de citas.
 - Botón de una plantilla (Confirmar / Cancelar / Agendar / No más mensajes) → acción directa o agente.
 - Imagen o documento → posible comprobante de pago (receipt_service).
-- Video → «no puedo ver videos». Audio y tipos desconocidos → «solo leo texto». Sticker, ubicación y
+- Audio (nota de voz) → se descarga, se transcribe con Gemini 3.5 Transcribe (audio_transcription) y el texto entra al
+  agente como si el cliente lo hubiera escrito. Si no se puede (sin clave, muy pesado, formato no
+  admitido, ininteligible) el cliente recibe un aviso y el agente no corre.
+- Video → «no puedo ver videos». Tipos desconocidos → «solo leo texto». Sticker, ubicación y
   contacto → se guardan en el chat para el equipo y no se responde nada. Ninguno llega al agente (no
   gasta tokens) y el aviso fijo no se repite si el último mensaje enviado ya era ese mismo.
 - Mensaje que el negocio envió desde la app de WhatsApp Business (coexistencia) → se guarda en la
@@ -20,10 +23,12 @@ from typing import Optional
 
 from sqlalchemy import text
 
+from core.config import get_settings
 from core.database import AsyncSessionLocal
-from services import followup_service, followup_templates as ft, receipt_service
+from services import audio_transcription, audio_usage, followup_service, followup_templates as ft, receipt_service
 from services.agent_service import AgentService
 from services.conversation_service import ConversationService
+from services.whatsapp_provider import KapsoProvider, ProviderError
 from services.whatsapp_service import WhatsAppService
 
 log = logging.getLogger(__name__)
@@ -34,6 +39,8 @@ ONLY_TEXT_OR_RECEIPT = ("Por ahora solo puedo leer texto y comprobantes de pago.
                         "¿Me cuentas por escrito en qué te ayudo?")
 TOO_LARGE = "El archivo es muy pesado (máximo 5 MB). ¿Puedes enviarlo como foto?"
 FILE_ERROR = "No pude abrir el archivo. ¿Puedes enviarlo de nuevo?"
+AUDIO_TOO_LONG = "Tu audio es muy largo para escucharlo. ¿Puedes enviarlo más corto o contármelo por escrito?"
+AUDIO_UNREADABLE = "No pude entender tu audio. ¿Me cuentas por escrito en qué te ayudo?"
 CONFIRMED = "¡Listo! Tu cita queda confirmada. Te esperamos."
 OPTED_OUT = ("Listo, no te enviaremos más mensajes promocionales. "
              "Si quieres agendar, escríbenos cuando quieras.")
@@ -49,7 +56,7 @@ _SILENT = ("sticker", "location", "contacts")
 def parse_message(msg: dict) -> dict:
     """Normaliza un mensaje de Kapso/Meta a {kind, text, media_id, payload}.
 
-    kind: 'text' | 'button' | 'media' | 'other' | 'ignore'. Los botones llegan como
+    kind: 'text' | 'button' | 'media' | 'audio' | 'other' | 'ignore'. Los botones llegan como
     interactive.button_reply {id, title} (documentado por Kapso) o button {payload, text} (formato de
     Meta para respuestas rápidas de plantilla); se aceptan los dos.
     """
@@ -63,6 +70,9 @@ def parse_message(msg: dict) -> dict:
         button = msg.get("button") or {}
         return {"kind": "button", "payload": str(button.get("payload") or ""),
                 "text": str(button.get("text") or "").strip()}
+    if mtype == "audio":
+        # `type` lo lee también handle_kapso_sent para etiquetar un audio que el negocio mandó desde su celular.
+        return {"kind": "audio", "type": "audio", "media_id": str((msg.get("audio") or {}).get("id") or "")}
     if mtype in _MEDIA_TYPES:
         media = msg.get(mtype) or {}
         return {"kind": "media", "type": mtype, "media_id": str(media.get("id") or ""),
@@ -197,6 +207,53 @@ async def _handle_media(conversation: dict, parsed: dict, phone_number_id: str) 
         await _reply(conversation, ONLY_TEXT_OR_RECEIPT)
 
 
+async def _handle_audio(conversation: dict, parsed: dict, phone_number_id: str) -> None:
+    """Nota de voz: se transcribe y el texto lo atiende el agente como un mensaje escrito.
+
+    La descarga y la transcripción van antes del candado de la conversación (tardan segundos y no deben
+    frenar a los demás mensajes); el agente sí corre dentro de él, igual que con el texto.
+    """
+    label = _LABELS["audio"]
+    settings = get_settings()
+    if not settings.google_api_key:  # transcripción no configurada: se comporta como antes
+        await _save_inbound(conversation, label, "audio")
+        await _reply_once(conversation, ONLY_TEXT)
+        return
+    if not parsed["media_id"]:
+        await _save_inbound(conversation, label, "audio")
+        await _reply(conversation, FILE_ERROR)
+        return
+
+    notice: Optional[str] = None
+    transcript: Optional[str] = None
+    try:
+        provider = KapsoProvider(settings.kapso_api_key, settings.kapso_base_url)
+        data = await provider.download_media(
+            parsed["media_id"], phone_number_id, audio_transcription.MAX_AUDIO_BYTES)
+    except ProviderError as e:
+        notice = AUDIO_TOO_LONG if e.error == "too_large" else FILE_ERROR
+        log.error("[inbound] no se pudo descargar el audio | workspace=%s | err=%s", conversation["workspace_id"], e.error)
+    else:
+        result = await audio_transcription.transcribe(data)
+        if result is not None:
+            # Se cobra aunque no haya voz (silencio): se registra antes de decidir qué se le responde al cliente.
+            await audio_usage.record(conversation["workspace_id"], result)
+            transcript = result.text
+        if not transcript:
+            notice = AUDIO_UNREADABLE
+
+    if not transcript:
+        await _save_inbound(conversation, label, "audio")
+        # El aviso de «muy largo» o «no entendí» no se repite si ya fue lo último que se le dijo.
+        await (_reply if notice == FILE_ERROR else _reply_once)(conversation, notice or AUDIO_UNREADABLE)
+        return
+
+    # El chat del equipo muestra lo que dijo el cliente, marcado como voz.
+    await _save_inbound(conversation, f"🎤 {transcript}", "audio")
+    async with _conversation_lock(str(conversation["id"])):
+        await AgentService.run(conversation=conversation, message=transcript)
+
+
 def _is_business_echo(msg: dict) -> bool:
     """El negocio escribió desde la app de WhatsApp Business (número en coexistencia)."""
     return (msg.get("kapso") or {}).get("origin") == "business_app"
@@ -284,6 +341,8 @@ async def handle_kapso_message(item: dict) -> None:
         await _handle_button(conversation, parsed["payload"], parsed["text"])
     elif parsed["kind"] == "media":
         await _handle_media(conversation, parsed, str(phone_number_id))
+    elif parsed["kind"] == "audio":
+        await _handle_audio(conversation, parsed, str(phone_number_id))
     else:
         await _save_inbound(conversation, _LABELS.get(parsed["type"], "[archivo]"), parsed["type"])
         if parsed["type"] in _SILENT:

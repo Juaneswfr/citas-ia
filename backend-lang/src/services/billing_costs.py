@@ -5,6 +5,8 @@ Costo = IA + WhatsApp + costos fijos asignados. Ingreso = lo cobrado, repartido 
 
 - **IA**: dos fuentes, en este orden: el costo real de LangSmith (`agent_usage.ls_cost_usd`, sincronizado cada hora) y,
   donde aún no hay, la estimación por tokens que guarda el agente (`agent_usage.cost_usd`). Cada fila dice cuál usó.
+  A eso se suma la transcripción de audios (`audio_usage.cost_usd`, migración 028): siempre una estimación por
+  tokens o segundos × tarifa (`audio_transcription.USD_*`), visible aparte en `ai.audio`.
 - **WhatsApp (siempre una ESTIMACIÓN)**: mensajes de plantilla enviados (`followup_sends`) × la tarifa de Meta que se cargó
   (`meta_template_rates`). Marketing se cobra siempre; utilidad **no** se cobra si el cliente escribió en las 24 h previas
   al envío (ventana de servicio abierta). Lo real es lo que Kapso descuenta de los créditos del proyecto: no hay API para
@@ -111,6 +113,27 @@ async def load_rates(db, today: date) -> dict[str, float]:
     )).mappings().fetchall()}
 
 
+async def _audio_by_workspace(db, since: date) -> dict[str, dict]:
+    """Transcripción de audios por negocio desde `since` (`audio_usage`, migración 028).
+
+    Va en un SAVEPOINT: sin la migración solo falla esto (devuelve vacío) y el resto del cálculo sigue igual.
+    """
+    try:
+        async with db.begin_nested():
+            rows = (await db.execute(
+                text("""SELECT workspace_id, COALESCE(SUM(audios), 0) AS audios, SUM(seconds) AS seconds,
+                               COALESCE(SUM(cost_usd), 0) AS cost_usd
+                        FROM audio_usage WHERE day >= :since GROUP BY workspace_id"""),
+                {"since": since},
+            )).mappings().fetchall()
+    except Exception as e:
+        log.warning("[costs] sin consumo de audios (¿falta la migración 028?) | err=%s", type(e).__name__)
+        return {}
+    return {str(r["workspace_id"]): {"audios": int(r["audios"]),
+                                     "seconds": float(r["seconds"]) if r["seconds"] is not None else None,
+                                     "cost_usd": float(r["cost_usd"])} for r in rows}
+
+
 async def costs(db, days: int = 30, today: Optional[date] = None) -> dict:
     """Costo, ingreso y margen de cada negocio en los últimos `days` días (hoy incluido)."""
     days = max(1, min(days, MAX_DAYS))
@@ -131,6 +154,7 @@ async def costs(db, days: int = 30, today: Optional[date] = None) -> dict:
         FROM agent_usage WHERE day >= :since GROUP BY workspace_id"""),
         {"since": since},
     )).mappings().fetchall()}
+    audio = await _audio_by_workspace(db, since)
     bookings = {str(r["workspace_id"]): int(r["n"]) for r in (await db.execute(
         text("""SELECT workspace_id, COUNT(*) AS n FROM appointments
                 WHERE created_by IS NULL AND (created_at AT TIME ZONE 'America/Bogota')::date >= :since
@@ -179,12 +203,14 @@ async def costs(db, days: int = 30, today: Optional[date] = None) -> dict:
     fixed_each = fixed_total / len(paying_ids) if paying_ids else 0.0
 
     items = []
-    for ws in set(ai) | set(wa) | set(revenue) | paying_ids:
+    for ws in set(ai) | set(wa) | set(revenue) | set(audio) | paying_ids:
         i = info.get(ws)
         if not i:  # un negocio borrado: no hay a quién atribuirle nada
             continue
         a = ai.get(ws)
-        ai_usd = float(a["cost_usd"]) if a else 0.0
+        au = audio.get(ws, {"audios": 0, "seconds": None, "cost_usd": 0.0})
+        # La transcripción de audios es IA: entra en el costo de IA (y por eso en el total, el margen y el costo por cita).
+        ai_usd = (float(a["cost_usd"]) if a else 0.0) + au["cost_usd"]
         w = whatsapp_cost(wa.get(ws, []), rates)
         fixed = round(fixed_each) if ws in paying_ids else 0
         marginal_usd = ai_usd + w["cost_usd"]
@@ -198,7 +224,9 @@ async def costs(db, days: int = 30, today: Optional[date] = None) -> dict:
             "paying": ws in paying_ids, "bookings": n,
             "ai": {"calls": int(a["runs"]) if a else 0, "tokens": int(a["tokens"]) if a else 0,
                    "cost_usd": round(ai_usd, 4), "cost_cop": _money(ai_usd, usd_cop),
-                   "source": source_of(int(a["days"]), int(a["days_ls"])) if a else "estimate"},
+                   "source": source_of(int(a["days"]), int(a["days_ls"])) if a else "estimate",
+                   # Ya incluido en cost_usd; aparte solo para verlo. Siempre una estimación (tokens o segundos × tarifa).
+                   "audio": {"count": au["audios"], "seconds": au["seconds"], "cost_usd": round(au["cost_usd"], 5)}},
             "whatsapp": {**w, "cost_cop": _money(w["cost_usd"], usd_cop)},
             "fixed_cop": fixed, "cost_cop": cost_cop, "revenue_cop": income, "margin_cop": margin,
             "margin_pct": round(margin * 100 / income, 1) if margin is not None and income > 0 else None,
@@ -230,6 +258,8 @@ async def costs(db, days: int = 30, today: Optional[date] = None) -> dict:
             "revenue_cop": tot_rev, "cost_cop": tot_cost, "margin_cop": tot_margin,
             "margin_pct": round(tot_margin * 100 / tot_rev, 1) if tot_margin is not None and tot_rev > 0 else None,
             "ai_cost_usd": round(tot_ai, 4), "whatsapp_cost_usd": round(tot_wa, 4), "fixed_cop": tot_fixed,
+            "audio_cost_usd": round(sum(x["ai"]["audio"]["cost_usd"] for x in items), 4),
+            "audio_count": sum(x["ai"]["audio"]["count"] for x in items),
             "whatsapp_sent": sum(x["whatsapp"]["sent"] for x in items),
             "whatsapp_billable": sum(x["whatsapp"]["billable"] for x in items),
             "bookings": tot_bookings, "per_booking": per_booking(tot_ai + tot_wa, tot_bookings, usd_cop),

@@ -93,6 +93,12 @@ class Settings(BaseSettings):
                 raise ValueError("KAPSO_SECRETS_KEY no es una clave Fernet válida")
         return self
 
+    # ── Google Gemini (transcripción de audios de WhatsApp) ─────────────────
+    # La misma GOOGLE_API_KEY que usa el agente con langchain-google-genai.
+    # Sin clave, un audio recibe el aviso de «solo leo texto» como antes.
+    google_api_key: str = Field(default="", alias="GOOGLE_API_KEY")
+    transcribe_model: str = Field(default="gemini-3.5-transcribe", alias="TRANSCRIBE_MODEL")
+
     # ── Archivos subidos (comprobantes de pago) ────────────────────────────
     # Carpeta en disco. En producción debe ser un volumen persistente (ver docker-compose.yml).
     uploads_dir: str = Field(default="uploads", alias="UPLOADS_DIR")
