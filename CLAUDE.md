@@ -23,7 +23,19 @@ npm run dev                                         # http://localhost:8001
 
 Puertos locales: front **8001** (fijado en el script `dev` de `front/package.json`), backend **9001** (va en el comando; `front/.env.development` apunta `VITE_API_URL` ahí). Producción no cambia (3000/8000 dentro de Docker).
 
-No tocar los Dockerfiles — son la configuración actual de producción.
+No tocar los Dockerfiles sin que el usuario lo pida — son la configuración de producción (el del front ya es solo runtime, ver «Producción»).
+
+### Pruebas
+
+- **Backend**: `cd backend-lang && uv run pytest` (tests en `backend-lang/tests/`, pytest + pytest-asyncio; usan BD falsa, no ejecutan el SQL real). Es lo único con corredor de pruebas.
+- **Front**: no tiene corredor de pruebas. Se valida con `npm run build` y, en dev, abriendo la pantalla. La lógica pura (sin React) se comprobó con scripts fuera del repo.
+
+### Reglas para no romper el entorno del front (aprendido el 2026-11-26)
+
+- **El front se instala con bun, no con npm.** `package-lock.json` está desfasado y `npm ci` falla por peers; un `node_modules` armado con npm quedó incompleto (faltaba `start-plugin-core`) y `vite build` fallaba con «Could not resolve entry module index.html». Instalar: `bunx bun install` (o `bun install`).
+- **Nunca reinstalar ni borrar `node_modules` mientras el usuario tiene `npm run dev` abierto**: el servidor queda con módulos a medias y se cae con `esbuild.context is not a function`. Avisar primero para que lo cierre, o probar en otro puerto (`npx vite dev --port 8011 --strictPort`) y apagarlo al terminar.
+- Un `bun install` sin congelar modifica `bun.lock`, y el build regenera `src/routeTree.gen.ts`: revisar `git status` y avisar al usuario antes de dejar esos cambios.
+- No imprimir ni pegar la salida de `vite build --debug`: vuelca `DATABASE_URL` y `JWT_SECRET` del `.env`.
 
 ## Producción (VPS)
 
